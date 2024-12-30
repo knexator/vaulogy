@@ -1,7 +1,7 @@
 const std = @import("std");
 const MemoryPool = std.heap.MemoryPool;
 
-const DEBUG = true;
+const DEBUG = false;
 
 const Atom = struct {
     value: []const u8,
@@ -19,6 +19,7 @@ const Sexpr = union(enum) {
     atom_lit: Atom,
     pair: Pair,
 
+    const debug = Sexpr.lit("DEBUGGG");
     const @"return" = Sexpr.lit("return");
     const @"var" = Sexpr.lit("var");
     const atom = Sexpr.lit("atom");
@@ -278,15 +279,31 @@ const Game = struct {
 
     pub fn advanceStep(this: *Game) !?*const Sexpr {
         var mem = &this.permanent_stuff;
-        const last_state = &this.cur_states.items[this.cur_states.items.len - 1];
+        const last_state = this.cur_states.pop();
         if (last_state.cur_cases) |cases| {
-            const initial_bindings_count = last_state.cur_bindings.items.len;
             for (cases) |case| {
-                if (!try generateBindings(case.pattern, last_state.cur_value, &last_state.cur_bindings)) {
-                    undoLastBindings(&last_state.cur_bindings, initial_bindings_count);
+                var new_bindings = try last_state.cur_bindings.clone();
+
+                if (DEBUG) {
+                    const stderr = std.io.getStdErr().writer();
+                    stderr.print("\n\ngonna try to generate bindings with pattern ", .{}) catch unreachable;
+                    writeSexpr2(case.pattern, stderr.any()) catch unreachable;
+                    stderr.print(" and value ", .{}) catch unreachable;
+                    writeSexpr2(last_state.cur_value, stderr.any()) catch unreachable;
+                    stderr.print("\n", .{}) catch unreachable;
+
+                    stderr.print("cur bindings are:\n", .{}) catch unreachable;
+                    for (new_bindings.items) |binding| {
+                        stderr.print("name: {s}, value: ", .{binding.name}) catch unreachable;
+                        writeSexpr2(binding.value, stderr.any()) catch unreachable;
+                        stderr.print("\n", .{}) catch unreachable;
+                    }
+                }
+
+                if (!(try generateBindings(case.pattern, last_state.cur_value, &new_bindings))) {
                     continue;
                 }
-                const argument = try fillTemplate(case.template, last_state.cur_bindings, &mem.pool_for_sexprs);
+                const argument = try fillTemplate(case.template, new_bindings, &mem.pool_for_sexprs);
                 const inner_execution = try ExecutionState.stateAfterEnteringFnk(mem, case.fn_name, argument);
 
                 if (DEBUG) {
@@ -302,7 +319,7 @@ const Game = struct {
                     stderr.print("\n\n", .{}) catch unreachable;
 
                     stderr.print("all bindings:\n", .{}) catch unreachable;
-                    for (last_state.cur_bindings.items) |binding| {
+                    for (new_bindings.items) |binding| {
                         stderr.print("name: {s}, value: ", .{binding.name}) catch unreachable;
                         writeSexpr2(binding.value, stderr.any()) catch unreachable;
                         stderr.print("\n", .{}) catch unreachable;
@@ -310,29 +327,33 @@ const Game = struct {
                 }
 
                 if (case.next) |next| {
-                    last_state.*.cur_cases = next.items;
-                    last_state.*.cur_value = undefined;
-                    try this.cur_states.append(inner_execution);
-                    return null;
+                    const new_last_state = ExecutionState{
+                        .cur_bindings = new_bindings,
+                        .cur_cases = next.items,
+                        .cur_value = &Sexpr.debug,
+                        .cur_fn_name = last_state.cur_fn_name,
+                    };
+                    try this.cur_states.append(new_last_state);
                 } else {
-                    last_state.cur_bindings.deinit();
-                    _ = this.cur_states.pop();
-
-                    try this.cur_states.append(inner_execution);
-                    return null;
+                    // last_state.cur_bindings.deinit();
                 }
+                try this.cur_states.append(inner_execution);
+                return null;
             }
             return error.BAD_INPUT;
         } else {
             // no cases left
             const result = last_state.cur_value;
 
-            last_state.cur_bindings.deinit();
-            _ = this.cur_states.pop();
+            // last_state.cur_bindings.deinit();
 
-            if (this.cur_states.items.len > 0) {
-                const new_last_state = &this.cur_states.items[this.cur_states.items.len - 1];
-                new_last_state.cur_value = result;
+            if (this.cur_states.popOrNull()) |parent| {
+                try this.cur_states.append(ExecutionState{
+                    .cur_bindings = parent.cur_bindings,
+                    .cur_fn_name = parent.cur_fn_name,
+                    .cur_value = result,
+                    .cur_cases = parent.cur_cases,
+                });
                 return null;
             } else {
                 return result;
