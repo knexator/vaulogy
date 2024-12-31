@@ -125,6 +125,7 @@ const PermamentGameStuff = struct {
     pool_for_sexprs: MemoryPool(Sexpr),
     arena_for_cases: std.heap.ArenaAllocator,
     arena_for_bindings: std.heap.ArenaAllocator,
+    allocator_for_stack: std.mem.Allocator,
 
     pub fn init(
         all_fnks_raw: []const u8,
@@ -147,6 +148,7 @@ const PermamentGameStuff = struct {
             .pool_for_sexprs = pool_for_sexprs,
             .arena_for_cases = arena_for_cases,
             .arena_for_bindings = arena_for_bindings,
+            .allocator_for_stack = allocator,
         };
     }
 
@@ -157,9 +159,25 @@ const PermamentGameStuff = struct {
         this.arena_for_bindings.deinit();
     }
 
-    // TODO: compile fnks as needed
-    fn findFunktion(this: PermamentGameStuff, name: *const Sexpr) !*const MatchCases {
-        return if (this.all_fnks.getPtr(name)) |fnk| fnk else error.BAD_INPUT;
+    fn findFunktion(this: *PermamentGameStuff, name: *const Sexpr) error{ OutOfMemory, BAD_INPUT }!*const MatchCases {
+        if (this.all_fnks.getPtr(name)) |fnk| {
+            return fnk;
+        } else switch (name.*) {
+            .atom_lit, .atom_var => return error.BAD_INPUT,
+            .pair => |p| {
+                // try to compile it!
+                const asdf = try Game.applyFnk(this, p.left, p.right);
+                const cases = try fnkFromSexpr(asdf, this.arena_for_cases.allocator(), &this.pool_for_sexprs);
+                if (DEBUG) {
+                    const stderr = std.io.getStdErr().writer();
+                    stderr.print("\ncompiled a fnk, the cases are: ", .{}) catch unreachable;
+                    writeSexpr2(asdf, stderr.any()) catch unreachable;
+                    stderr.print("\n", .{}) catch unreachable;
+                }
+                try this.all_fnks.put(name, cases);
+                return this.all_fnks.getPtr(name).?;
+            },
+        }
     }
 };
 
@@ -173,6 +191,7 @@ const StackThing = struct {
         // const bindings = std.ArrayList(Binding).init(std.heap.page_allocator);
         const bindings = std.ArrayList(Binding).init(permanent_stuff.arena_for_bindings.allocator());
 
+        // TODO: fix this
         const cases = if (fn_name.equals(&Sexpr.identity) or fn_name.equals(&Sexpr.@"eqAtoms?"))
             null
         else
@@ -190,49 +209,32 @@ const StackThing = struct {
     }
 };
 
-const Game = struct {
-    permanent_stuff: PermamentGameStuff,
-    // cur_states: std.ArrayList(ExecutionState),
-
+const ExecutionThread = struct {
     active_value: *const Sexpr,
     stack: std.ArrayList(StackThing),
 
     pub fn init(
-        result: *Game,
-        input_raw: []const u8,
-        fn_name_raw: []const u8,
-        all_fnks_raw: []const u8,
-        allocator: std.mem.Allocator,
-    ) !void {
-        result.permanent_stuff = try PermamentGameStuff.init(all_fnks_raw, allocator);
-
-        const fn_name = try parseSingleSexpr(fn_name_raw, &result.permanent_stuff.pool_for_sexprs);
-        const input = try parseSingleSexpr(input_raw, &result.permanent_stuff.pool_for_sexprs);
-        // const first_state = try ExecutionState.stateAfterEnteringFnk(&game, fn_name, input);
-
-        var stack = std.ArrayList(StackThing).init(allocator);
-        try stack.append(try StackThing.init(fn_name, &result.permanent_stuff));
-
-        result.stack = stack;
-        result.active_value = input;
+        input: *const Sexpr,
+        fn_name: *const Sexpr,
+        permanent_stuff: *PermamentGameStuff,
+    ) !ExecutionThread {
+        var stack = std.ArrayList(StackThing).init(permanent_stuff.allocator_for_stack);
+        try stack.append(try StackThing.init(fn_name, permanent_stuff));
+        return ExecutionThread{ .active_value = input, .stack = stack };
     }
 
-    pub fn deinit(this: *Game) void {
-        this.permanent_stuff.deinit();
-        this.stack.deinit();
-    }
-    pub fn advanceStep(this: *Game) !?*const Sexpr {
+    pub fn advanceStep(this: *ExecutionThread, permanent_stuff: *PermamentGameStuff) !?*const Sexpr {
         if (this.stack.items.len > 0) {
             const last_stack_ptr: *StackThing = &this.stack.items[this.stack.items.len - 1];
             if (last_stack_ptr.cur_cases) |cases| {
                 const initial_bindings_count = last_stack_ptr.cur_bindings.items.len;
                 for (cases) |case| {
-                    if (!(try generateBindings(case.pattern, this.active_value, &(last_stack_ptr.cur_bindings)))) {
+                    if (!(try generateBindings(case.pattern, this.active_value, &last_stack_ptr.cur_bindings))) {
                         undoLastBindings(&last_stack_ptr.cur_bindings, initial_bindings_count);
                         continue;
                     }
-                    const argument = try fillTemplate(case.template, last_stack_ptr.cur_bindings, &this.permanent_stuff.pool_for_sexprs);
-                    const new_stack_thing = try StackThing.init(case.fn_name, &this.permanent_stuff);
+                    const argument = try fillTemplate(case.template, last_stack_ptr.cur_bindings, &permanent_stuff.pool_for_sexprs);
+                    const new_stack_thing = try StackThing.init(case.fn_name, permanent_stuff);
 
                     if (case.next) |next| {
                         last_stack_ptr.cur_cases = next.items;
@@ -263,12 +265,50 @@ const Game = struct {
         }
     }
 
-    pub fn getFinalResult(this: *Game) !*const Sexpr {
+    pub fn getFinalResult(this: *ExecutionThread, permanent_stuff: *PermamentGameStuff) !*const Sexpr {
         while (true) {
-            if (try this.advanceStep()) |res| {
+            if (try this.advanceStep(permanent_stuff)) |res| {
                 return res;
             }
         }
+    }
+
+    pub fn deinit(this: *ExecutionThread) void {
+        this.stack.deinit();
+    }
+};
+
+const Game = struct {
+    permanent_stuff: PermamentGameStuff,
+    execution: ExecutionThread,
+
+    pub fn init(
+        result: *Game,
+        input_raw: []const u8,
+        fn_name_raw: []const u8,
+        all_fnks_raw: []const u8,
+        allocator: std.mem.Allocator,
+    ) !void {
+        result.permanent_stuff = try PermamentGameStuff.init(all_fnks_raw, allocator);
+
+        const fn_name = try parseSingleSexpr(fn_name_raw, &result.permanent_stuff.pool_for_sexprs);
+        const input = try parseSingleSexpr(input_raw, &result.permanent_stuff.pool_for_sexprs);
+        result.execution = try ExecutionThread.init(input, fn_name, &result.permanent_stuff);
+    }
+
+    pub fn deinit(this: *Game) void {
+        this.permanent_stuff.deinit();
+        this.execution.deinit();
+    }
+
+    pub fn getFinalResult(this: *Game) !*const Sexpr {
+        return this.execution.getFinalResult(&this.permanent_stuff);
+    }
+
+    pub fn applyFnk(permanent_stuff: *PermamentGameStuff, fn_name: *const Sexpr, input: *const Sexpr) !*const Sexpr {
+        var exec = try ExecutionThread.init(input, fn_name, permanent_stuff);
+        defer exec.deinit();
+        return exec.getFinalResult(permanent_stuff);
     }
 };
 
@@ -324,6 +364,43 @@ test "main test" {
 
     const actual = try game.getFinalResult();
     const expected = Sexpr{ .atom_lit = .{ .value = "output" } };
+    try expectEqualSexprs(&expected, actual);
+
+    try expectEqualSexprs(&expected, try Game.applyFnk(&game.permanent_stuff, &Sexpr.lit("fn_name"), &Sexpr.lit("input")));
+}
+
+test "with comptime" {
+    var game: Game = undefined;
+    try Game.init(&game, "2", "stuff",
+        \\  
+        \\  stuff {
+        \\      @digit -> (compileMap . ( 
+        \\          (0 . a) 
+        \\          (1 . b) 
+        \\          (2 . c) 
+        \\          (3 . d)
+        \\      )): @digit;
+        \\  }
+        \\
+        \\  compileMap {
+        \\      nil -> nil;
+        \\      ((@key . @value) . @rest) -> compileMap: @rest {
+        \\          @rest_compiled -> ( ((atom . @key) identity (atom . @value) . return) . @rest_compiled );
+        \\      }
+        \\  }
+    , std.testing.allocator);
+    defer game.deinit();
+
+    const actual = try game.getFinalResult();
+    // const expected = Sexpr{ .pair = Pair{
+    //     .left = &Sexpr.lit("b0"),
+    //     .right = &Sexpr{ .pair = Pair{
+    //         .left = &Sexpr.lit("b1"),
+    //         .right = &Sexpr.nil,
+    //     } },
+    // } };
+    const expected = Sexpr.lit("c");
+    // const expected = Sexpr{ .atom_lit = .{ .value = "output" } };
     try expectEqualSexprs(&expected, actual);
 }
 
@@ -531,7 +608,7 @@ fn generateBindings(pattern: *const Sexpr, value: *const Sexpr, bindings: *Bindi
         // }
     }
 
-    try bindings.append(.{ .name = "xxx", .value = value });
+    // try bindings.append(.{ .name = "xxx", .value = value });
 
     switch (pattern.*) {
         .atom_var => |pat| {
@@ -673,6 +750,77 @@ fn asListPlusSentinel(s: *const Sexpr, l: *std.ArrayList(*const Sexpr)) !*const 
         .pair => |p| {
             try l.append(p.left);
             return try asListPlusSentinel(p.right, l);
+        },
+    }
+}
+
+fn fnkFromSexpr(s: *const Sexpr, allocator_for_cases: std.mem.Allocator, pool: *MemoryPool(Sexpr)) !MatchCases {
+    return (try fnkFromSexprHelper(s, allocator_for_cases, pool)).?;
+}
+
+fn fnkFromSexprHelper(s: *const Sexpr, arena: std.mem.Allocator, pool: *MemoryPool(Sexpr)) !?MatchCases {
+    var cases = std.ArrayListUnmanaged(MatchCaseDefinition){};
+    switch (s.*) {
+        .atom_lit => return if (s.equals(&Sexpr.@"return")) null else error.BAD_INPUT,
+        .atom_var => return error.BAD_INPUT,
+        .pair => |p| {
+            var cur_parent = p;
+            while (true) {
+                const cur = cur_parent.left;
+                const pattern = try internalFromExternal(cur.pair.left, pool);
+                const fn_name = cur.pair.right.pair.left;
+                const template = try internalFromExternal(cur.pair.right.pair.right.pair.left, pool);
+                const next = try fnkFromSexprHelper(cur.pair.right.pair.right.pair.right, arena, pool);
+                try cases.append(arena, .{
+                    .pattern = pattern,
+                    .fn_name = fn_name,
+                    .template = template,
+                    .next = next,
+                });
+                switch (cur_parent.right.*) {
+                    .atom_lit => |a| {
+                        if (a.equals(Sexpr.nil.atom_lit)) {
+                            break;
+                        } else {
+                            return error.BAD_INPUT;
+                        }
+                    },
+                    .atom_var => return error.BAD_INPUT,
+                    .pair => |p2| {
+                        cur_parent = p2;
+                    },
+                }
+            }
+            return cases;
+        },
+    }
+}
+
+// ((atom . aaa) . (var . bbb)) => (aaa . @bbb)
+fn internalFromExternal(s: *const Sexpr, pool: *MemoryPool(Sexpr)) !*const Sexpr {
+    switch (s.*) {
+        .atom_var, .atom_lit => return error.BAD_INPUT,
+        .pair => |p| {
+            if (p.left.equals(&Sexpr.atom)) {
+                return p.right;
+            } else if (p.left.equals(&Sexpr.@"var")) {
+                switch (p.right.*) {
+                    .pair => return error.BAD_INPUT,
+                    .atom_var => return error.BAD_INPUT,
+                    .atom_lit => |a| {
+                        const res: *Sexpr = try pool.create();
+                        res.* = Sexpr{ .atom_var = a };
+                        return res;
+                    },
+                }
+            } else {
+                const res = try pool.create();
+                res.* = Sexpr{ .pair = Pair{
+                    .left = try internalFromExternal(p.left, pool),
+                    .right = try internalFromExternal(p.right, pool),
+                } };
+                return res;
+            }
         },
     }
 }
