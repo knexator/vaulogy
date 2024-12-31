@@ -182,20 +182,22 @@ const PermamentGameStuff = struct {
 };
 
 const StackThing = struct {
-    // only decorative, i guess
     cur_fn_name: *const Sexpr,
     cur_cases: ?[]const MatchCaseDefinition,
     cur_bindings: Bindings,
 
     pub fn init(fn_name: *const Sexpr, permanent_stuff: *PermamentGameStuff) !StackThing {
-        // const bindings = std.ArrayList(Binding).init(std.heap.page_allocator);
         const bindings = std.ArrayList(Binding).init(permanent_stuff.arena_for_bindings.allocator());
 
-        // TODO: fix this
-        const cases = if (fn_name.equals(&Sexpr.identity) or fn_name.equals(&Sexpr.@"eqAtoms?"))
-            null
-        else
-            (try permanent_stuff.findFunktion(fn_name)).*.items;
+        const cases = blk: {
+            inline for (builtin_fnks) |builtin| {
+                if (builtin.name.equals(fn_name)) {
+                    break :blk null;
+                }
+            } else {
+                break :blk (try permanent_stuff.findFunktion(fn_name)).*.items;
+            }
+        };
         return StackThing{
             .cur_bindings = bindings,
             .cur_cases = cases,
