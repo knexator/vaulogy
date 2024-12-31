@@ -1,6 +1,9 @@
 const std = @import("std");
 const MemoryPool = std.heap.MemoryPool;
 
+// Design decision 1: strings live on the input buffer
+// Design decision 2: Sexprs are never released :(
+
 const DEBUG = false;
 
 const Atom = struct {
@@ -51,8 +54,8 @@ const Sexpr = union(enum) {
         };
     }
 
-    pub fn isLit(this: Sexpr) bool {
-        return switch (this) {
+    pub fn isLit(this: *const Sexpr) bool {
+        return switch (this.*) {
             .atom_lit => true,
             else => false,
         };
@@ -101,8 +104,21 @@ const FnkCollection = std.ArrayHashMap(*const Sexpr, MatchCases, struct {
     }
 }, true);
 
-// Design decision 1: strings live on the input buffer
-// Design decision 2: Sexprs are never released :(
+const builtin_fnks = [_]struct { name: *const Sexpr, fnk: fn (v: *const Sexpr) *const Sexpr }{
+    .{ .name = &Sexpr.identity, .fnk = builtin_fnk_identity },
+    .{ .name = &Sexpr.@"eqAtoms?", .fnk = @"builtin_fnk_eqAtoms?" },
+};
+
+fn builtin_fnk_identity(v: *const Sexpr) *const Sexpr {
+    return v;
+}
+
+fn @"builtin_fnk_eqAtoms?"(v: *const Sexpr) *const Sexpr {
+    return switch (v.*) {
+        .atom_lit, .atom_var => Sexpr.fromBool(false),
+        .pair => |p| Sexpr.fromBool(p.left.isLit() and p.right.isLit() and Sexpr.equals(p.left, p.right)),
+    };
+}
 
 const PermamentGameStuff = struct {
     all_fnks: FnkCollection,
@@ -221,8 +237,7 @@ const Game = struct {
                     if (case.next) |next| {
                         last_stack_ptr.cur_cases = next.items;
                     } else {
-                        // TODO: remove it now from stack
-                        last_stack_ptr.cur_cases = null;
+                        _ = this.stack.pop();
                     }
 
                     try this.stack.append(new_stack_thing);
@@ -234,7 +249,12 @@ const Game = struct {
                 return error.BAD_INPUT;
             } else {
                 // ran out of cases
-                // TODO: handle built in fnks
+                // is it a builtin fnk?
+                inline for (builtin_fnks) |builtin| {
+                    if (Sexpr.equals(builtin.name, last_stack_ptr.cur_fn_name)) {
+                        this.active_value = builtin.fnk(this.active_value);
+                    }
+                }
                 _ = this.stack.pop();
                 return null;
             }
@@ -518,7 +538,7 @@ fn generateBindings(pattern: *const Sexpr, value: *const Sexpr, bindings: *Bindi
             switch (value.*) {
                 .atom_var => return error.BAD_INPUT,
                 else => {
-                    // TODO: return false if variable was already bound
+                    // TODO: return error.BAD_INPUT if variable was already bound
                     try bindings.append(.{ .name = pat.value, .value = value });
                     return true;
                 },
