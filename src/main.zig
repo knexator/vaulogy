@@ -314,7 +314,7 @@ const Game = struct {
     }
 };
 
-pub fn main() !void {
+pub fn main() !u8 {
     const stdout_file = std.io.getStdOut().writer();
     var bw = std.io.bufferedWriter(stdout_file);
     const stdout = bw.writer();
@@ -335,77 +335,91 @@ pub fn main() !void {
     defer args.deinit();
     std.debug.assert(args.skip());
 
-    const fnks_collection_raw: []const u8 = blk: {
-        const filename = args.next().?;
-        const file = try std.fs.cwd().openFile(filename, .{});
-        defer file.close();
-        break :blk try file.readToEndAlloc(allocator, std.math.maxInt(usize));
-    };
-    defer allocator.free(fnks_collection_raw);
+    const verb = args.next().?;
 
-    const fn_name_raw: []const u8 = args.next().?;
+    if (std.mem.eql(u8, verb, "run")) {
+        const fnks_collection_raw: []const u8 = blk: {
+            const filename = args.next().?;
+            const file = try std.fs.cwd().openFile(filename, .{});
+            defer file.close();
+            break :blk try file.readToEndAlloc(allocator, std.math.maxInt(usize));
+        };
+        defer allocator.free(fnks_collection_raw);
 
-    var should_free_input = false;
-    const input_raw: []const u8 = blk: {
-        const v = args.next().?;
-        if (std.mem.eql(u8, v, "file")) {
-            should_free_input = true;
-            const n = args.next().?;
-            if (std.mem.eql(u8, n, "raw")) {
-                const file_name = args.next().?;
-                const file = try std.fs.cwd().openFile(file_name, .{});
-                defer file.close();
-                var br = std.io.bufferedReader(file.reader());
-                var contents = std.ArrayList(u8).init(allocator);
-                defer contents.deinit();
-                try contents.append('(');
-                while (true) {
-                    const cur_byte = br.reader().readByte() catch break;
-                    if (cur_byte == 0x0D) continue; // ignore the CR char, assuming that it will be followed by a NL
-                    try contents.append('x');
-                    try contents.append(std.fmt.digitToChar(cur_byte >> 4, .upper));
-                    try contents.append(std.fmt.digitToChar(cur_byte & 0x0F, .upper));
-                    try contents.append(' ');
+        const fn_name_raw: []const u8 = args.next().?;
+
+        var should_free_input = false;
+        const input_raw: []const u8 = blk: {
+            const v = args.next().?;
+            if (std.mem.eql(u8, v, "file")) {
+                should_free_input = true;
+                const n = args.next().?;
+                if (std.mem.eql(u8, n, "raw")) {
+                    const file_name = args.next().?;
+                    const file = try std.fs.cwd().openFile(file_name, .{});
+                    defer file.close();
+                    var br = std.io.bufferedReader(file.reader());
+                    var contents = std.ArrayList(u8).init(allocator);
+                    defer contents.deinit();
+                    try contents.append('(');
+                    while (true) {
+                        const cur_byte = br.reader().readByte() catch break;
+                        if (cur_byte == 0x0D) continue; // ignore the CR char, assuming that it will be followed by a NL
+                        try contents.append('x');
+                        try contents.append(std.fmt.digitToChar(cur_byte >> 4, .upper));
+                        try contents.append(std.fmt.digitToChar(cur_byte & 0x0F, .upper));
+                        try contents.append(' ');
+                    }
+                    try contents.append(')');
+                    break :blk try contents.toOwnedSlice();
+                } else {
+                    const file_name = n;
+                    const file = try std.fs.cwd().openFile(file_name, .{});
+                    defer file.close();
+                    break :blk try file.readToEndAlloc(allocator, std.math.maxInt(usize));
                 }
-                try contents.append(')');
-                break :blk try contents.toOwnedSlice();
             } else {
-                const file_name = n;
-                const file = try std.fs.cwd().openFile(file_name, .{});
-                defer file.close();
-                break :blk try file.readToEndAlloc(allocator, std.math.maxInt(usize));
+                break :blk v;
             }
-        } else {
-            break :blk v;
-        }
-    };
-    defer if (should_free_input) allocator.free(input_raw);
+        };
+        defer if (should_free_input) allocator.free(input_raw);
 
-    std.debug.assert(!args.skip());
+        std.debug.assert(!args.skip());
 
-    var game: Game = undefined;
-    try Game.init(&game, input_raw, fn_name_raw, fnks_collection_raw, allocator);
-    // try Game.init(&game, "(1)", "stuff",
-    //     \\ stuff {
-    //     \\      nil -> hola;
-    //     \\      (@a . @rest) -> @a {
-    //     \\          @b -> @rest {
-    //     \\              @c -> @b;
-    //     \\          }
-    //     \\      }
-    //     \\ }
-    // , allocator);
-    defer game.deinit();
+        var game: Game = undefined;
+        try Game.init(&game, input_raw, fn_name_raw, fnks_collection_raw, allocator);
+        // try Game.init(&game, "(1)", "stuff",
+        //     \\ stuff {
+        //     \\      nil -> hola;
+        //     \\      (@a . @rest) -> @a {
+        //     \\          @b -> @rest {
+        //     \\              @c -> @b;
+        //     \\          }
+        //     \\      }
+        //     \\ }
+        // , allocator);
+        defer game.deinit();
 
-    const actual = try game.getFinalResult();
-    // const expected = Sexpr{ .atom_lit = .{ .value = "output" } };
-    // _ = expected; // autofix
-    // try expectEqualSexprs(&expected, actual);
+        const actual = try game.getFinalResult();
+        // const expected = Sexpr{ .atom_lit = .{ .value = "output" } };
+        // _ = expected; // autofix
+        // try expectEqualSexprs(&expected, actual);
 
-    try stdout.print("result: ", .{});
-    try writeSexpr2(actual, stdout.any());
-    // try writeSexpr(actual, stdout.any(), allocator);
-    try stdout.print("\n", .{});
+        try stdout.print("result: ", .{});
+        // try writeSexpr2(actual, stdout.any());
+        try writeSexpr(actual, stdout.any(), allocator);
+        try stdout.print("\n", .{});
+    } else {
+        try stdout.print(
+            \\  valid commands:
+            \\      run [fnk-lib] [fnk-name] [input]
+            \\      run [fnk-lib] [fnk-name] file [input-filename]
+            \\      run [fnk-lib] [fnk-name] file raw [input-filename]
+            \\      score [my-fnk-lib] [target-fnk-lib]
+        , .{});
+        return 1;
+    }
+    return 0;
 }
 
 test "main test" {
