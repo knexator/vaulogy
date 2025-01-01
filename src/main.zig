@@ -1,36 +1,38 @@
 const std = @import("std");
 const MemoryPool = std.heap.MemoryPool;
 
+const parsing = @import("parsing.zig");
+
 // Design decision 1: strings live on the input buffer
 // Design decision 2: Sexprs are never released :(
 
 const DEBUG = false;
 
-const Atom = struct {
+pub const Atom = struct {
     value: []const u8,
 
     pub fn equals(this: Atom, other: Atom) bool {
         return std.mem.eql(u8, this.value, other.value);
     }
 };
-const Pair = struct {
+pub const Pair = struct {
     left: *const Sexpr,
     right: *const Sexpr,
 };
-const Sexpr = union(enum) {
+pub const Sexpr = union(enum) {
     atom_var: Atom,
     atom_lit: Atom,
     pair: Pair,
 
-    const debug = Sexpr.lit("DEBUGGG");
-    const @"return" = Sexpr.lit("return");
-    const @"var" = Sexpr.lit("var");
-    const atom = Sexpr.lit("atom");
-    const nil = Sexpr.lit("nil");
-    const identity = Sexpr.lit("identity");
-    const @"eqAtoms?" = Sexpr.lit("eqAtoms?");
-    const @"true" = Sexpr.lit("true");
-    const @"false" = Sexpr.lit("false");
+    pub const debug = Sexpr.lit("DEBUGGG");
+    pub const @"return" = Sexpr.lit("return");
+    pub const @"var" = Sexpr.lit("var");
+    pub const atom = Sexpr.lit("atom");
+    pub const nil = Sexpr.lit("nil");
+    pub const identity = Sexpr.lit("identity");
+    pub const @"eqAtoms?" = Sexpr.lit("eqAtoms?");
+    pub const @"true" = Sexpr.lit("true");
+    pub const @"false" = Sexpr.lit("false");
 
     pub fn lit(v: []const u8) Sexpr {
         return .{ .atom_lit = .{ .value = v } };
@@ -66,9 +68,9 @@ const Sexpr = union(enum) {
     }
 };
 
-const Fnk = struct { name: *const Sexpr, body: MatchCases };
-const MatchCases = std.ArrayListUnmanaged(MatchCaseDefinition);
-const MatchCaseDefinition = struct {
+pub const Fnk = struct { name: *const Sexpr, body: MatchCases };
+pub const MatchCases = std.ArrayListUnmanaged(MatchCaseDefinition);
+pub const MatchCaseDefinition = struct {
     pattern: *const Sexpr,
     fn_name: *const Sexpr,
     template: *const Sexpr,
@@ -137,9 +139,9 @@ const PermamentGameStuff = struct {
         var fnk_collection = FnkCollection.init(allocator);
         var remaining_fnk_input = all_fnks_raw;
         while (true) {
-            skipWhitespace(&remaining_fnk_input);
+            parsing.skipWhitespace(&remaining_fnk_input);
             if (remaining_fnk_input.len == 0) break;
-            const fnk = try parseFnk(&remaining_fnk_input, &pool_for_sexprs, arena_for_cases.allocator());
+            const fnk = try parsing.parseFnk(&remaining_fnk_input, &pool_for_sexprs, arena_for_cases.allocator());
             try fnk_collection.put(fnk.name, fnk.body);
         }
 
@@ -301,8 +303,8 @@ const Game = struct {
     ) !void {
         result.permanent_stuff = try PermamentGameStuff.init(all_fnks_raw, allocator);
 
-        const fn_name = try parseSingleSexpr(fn_name_raw, &result.permanent_stuff.pool_for_sexprs);
-        const input = try parseSingleSexpr(input_raw, &result.permanent_stuff.pool_for_sexprs);
+        const fn_name = try parsing.parseSingleSexpr(fn_name_raw, &result.permanent_stuff.pool_for_sexprs);
+        const input = try parsing.parseSingleSexpr(input_raw, &result.permanent_stuff.pool_for_sexprs);
         result.execution = try ExecutionThread.init(input, fn_name, &result.permanent_stuff);
     }
 
@@ -481,146 +483,29 @@ test "with comptime" {
     try expectEqualSexprs(&expected, actual);
 }
 
-fn parseSexpr(input: *[]const u8, pool: *MemoryPool(Sexpr)) !*const Sexpr {
-    const result = try parseSexprTrue(input.*, pool);
-    input.* = result.rest;
-    return result.sexpr;
-}
+test "apply another nested fnk, with ExecutionState" {
+    var game: Game = undefined;
+    try Game.init(&game, "(1)", "stuff",
+        \\ stuff {
+        \\      nil -> hola;
+        \\      (@a . @rest) -> @a {
+        \\          @b -> @rest {
+        \\              @c -> @b;
+        \\          }
+        \\      }
+        \\ }
+    , std.testing.allocator);
+    defer game.deinit();
 
-fn parseSingleSexpr(input: []const u8, pool: *MemoryPool(Sexpr)) !*const Sexpr {
-    var result = try parseSexprTrue(input, pool);
-    skipWhitespace(&result.rest);
-    if (result.rest.len > 0) return error.BAD_INPUT;
-    return result.sexpr;
-}
+    // try expectEqualSexprs(
+    //     &Sexpr{ .atom_lit = Atom{ .value = "stuff" } },
+    //     game.cur_state.cur_fn_name,
+    // );
 
-fn parseSexprTrue(input: []const u8, pool: *MemoryPool(Sexpr)) error{ OutOfMemory, BAD_INPUT }!struct { sexpr: *const Sexpr, rest: []const u8 } {
-    var rest = input;
-    skipWhitespace(&rest);
-    if (rest[0] == '(') {
-        const asdf = try parseSexprInsideParens(rest[1..], pool);
-        return .{ .sexpr = asdf.sexpr, .rest = asdf.rest };
-    }
-    const asdf = try parseAtom(rest);
-    const res = try pool.create();
-    if (asdf.is_var) {
-        res.* = Sexpr{ .atom_var = asdf.atom };
-    } else {
-        res.* = Sexpr{ .atom_lit = asdf.atom };
-    }
-    return .{ .sexpr = res, .rest = asdf.rest };
-}
+    const expected = try parsing.parseSingleSexpr("1", &game.permanent_stuff.pool_for_sexprs);
+    const actual = try game.getFinalResult();
 
-fn parseSexprInsideParens(input: []const u8, pool: *MemoryPool(Sexpr)) !struct { sexpr: *const Sexpr, rest: []const u8 } {
-    var rest = input;
-    skipWhitespace(&rest);
-    if (rest[0] == ')') {
-        return .{ .sexpr = &Sexpr.nil, .rest = rest[1..] };
-    }
-    if (rest[0] == '.') {
-        const final_asdf = try parseSexprTrue(rest[1..], pool);
-        rest = final_asdf.rest;
-        skipWhitespace(&rest);
-        if (rest[0] != ')') return error.BAD_INPUT;
-        return .{ .sexpr = final_asdf.sexpr, .rest = rest[1..] };
-    }
-    const first_asdf = try parseSexprTrue(rest, pool);
-    const rest_asdf = try parseSexprInsideParens(first_asdf.rest, pool);
-
-    const res = try pool.create();
-    res.* = Sexpr{ .pair = Pair{ .left = first_asdf.sexpr, .right = rest_asdf.sexpr } };
-
-    return .{ .sexpr = res, .rest = rest_asdf.rest };
-}
-
-fn parseAtom(input: []const u8) !struct { atom: Atom, is_var: bool, rest: []const u8 } {
-    const word_breaks = .{ '(', ')', ':', '.', ';' } ++ std.ascii.whitespace;
-    const rest = std.mem.trimLeft(u8, input, &std.ascii.whitespace);
-    const word_end = std.mem.indexOfAnyPos(u8, rest, 0, &word_breaks) orelse rest.len;
-    const is_variable = rest[0] == '@';
-    return .{
-        .atom = Atom{ .value = rest[(if (is_variable) 1 else 0)..word_end] },
-        .is_var = is_variable,
-        .rest = rest[word_end..],
-    };
-}
-
-fn parseFnk(input: *[]const u8, pool: *MemoryPool(Sexpr), allocator: std.mem.Allocator) !Fnk {
-    const result = try parseFnkTrue(input.*, pool, allocator);
-    input.* = result.rest;
-    return result.fnk;
-}
-
-fn parseFnkTrue(input: []const u8, pool: *MemoryPool(Sexpr), allocator: std.mem.Allocator) !struct { fnk: Fnk, rest: []const u8 } {
-    var rest = input;
-    skipWhitespace(&rest);
-    const name = try parseSexpr(&rest, pool);
-    skipWhitespace(&rest);
-    // try parseChar(&rest, ':');
-    // skipWhitespace(&rest);
-    try parseChar(&rest, '{');
-    const cases = try parseMatchCases(&rest, pool, allocator);
-    skipWhitespace(&rest);
-    return .{ .fnk = Fnk{ .name = name, .body = cases }, .rest = rest };
-}
-
-fn parseMatchCases(input: *[]const u8, pool: *MemoryPool(Sexpr), allocator: std.mem.Allocator) !MatchCases {
-    var list = std.ArrayListUnmanaged(MatchCaseDefinition){};
-    skipWhitespace(input);
-    while (!parseCharIfPossible(input, '}')) {
-        const pattern = try parseSexpr(input, pool);
-        skipWhitespace(input);
-        try parseChar(input, '-');
-        try parseChar(input, '>');
-        skipWhitespace(input);
-        const fn_name_or_template = try parseSexpr(input, pool);
-        skipWhitespace(input);
-        var fn_name: *const Sexpr = undefined;
-        var template: *const Sexpr = undefined;
-        if (parseCharIfPossible(input, ':')) {
-            fn_name = fn_name_or_template;
-            template = try parseSexpr(input, pool);
-            skipWhitespace(input);
-        } else {
-            fn_name = &Sexpr.identity;
-            template = fn_name_or_template;
-        }
-        var next: ?MatchCases = undefined;
-        if (parseCharIfPossible(input, ';')) {
-            next = null;
-        } else {
-            try parseChar(input, '{');
-            next = try parseMatchCases(input, pool, allocator);
-        }
-        skipWhitespace(input);
-
-        try list.append(allocator, .{
-            .pattern = pattern,
-            .fn_name = fn_name,
-            .template = template,
-            .next = next,
-        });
-    }
-    return list;
-}
-
-fn skipWhitespace(input: *[]const u8) void {
-    input.* = std.mem.trimLeft(u8, input.*, &std.ascii.whitespace);
-    while (std.mem.startsWith(u8, input.*, "//")) {
-        input.* = input.*[(std.mem.indexOfScalar(u8, input.*, '\n').? + 1)..];
-        input.* = std.mem.trimLeft(u8, input.*, &std.ascii.whitespace);
-    }
-}
-
-fn parseChar(input: *[]const u8, comptime expected: u8) !void {
-    if (input.*[0] != expected) return error.BAD_INPUT;
-    input.* = input.*[1..];
-}
-
-fn parseCharIfPossible(input: *[]const u8, comptime expected: u8) bool {
-    if (input.*[0] != expected) return false;
-    input.* = input.*[1..];
-    return true;
+    try expectEqualSexprs(expected, actual);
 }
 
 fn expectEqualSexprs(expected: *const Sexpr, actual: *const Sexpr) !void {
@@ -743,31 +628,6 @@ fn fillTemplate(template: *const Sexpr, bindings: Bindings, pool: *MemoryPool(Se
 
 fn undoLastBindings(bindings: *Bindings, original_count: usize) void {
     bindings.shrinkAndFree(original_count);
-}
-
-test "apply another nested fnk, with ExecutionState" {
-    var game: Game = undefined;
-    try Game.init(&game, "(1)", "stuff",
-        \\ stuff {
-        \\      nil -> hola;
-        \\      (@a . @rest) -> @a {
-        \\          @b -> @rest {
-        \\              @c -> @b;
-        \\          }
-        \\      }
-        \\ }
-    , std.testing.allocator);
-    defer game.deinit();
-
-    // try expectEqualSexprs(
-    //     &Sexpr{ .atom_lit = Atom{ .value = "stuff" } },
-    //     game.cur_state.cur_fn_name,
-    // );
-
-    const expected = try parseSingleSexpr("1", &game.permanent_stuff.pool_for_sexprs);
-    const actual = try game.getFinalResult();
-
-    try expectEqualSexprs(expected, actual);
 }
 
 fn writeSexpr2(s: *const Sexpr, w: std.io.AnyWriter) !void {
