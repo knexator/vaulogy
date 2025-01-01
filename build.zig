@@ -20,6 +20,8 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+        // .use_llvm = optimize != .Debug,
+        // .use_lld = optimize != .Debug,
     });
 
     // This declares intent for the executable to be installed into the
@@ -56,6 +58,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .filters = test_filters,
+        .use_llvm = optimize != .Debug,
+        .use_lld = optimize != .Debug,
     });
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);

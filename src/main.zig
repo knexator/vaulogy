@@ -34,6 +34,10 @@ pub const Sexpr = union(enum) {
     pub const @"true" = Sexpr.lit("true");
     pub const @"false" = Sexpr.lit("false");
 
+    pub fn pair(a: *const Sexpr, b: *const Sexpr) Sexpr {
+        return .{ .pair = .{ .left = a, .right = b } };
+    }
+
     pub fn lit(v: []const u8) Sexpr {
         return .{ .atom_lit = .{ .value = v } };
     }
@@ -217,6 +221,11 @@ const ExecutionThread = struct {
     active_value: *const Sexpr,
     stack: std.ArrayList(StackThing),
 
+    score: struct {
+        successful_matches: usize,
+        max_stack: usize,
+    },
+
     pub fn init(
         input: *const Sexpr,
         fn_name: *const Sexpr,
@@ -224,12 +233,36 @@ const ExecutionThread = struct {
     ) !ExecutionThread {
         var stack = std.ArrayList(StackThing).init(permanent_stuff.allocator_for_stack);
         switch (try StackThing.init(input, fn_name, permanent_stuff)) {
-            .builtin => |res| return ExecutionThread{ .active_value = res, .stack = stack },
+            .builtin => |res| return ExecutionThread{
+                .active_value = res,
+                .stack = stack,
+                .score = .{
+                    .successful_matches = 0,
+                    .max_stack = 0,
+                },
+            },
             .stack_thing => |first| {
                 try stack.append(first);
-                return ExecutionThread{ .active_value = input, .stack = stack };
+                return ExecutionThread{
+                    .active_value = input,
+                    .stack = stack,
+                    .score = .{
+                        .successful_matches = 0,
+                        .max_stack = 1,
+                    },
+                };
             },
         }
+    }
+
+    pub fn initFromText(
+        input_raw: []const u8,
+        fn_name_raw: []const u8,
+        permanent_stuff: *PermamentGameStuff,
+    ) !ExecutionThread {
+        const fn_name = try parsing.parseSingleSexpr(fn_name_raw, &permanent_stuff.pool_for_sexprs);
+        const input = try parsing.parseSingleSexpr(input_raw, &permanent_stuff.pool_for_sexprs);
+        return ExecutionThread.init(input, fn_name, permanent_stuff);
     }
 
     pub fn advanceStep(this: *ExecutionThread, permanent_stuff: *PermamentGameStuff) !?*const Sexpr {
@@ -251,10 +284,13 @@ const ExecutionThread = struct {
                         _ = this.stack.pop();
                     }
 
+                    this.score.successful_matches += 1;
+
                     const new_thing = try StackThing.init(this.active_value, case.fn_name, permanent_stuff);
                     switch (new_thing) {
                         .stack_thing => |x| {
                             try this.stack.append(x);
+                            this.score.max_stack = @max(this.score.max_stack, this.stack.items.len);
                         },
                         .builtin => |r| {
                             this.active_value = r;
@@ -442,7 +478,7 @@ test "main test" {
     defer game.deinit();
 
     const actual = try game.getFinalResult();
-    const expected = Sexpr{ .atom_lit = .{ .value = "output" } };
+    const expected = Sexpr.lit("output");
     try expectEqualSexprs(&expected, actual);
 
     try expectEqualSexprs(&expected, try Game.applyFnk(&game.permanent_stuff, &Sexpr.lit("fn_name"), &Sexpr.lit("input")));
@@ -471,13 +507,13 @@ test "with comptime" {
     defer game.deinit();
 
     const actual = try game.getFinalResult();
-    // const expected = Sexpr{ .pair = Pair{
-    //     .left = &Sexpr.lit("b0"),
-    //     .right = &Sexpr{ .pair = Pair{
-    //         .left = &Sexpr.lit("b1"),
-    //         .right = &Sexpr.nil,
-    //     } },
-    // } };
+    // const expected = Sexpr.pair(
+    //      &Sexpr.lit("b0"),
+    //      &Sexpr.pair(
+    //         &Sexpr.lit("b1"),
+    //         &Sexpr.nil,
+    //      ),
+    // );
     const expected = Sexpr.lit("c");
     // const expected = Sexpr{ .atom_lit = .{ .value = "output" } };
     try expectEqualSexprs(&expected, actual);
@@ -498,7 +534,7 @@ test "apply another nested fnk, with ExecutionState" {
     defer game.deinit();
 
     // try expectEqualSexprs(
-    //     &Sexpr{ .atom_lit = Atom{ .value = "stuff" } },
+    //     &Sexpr.lit("stuff"),
     //     game.cur_state.cur_fn_name,
     // );
 
@@ -506,6 +542,39 @@ test "apply another nested fnk, with ExecutionState" {
     const actual = try game.getFinalResult();
 
     try expectEqualSexprs(expected, actual);
+}
+
+test "scoring bubbleUp" {
+    var mem = try PermamentGameStuff.init(
+        \\ 
+        \\ bubbleUp {
+        \\      (X . @rest) -> (X . @rest);
+        \\      (@a . @b) -> bubbleUp: @b {
+        \\          (X . @rest) -> (X @a . @rest);
+        \\      }
+        \\ }
+    , std.testing.allocator);
+    defer mem.deinit();
+
+    var exec = try ExecutionThread.initFromText("(a b X c d)", "bubbleUp", &mem);
+    defer exec.deinit();
+
+    const expected = Sexpr.pair(&Sexpr.lit("X"), &Sexpr.pair(
+        &Sexpr.lit("a"),
+        &Sexpr.pair(&Sexpr.lit("b"), &Sexpr.pair(
+            &Sexpr.lit("c"),
+            &Sexpr.pair(
+                &Sexpr.lit("d"),
+                &Sexpr.nil,
+            ),
+        )),
+    ));
+
+    const actual = try exec.getFinalResult(&mem);
+    try expectEqualSexprs(&expected, actual);
+
+    try std.testing.expectEqual(3, exec.score.max_stack);
+    try std.testing.expectEqual(5, exec.score.successful_matches);
 }
 
 fn expectEqualSexprs(expected: *const Sexpr, actual: *const Sexpr) !void {
