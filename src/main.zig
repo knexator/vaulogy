@@ -269,6 +269,7 @@ const PermamentGameStuff = struct {
 
 const StackThing = struct {
     cur_fn_name: *const Sexpr,
+    // TODO: since we pop stuff ASAP, this is actually never null!
     cur_cases: ?[]const MatchCaseDefinition,
     cur_bindings: Bindings,
 
@@ -457,7 +458,7 @@ pub fn main() !u8 {
 
     const verb = args.next().?;
 
-    if (std.mem.eql(u8, verb, "run")) {
+    if (std.mem.eql(u8, verb, "run") or std.mem.eql(u8, verb, "debug")) {
         const fnks_collection_raw: []const u8 = blk: {
             const filename = args.next().?;
             const file = try std.fs.cwd().openFile(filename, .{});
@@ -505,27 +506,42 @@ pub fn main() !u8 {
         defer if (should_free_input) allocator.free(input_raw);
 
         std.debug.assert(!args.skip());
+        if (std.mem.eql(u8, verb, "run")) {
+            var game: Game = undefined;
+            try Game.init(&game, input_raw, fn_name_raw, fnks_collection_raw, allocator);
+            defer game.deinit();
+            const result = try game.getFinalResult();
+            try stdout.print("result: {any}\n", .{result});
+        } else {
+            var mem = try PermamentGameStuff.init(fnks_collection_raw, allocator);
+            defer mem.deinit();
+            var exec = try ExecutionThread.initFromText(input_raw, fn_name_raw, &mem);
+            defer exec.deinit();
 
-        var game: Game = undefined;
-        try Game.init(&game, input_raw, fn_name_raw, fnks_collection_raw, allocator);
-        // try Game.init(&game, "(1)", "stuff",
-        //     \\ stuff {
-        //     \\      nil -> hola;
-        //     \\      (@a . @rest) -> @a {
-        //     \\          @b -> @rest {
-        //     \\              @c -> @b;
-        //     \\          }
-        //     \\      }
-        //     \\ }
-        // , allocator);
-        defer game.deinit();
-
-        const actual = try game.getFinalResult();
-        // const expected = Sexpr{ .atom_lit = .{ .value = "output" } };
-        // _ = expected; // autofix
-        // try expectEqualSexprs(&expected, actual);
-
-        try stdout.print("result: {any}\n", .{actual});
+            // TODO: show already bound vars
+            var step: usize = 0;
+            while (exec.stack.items.len > 0) {
+                try stdout.print("Step {d}:\n", .{step});
+                for (exec.stack.items, 0..) |stack, k| {
+                    try stdout.print("{d}: {any}\n", .{ k, stack.cur_fn_name });
+                }
+                const last_thing = exec.stack.getLast();
+                try stdout.print("matching {any} with\n", .{exec.active_value});
+                for (last_thing.cur_cases.?) |case| {
+                    try stdout.print("\t{any} -> {any}: {any}{s}\n", .{
+                        case.pattern,
+                        case.fn_name,
+                        case.template,
+                        if (case.next == null) ";" else " { ... }",
+                    });
+                }
+                try stdout.print("\n", .{});
+                _ = try exec.advanceStep(&mem);
+                step += 1;
+            }
+            // try stdout.print("{s}\n", .{"-" ** 10});
+            try stdout.print("final result: {any}\n", .{exec.active_value});
+        }
     } else if (std.mem.eql(u8, verb, "score")) {
         const player_fnks_collection_raw: []const u8 = blk: {
             const filename = args.next().?;
@@ -636,6 +652,7 @@ pub fn main() !u8 {
             \\      run [fnk-lib] [fnk-name] file [input-filename]
             \\      run [fnk-lib] [fnk-name] file raw [input-filename]
             \\      score [my-fnk-lib] [target-fnk-lib]
+            \\      debug [fnk-lib] [fnk-name] [input]
         , .{});
         return 1;
     }
