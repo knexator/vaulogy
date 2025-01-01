@@ -42,6 +42,18 @@ pub const Sexpr = union(enum) {
         return .{ .atom_lit = .{ .value = v } };
     }
 
+    pub fn isFullyResolved(x: *const Sexpr) bool {
+        return switch (x.*) {
+            .atom_lit => true,
+            .atom_var => false,
+            .pair => |p| p.left.isFullyResolved() and p.right.isFullyResolved(),
+        };
+    }
+
+    pub fn assertLit(x: *const Sexpr) void {
+        std.debug.assert(x.isFullyResolved());
+    }
+
     pub fn equals(this: *const Sexpr, other: *const Sexpr) bool {
         if (this == other) return true;
         return switch (this.*) {
@@ -67,8 +79,41 @@ pub const Sexpr = union(enum) {
         };
     }
 
+    pub fn isPair(this: *const Sexpr) bool {
+        return switch (this.*) {
+            .pair => true,
+            else => false,
+        };
+    }
+
     pub fn fromBool(b: bool) *const Sexpr {
         return if (b) &Sexpr.true else &Sexpr.false;
+    }
+
+    pub fn format(value: *const Sexpr, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: std.io.AnyWriter) !void {
+        std.debug.assert(std.mem.eql(u8, fmt, ""));
+        switch (value.*) {
+            .atom_lit => |a| try writer.writeAll(a.value),
+            .atom_var => |a| {
+                try writer.writeAll("@");
+                try writer.writeAll(a.value);
+            },
+            .pair => |p| {
+                try writer.writeAll("(");
+                try p.left.format("", options, writer);
+                var rest = p.right;
+                while (rest.isPair()) {
+                    try writer.writeAll(" ");
+                    try rest.pair.left.format("", options, writer);
+                    rest = rest.pair.right;
+                }
+                if (!rest.equals(&Sexpr.nil)) {
+                    try writer.writeAll(" . ");
+                    try rest.format("", options, writer);
+                }
+                try writer.writeAll(")");
+            },
+        }
     }
 };
 
@@ -207,9 +252,7 @@ const PermamentGameStuff = struct {
                 const cases = try fnkFromSexpr(asdf, this.arena_for_cases.allocator(), &this.pool_for_sexprs);
                 if (DEBUG) {
                     const stderr = std.io.getStdErr().writer();
-                    stderr.print("\ncompiled a fnk, the cases are: ", .{}) catch unreachable;
-                    writeSexpr2(asdf, stderr.any()) catch unreachable;
-                    stderr.print("\n", .{}) catch unreachable;
+                    stderr.print("\ncompiled a fnk, the cases are: {any}\n", .{asdf}) catch unreachable;
                 }
                 try this.all_fnks.put(name, cases);
                 return this.all_fnks.getPtr(name).?;
@@ -476,10 +519,91 @@ pub fn main() !u8 {
         // _ = expected; // autofix
         // try expectEqualSexprs(&expected, actual);
 
-        try stdout.print("result: ", .{});
-        // try writeSexpr2(actual, stdout.any());
-        try writeSexpr(actual, stdout.any(), allocator);
-        try stdout.print("\n", .{});
+        try stdout.print("result: {any}\n", .{actual});
+    } else if (std.mem.eql(u8, verb, "score")) {
+        const player_fnks_collection_raw: []const u8 = blk: {
+            const filename = args.next().?;
+            const file = try std.fs.cwd().openFile(filename, .{});
+            defer file.close();
+            break :blk try file.readToEndAlloc(allocator, std.math.maxInt(usize));
+        };
+        defer allocator.free(player_fnks_collection_raw);
+
+        const target_fnks_collection_raw: []const u8 = blk: {
+            const filename = args.next().?;
+            const file = try std.fs.cwd().openFile(filename, .{});
+            defer file.close();
+            break :blk try file.readToEndAlloc(allocator, std.math.maxInt(usize));
+        };
+        defer allocator.free(target_fnks_collection_raw);
+
+        var player_mem = try PermamentGameStuff.init(player_fnks_collection_raw, allocator);
+        defer player_mem.deinit();
+        var target_mem = try PermamentGameStuff.init(target_fnks_collection_raw, allocator);
+        defer target_mem.deinit();
+
+        var it = target_mem.all_fnks.iterator();
+        while (it.next()) |x| {
+            const fnk_name = x.key_ptr.*;
+            const fnk_body = x.value_ptr.*;
+
+            var result: union(enum) {
+                failed: struct {
+                    input: *const Sexpr,
+                    expected: *const Sexpr,
+                    actual: *const Sexpr,
+                },
+                score: struct {
+                    time: usize,
+                    max_stack: usize,
+                },
+            } = .{ .score = .{ .time = 0, .max_stack = 0 } };
+            for (fnk_body.items) |case| {
+                std.debug.assert(case.fn_name.equals(&Sexpr.identity));
+                std.debug.assert(case.next == null);
+                Sexpr.assertLit(case.pattern);
+                Sexpr.assertLit(case.template);
+                const cur_input = case.pattern;
+                const expected_output = case.template;
+
+                var exec = try ExecutionThread.init(cur_input, fnk_name, &player_mem);
+                defer exec.deinit();
+
+                const actual_output = try exec.getFinalResult(&player_mem);
+                if (!actual_output.equals(expected_output)) {
+                    result = .{ .failed = .{ .input = cur_input, .expected = expected_output, .actual = actual_output } };
+                    break;
+                } else {
+                    result.score.time += exec.score.successful_matches;
+                    result.score.max_stack = @max(result.score.max_stack, exec.score.max_stack);
+                }
+            }
+            switch (result) {
+                .failed => |f| {
+                    try stdout.print("failed fnk {any}:\texpected {any} for input {any}, got {any}\n", .{ fnk_name, f.expected, f.input, f.actual });
+                },
+                .score => |s| {
+                    try stdout.print("fnk {any}:\tmax stack {d}, required time {d}\n", .{ fnk_name, s.max_stack, s.time });
+                },
+            }
+        }
+        try stdout.print("global stats: code size {d}, compile time {d}\n", .{ player_mem.score.code_size, player_mem.score.compile_time });
+
+        // target_fnks.forEach((fnk) => {
+        //     fnk.cases.forEach((xxx) => {
+        //         assert(equalSexprs(assertLiteral(xxx.fn_name_template), doAtom('identity')));
+        //         const cur_input = assertLiteral(xxx.pattern);
+        //         const expected_output = assertLiteral(xxx.template);
+        //         const actual_output = scorer.applyFunktion(fnk.name, cur_input);
+        //         if (!equalSexprs(expected_output, actual_output)) {
+        //             console.log(`Bad result for ${sexprToString(fnk.name, '@')} on ${sexprToString(cur_input, '@')}. Expected ${sexprToString(expected_output, '@')}, got ${sexprToString(actual_output, '@')}`);
+        //             return;
+        //         }
+        //     });
+        // });
+        // console.log(`max depth: ${scorer.max_stack}`);
+        // console.log(`total time: ${scorer.total_time}`);
+        // console.log(`total size: ${scorer.total_code_size}`);
     } else {
         try stdout.print(
             \\  valid commands:
@@ -688,17 +812,11 @@ fn expectEqualSexprs(expected: *const Sexpr, actual: *const Sexpr) !void {
 fn generateBindings(pattern: *const Sexpr, value: *const Sexpr, bindings: *Bindings) !bool {
     if (DEBUG) {
         const stderr = std.io.getStdErr().writer();
-        stderr.print("\nGenerating bindings for pattern ", .{}) catch unreachable;
-        writeSexpr2(pattern, stderr.any()) catch unreachable;
-        stderr.print(" and value ", .{}) catch unreachable;
-        writeSexpr2(value, stderr.any()) catch unreachable;
-        stderr.print("\n", .{}) catch unreachable;
+        stderr.print("\nGenerating bindings for pattern {any} and value {any}\n", .{ pattern, value }) catch unreachable;
 
         // stderr.print("cur bindings are:\n", .{}) catch unreachable;
         // for (new_bindings.items) |binding| {
-        //     stderr.print("name: {s}, value: ", .{binding.name}) catch unreachable;
-        //     writeSexpr2(binding.value, stderr.any()) catch unreachable;
-        //     stderr.print("\n", .{}) catch unreachable;
+        //     stderr.print("name: {s}, value: {any}\n", .{binding.name, binding.value}) catch unreachable;
         // }
     }
 
@@ -760,57 +878,6 @@ fn fillTemplate(template: *const Sexpr, bindings: Bindings, pool: *MemoryPool(Se
 
 fn undoLastBindings(bindings: *Bindings, original_count: usize) void {
     bindings.shrinkAndFree(original_count);
-}
-
-fn writeSexpr2(s: *const Sexpr, w: std.io.AnyWriter) !void {
-    switch (s.*) {
-        .atom_lit => |atom| {
-            try w.writeAll(atom.value);
-        },
-        .atom_var => |atom| {
-            try w.writeAll("@");
-            try w.writeAll(atom.value);
-        },
-        .pair => |p| {
-            try w.writeAll("(");
-            try writeSexpr2(p.left, w);
-            try w.writeAll(" . ");
-            try writeSexpr2(p.right, w);
-            try w.writeAll(")");
-        },
-    }
-}
-
-fn writeSexpr(s: *const Sexpr, w: std.io.AnyWriter, temp_allocator: std.mem.Allocator) !void {
-    switch (s.*) {
-        .atom_lit => |atom| {
-            try w.writeAll(atom.value);
-        },
-        .atom_var => |atom| {
-            try w.writeAll("@");
-            try w.writeAll(atom.value);
-        },
-        .pair => {
-            var asdf = std.ArrayList(*const Sexpr).init(temp_allocator);
-            defer asdf.deinit();
-
-            const sentinel = try asListPlusSentinel(s, &asdf);
-            try w.writeAll("(");
-            for (asdf.items, 0..) |item, k| {
-                try writeSexpr(item, w, temp_allocator);
-                if (k + 1 < asdf.items.len) {
-                    try w.writeAll(" ");
-                }
-            }
-            if (sentinel.equals(&Sexpr.nil)) {
-                try w.writeAll(")");
-            } else {
-                try w.writeAll(" . ");
-                try writeSexpr(sentinel, w, temp_allocator);
-                try w.writeAll(")");
-            }
-        },
-    }
 }
 
 fn asListPlusSentinel(s: *const Sexpr, l: *std.ArrayList(*const Sexpr)) !*const Sexpr {
