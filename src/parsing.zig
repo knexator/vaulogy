@@ -88,7 +88,7 @@ fn parseFnkTrue(input: []const u8, pool: *MemoryPool(Sexpr), allocator: std.mem.
     try parseChar(&rest, '{');
     const cases = try parseMatchCases(&rest, pool, allocator);
     skipWhitespace(&rest);
-    return .{ .fnk = Fnk{ .name = name, .body = cases }, .rest = rest };
+    return .{ .fnk = Fnk{ .name = name, .body = .{ .cases = cases } }, .rest = rest };
 }
 
 fn parseMatchCases(input: *[]const u8, pool: *MemoryPool(Sexpr), allocator: std.mem.Allocator) !MatchCases {

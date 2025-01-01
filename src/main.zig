@@ -117,7 +117,10 @@ pub const Sexpr = union(enum) {
     }
 };
 
-pub const Fnk = struct { name: *const Sexpr, body: MatchCases };
+pub const Fnk = struct { name: *const Sexpr, body: FnkBody };
+pub const FnkBody = struct {
+    cases: std.ArrayListUnmanaged(MatchCaseDefinition),
+};
 pub const MatchCases = std.ArrayListUnmanaged(MatchCaseDefinition);
 pub const MatchCaseDefinition = struct {
     pattern: *const Sexpr,
@@ -155,7 +158,7 @@ const SexprContext = struct {
     }
 };
 const FnkSet = std.ArrayHashMap(*const Sexpr, void, SexprContext, true);
-const FnkCollection = std.ArrayHashMap(*const Sexpr, MatchCases, SexprContext, true);
+const FnkCollection = std.ArrayHashMap(*const Sexpr, FnkBody, SexprContext, true);
 
 const builtin_fnks = [_]struct { name: *const Sexpr, fnk: fn (v: *const Sexpr) *const Sexpr }{
     .{ .name = &Sexpr.identity, .fnk = builtin_fnk_identity },
@@ -173,12 +176,12 @@ fn @"builtin_fnk_eqAtoms?"(v: *const Sexpr) *const Sexpr {
     };
 }
 
-fn fnkSize(fnk: MatchCases) usize {
+fn fnkSize(fnk: FnkBody) usize {
     var res: usize = 0;
-    for (fnk.items) |case| {
+    for (fnk.cases.items) |case| {
         res += 1;
         if (case.next) |next| {
-            res += fnkSize(next);
+            res += fnkSize(.{ .cases = next });
         }
     }
     return res;
@@ -240,7 +243,7 @@ const PermamentGameStuff = struct {
         FnkNotFound,
         NoMatchingCase,
         InvalidMetaFnk,
-    }!*const MatchCases {
+    }!*const FnkBody {
         if (this.all_fnks.getPtr(name)) |fnk| {
             if (this.used_fnks.get(name) == null) {
                 try this.used_fnks.put(name, {});
@@ -283,7 +286,7 @@ const StackThing = struct {
         }
 
         const bindings = std.ArrayList(Binding).init(permanent_stuff.arena_for_bindings.allocator());
-        const cases = (try permanent_stuff.findFunktion(fn_name)).*.items;
+        const cases = (try permanent_stuff.findFunktion(fn_name)).*.cases.items;
         return .{ .stack_thing = StackThing{
             .cur_bindings = bindings,
             .cur_cases = cases,
@@ -517,7 +520,7 @@ pub fn main() !u8 {
                 }
                 const last_thing = exec.stack.getLast();
                 try stdout.print("matching {any} with\n", .{exec.active_value});
-                for (last_thing.cur_cases.?) |case| {
+                for (last_thing.cur_cases) |case| {
                     try stdout.print("\t{any} -> {any}: {any}{s}\n", .{
                         case.pattern,
                         case.fn_name,
@@ -577,7 +580,7 @@ pub fn main() !u8 {
                     max_stack: usize,
                 },
             } = .{ .score = .{ .time = 0, .max_stack = 0 } };
-            for (fnk_body.items) |case| {
+            for (fnk_body.cases.items) |case| {
                 std.debug.assert(case.fn_name.equals(&Sexpr.identity));
                 std.debug.assert(case.next == null);
                 Sexpr.assertLit(case.pattern);
@@ -922,8 +925,8 @@ fn asListPlusSentinel(s: *const Sexpr, l: *std.ArrayList(*const Sexpr)) !*const 
     }
 }
 
-fn fnkFromSexpr(s: *const Sexpr, allocator_for_cases: std.mem.Allocator, pool: *MemoryPool(Sexpr)) !MatchCases {
-    return (try fnkFromSexprHelper(s, allocator_for_cases, pool)).?;
+fn fnkFromSexpr(s: *const Sexpr, allocator_for_cases: std.mem.Allocator, pool: *MemoryPool(Sexpr)) !FnkBody {
+    return .{ .cases = (try fnkFromSexprHelper(s, allocator_for_cases, pool)).? };
 }
 
 fn fnkFromSexprHelper(s: *const Sexpr, arena: std.mem.Allocator, pool: *MemoryPool(Sexpr)) !?MatchCases {
