@@ -269,8 +269,7 @@ const PermamentGameStuff = struct {
 
 const StackThing = struct {
     cur_fn_name: *const Sexpr,
-    // TODO: since we pop stuff ASAP, this is actually never null!
-    cur_cases: ?[]const MatchCaseDefinition,
+    cur_cases: []const MatchCaseDefinition,
     cur_bindings: Bindings,
 
     pub fn init(input: *const Sexpr, fn_name: *const Sexpr, permanent_stuff: *PermamentGameStuff) !union(enum) {
@@ -349,46 +348,37 @@ const ExecutionThread = struct {
     pub fn advanceStep(this: *ExecutionThread, permanent_stuff: *PermamentGameStuff) !?*const Sexpr {
         if (this.stack.items.len > 0) {
             const last_stack_ptr: *StackThing = &this.stack.items[this.stack.items.len - 1];
-            if (last_stack_ptr.cur_cases) |cases| {
-                const initial_bindings_count = last_stack_ptr.cur_bindings.items.len;
-                for (cases) |case| {
-                    if (!(try generateBindings(case.pattern, this.active_value, &last_stack_ptr.cur_bindings))) {
-                        undoLastBindings(&last_stack_ptr.cur_bindings, initial_bindings_count);
-                        continue;
-                    }
-                    const argument = try fillTemplate(case.template, last_stack_ptr.cur_bindings, &permanent_stuff.pool_for_sexprs);
-                    this.active_value = argument;
-
-                    if (case.next) |next| {
-                        last_stack_ptr.cur_cases = next.items;
-                    } else {
-                        _ = this.stack.pop();
-                    }
-
-                    this.score.successful_matches += 1;
-
-                    const new_thing = try StackThing.init(this.active_value, case.fn_name, permanent_stuff);
-                    switch (new_thing) {
-                        .stack_thing => |x| {
-                            try this.stack.append(x);
-                            this.score.max_stack = @max(this.score.max_stack, this.stack.items.len);
-                        },
-                        .builtin => |r| {
-                            this.active_value = r;
-                        },
-                    }
-
-                    return null;
+            const initial_bindings_count = last_stack_ptr.cur_bindings.items.len;
+            for (last_stack_ptr.cur_cases) |case| {
+                if (!(try generateBindings(case.pattern, this.active_value, &last_stack_ptr.cur_bindings))) {
+                    undoLastBindings(&last_stack_ptr.cur_bindings, initial_bindings_count);
+                    continue;
                 }
-                return error.NoMatchingCase;
-            } else {
-                // ran out of cases
-                inline for (builtin_fnks) |builtin| {
-                    std.debug.assert(!Sexpr.equals(builtin.name, last_stack_ptr.cur_fn_name));
+                const argument = try fillTemplate(case.template, last_stack_ptr.cur_bindings, &permanent_stuff.pool_for_sexprs);
+                this.active_value = argument;
+
+                if (case.next) |next| {
+                    last_stack_ptr.cur_cases = next.items;
+                } else {
+                    _ = this.stack.pop();
                 }
-                _ = this.stack.pop();
+
+                this.score.successful_matches += 1;
+
+                const new_thing = try StackThing.init(this.active_value, case.fn_name, permanent_stuff);
+                switch (new_thing) {
+                    .stack_thing => |x| {
+                        try this.stack.append(x);
+                        this.score.max_stack = @max(this.score.max_stack, this.stack.items.len);
+                    },
+                    .builtin => |r| {
+                        this.active_value = r;
+                    },
+                }
+
                 return null;
             }
+            return error.NoMatchingCase;
         } else {
             return this.active_value;
         }
