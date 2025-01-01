@@ -87,7 +87,7 @@ const Binding = struct {
 };
 const Bindings = std.ArrayList(Binding);
 
-const FnkCollection = std.ArrayHashMap(*const Sexpr, MatchCases, struct {
+const SexprContext = struct {
     pub fn hash(self: @This(), s: *const Sexpr) u32 {
         return switch (s.*) {
             .atom_lit => |a| std.array_hash_map.hashString(a.value),
@@ -108,7 +108,9 @@ const FnkCollection = std.ArrayHashMap(*const Sexpr, MatchCases, struct {
         _ = b_index;
         return Sexpr.equals(a, b);
     }
-}, true);
+};
+const FnkSet = std.ArrayHashMap(*const Sexpr, void, SexprContext, true);
+const FnkCollection = std.ArrayHashMap(*const Sexpr, MatchCases, SexprContext, true);
 
 const builtin_fnks = [_]struct { name: *const Sexpr, fnk: fn (v: *const Sexpr) *const Sexpr }{
     .{ .name = &Sexpr.identity, .fnk = builtin_fnk_identity },
@@ -126,12 +128,30 @@ fn @"builtin_fnk_eqAtoms?"(v: *const Sexpr) *const Sexpr {
     };
 }
 
+fn fnkSize(fnk: MatchCases) usize {
+    var res: usize = 0;
+    for (fnk.items) |case| {
+        res += 1;
+        if (case.next) |next| {
+            res += fnkSize(next);
+        }
+    }
+    return res;
+}
+
 const PermamentGameStuff = struct {
     all_fnks: FnkCollection,
     pool_for_sexprs: MemoryPool(Sexpr),
     arena_for_cases: std.heap.ArenaAllocator,
     arena_for_bindings: std.heap.ArenaAllocator,
     allocator_for_stack: std.mem.Allocator,
+
+    // TODO: should this go in all_fnks?
+    used_fnks: FnkSet,
+    score: struct {
+        code_size: usize,
+        compile_time: usize,
+    },
 
     pub fn init(
         all_fnks_raw: []const u8,
@@ -148,6 +168,7 @@ const PermamentGameStuff = struct {
             const fnk = try parsing.parseFnk(&remaining_fnk_input, &pool_for_sexprs, arena_for_cases.allocator());
             try fnk_collection.put(fnk.name, fnk.body);
         }
+        const used_fnks = FnkSet.init(allocator);
 
         return PermamentGameStuff{
             .all_fnks = fnk_collection,
@@ -155,24 +176,34 @@ const PermamentGameStuff = struct {
             .arena_for_cases = arena_for_cases,
             .arena_for_bindings = arena_for_bindings,
             .allocator_for_stack = allocator,
+            .used_fnks = used_fnks,
+            .score = .{ .code_size = 0, .compile_time = 0 },
         };
     }
 
     pub fn deinit(this: *PermamentGameStuff) void {
         this.pool_for_sexprs.deinit();
         this.all_fnks.deinit();
+        this.used_fnks.deinit();
         this.arena_for_cases.deinit();
         this.arena_for_bindings.deinit();
     }
 
     fn findFunktion(this: *PermamentGameStuff, name: *const Sexpr) error{ OutOfMemory, BAD_INPUT }!*const MatchCases {
         if (this.all_fnks.getPtr(name)) |fnk| {
+            if (this.used_fnks.get(name) == null) {
+                try this.used_fnks.put(name, {});
+                this.score.code_size += fnkSize(fnk.*);
+            }
             return fnk;
         } else switch (name.*) {
             .atom_lit, .atom_var => return error.BAD_INPUT,
             .pair => |p| {
                 // try to compile it!
-                const asdf = try Game.applyFnk(this, p.left, p.right);
+                var exec = try ExecutionThread.init(p.right, p.left, this);
+                defer exec.deinit();
+                const asdf = try exec.getFinalResult(this);
+                this.score.compile_time += exec.score.successful_matches;
                 const cases = try fnkFromSexpr(asdf, this.arena_for_cases.allocator(), &this.pool_for_sexprs);
                 if (DEBUG) {
                     const stderr = std.io.getStdErr().writer();
@@ -352,12 +383,6 @@ const Game = struct {
     pub fn getFinalResult(this: *Game) !*const Sexpr {
         return this.execution.getFinalResult(&this.permanent_stuff);
     }
-
-    pub fn applyFnk(permanent_stuff: *PermamentGameStuff, fn_name: *const Sexpr, input: *const Sexpr) !*const Sexpr {
-        var exec = try ExecutionThread.init(input, fn_name, permanent_stuff);
-        defer exec.deinit();
-        return exec.getFinalResult(permanent_stuff);
-    }
 };
 
 pub fn main() !u8 {
@@ -481,7 +506,9 @@ test "main test" {
     const expected = Sexpr.lit("output");
     try expectEqualSexprs(&expected, actual);
 
-    try expectEqualSexprs(&expected, try Game.applyFnk(&game.permanent_stuff, &Sexpr.lit("fn_name"), &Sexpr.lit("input")));
+    var exec = try ExecutionThread.init(&Sexpr.lit("input"), &Sexpr.lit("fn_name"), &game.permanent_stuff);
+    defer exec.deinit();
+    try expectEqualSexprs(&expected, try exec.getFinalResult(&game.permanent_stuff));
 }
 
 test "with comptime" {
@@ -575,6 +602,42 @@ test "scoring bubbleUp" {
 
     try std.testing.expectEqual(3, exec.score.max_stack);
     try std.testing.expectEqual(5, exec.score.successful_matches);
+}
+
+test "scoring with comptime" {
+    var mem = try PermamentGameStuff.init(
+        \\
+        \\  stuff {
+        \\      @digit -> (compileMap . ( 
+        \\          (0 . a) 
+        \\          (1 . b) 
+        \\          (2 . c) 
+        \\          (3 . d)
+        \\      )): @digit;
+        \\  }
+        \\
+        \\  compileMap {
+        \\      nil -> nil;
+        \\      ((@key . @value) . @rest) -> compileMap: @rest {
+        \\          @rest_compiled -> ( ((atom . @key) identity (atom . @value) . return) . @rest_compiled );
+        \\      }
+        \\  }
+    , std.testing.allocator);
+    defer mem.deinit();
+
+    var exec = try ExecutionThread.initFromText("2", "stuff", &mem);
+    defer exec.deinit();
+
+    const expected = Sexpr.lit("c");
+
+    const actual = try exec.getFinalResult(&mem);
+    try expectEqualSexprs(&expected, actual);
+
+    try std.testing.expectEqual(1, exec.score.max_stack);
+    try std.testing.expectEqual(2, exec.score.successful_matches);
+
+    try std.testing.expectEqual(4, mem.score.code_size);
+    try std.testing.expectEqual(9, mem.score.compile_time);
 }
 
 fn expectEqualSexprs(expected: *const Sexpr, actual: *const Sexpr) !void {
