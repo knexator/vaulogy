@@ -234,7 +234,13 @@ const PermamentGameStuff = struct {
         this.arena_for_bindings.deinit();
     }
 
-    fn findFunktion(this: *PermamentGameStuff, name: *const Sexpr) error{ OutOfMemory, BAD_INPUT }!*const MatchCases {
+    fn findFunktion(this: *PermamentGameStuff, name: *const Sexpr) error{
+        OutOfMemory,
+        BAD_INPUT,
+        FnkNotFound,
+        NoMatchingCase,
+        InvalidMetaFnk,
+    }!*const MatchCases {
         if (this.all_fnks.getPtr(name)) |fnk| {
             if (this.used_fnks.get(name) == null) {
                 try this.used_fnks.put(name, {});
@@ -242,7 +248,7 @@ const PermamentGameStuff = struct {
             }
             return fnk;
         } else switch (name.*) {
-            .atom_lit, .atom_var => return error.BAD_INPUT,
+            .atom_lit, .atom_var => return error.FnkNotFound,
             .pair => |p| {
                 // try to compile it!
                 var exec = try ExecutionThread.init(p.right, p.left, this);
@@ -373,7 +379,7 @@ const ExecutionThread = struct {
 
                     return null;
                 }
-                return error.BAD_INPUT;
+                return error.NoMatchingCase;
             } else {
                 // ran out of cases
                 inline for (builtin_fnks) |builtin| {
@@ -548,7 +554,14 @@ pub fn main() !u8 {
             const fnk_body = x.value_ptr.*;
 
             var result: union(enum) {
-                failed: struct {
+                target_fnk_not_defined: void,
+                fnk_not_found: struct {
+                    input: *const Sexpr,
+                },
+                ran_out_of_cases: struct {
+                    input: *const Sexpr,
+                },
+                bad_result: struct {
                     input: *const Sexpr,
                     expected: *const Sexpr,
                     actual: *const Sexpr,
@@ -566,12 +579,31 @@ pub fn main() !u8 {
                 const cur_input = case.pattern;
                 const expected_output = case.template;
 
-                var exec = try ExecutionThread.init(cur_input, fnk_name, &player_mem);
+                var exec = ExecutionThread.init(cur_input, fnk_name, &player_mem) catch |err| switch (err) {
+                    error.FnkNotFound => {
+                        result = .{ .target_fnk_not_defined = {} };
+                        break;
+                    },
+                    // TODO: good error messages for everything
+                    else => return err,
+                };
                 defer exec.deinit();
 
-                const actual_output = try exec.getFinalResult(&player_mem);
+                const actual_output = exec.getFinalResult(&player_mem) catch |err| switch (err) {
+                    error.FnkNotFound => {
+                        result = .{ .fnk_not_found = .{ .input = cur_input } };
+                        break;
+                    },
+                    error.NoMatchingCase => {
+                        result = .{ .ran_out_of_cases = .{ .input = cur_input } };
+                        break;
+                    },
+                    error.OutOfMemory => return err,
+                    // TODO: good error messages for everything
+                    else => return err,
+                };
                 if (!actual_output.equals(expected_output)) {
-                    result = .{ .failed = .{ .input = cur_input, .expected = expected_output, .actual = actual_output } };
+                    result = .{ .bad_result = .{ .input = cur_input, .expected = expected_output, .actual = actual_output } };
                     break;
                 } else {
                     result.score.time += exec.score.successful_matches;
@@ -579,7 +611,16 @@ pub fn main() !u8 {
                 }
             }
             switch (result) {
-                .failed => |f| {
+                .target_fnk_not_defined => {
+                    try stdout.print("no fnk named {any} in the solutions file\n", .{fnk_name});
+                },
+                .fnk_not_found => |f| {
+                    try stdout.print("tried to call an invalid fnk when applying fnk {any} to input {any}\n", .{ fnk_name, f.input });
+                },
+                .ran_out_of_cases => |f| {
+                    try stdout.print("ran out of cases when applying fnk {any} to input {any}\n", .{ fnk_name, f.input });
+                },
+                .bad_result => |f| {
                     try stdout.print("failed fnk {any}:\texpected {any} for input {any}, got {any}\n", .{ fnk_name, f.expected, f.input, f.actual });
                 },
                 .score => |s| {
@@ -588,22 +629,6 @@ pub fn main() !u8 {
             }
         }
         try stdout.print("global stats: code size {d}, compile time {d}\n", .{ player_mem.score.code_size, player_mem.score.compile_time });
-
-        // target_fnks.forEach((fnk) => {
-        //     fnk.cases.forEach((xxx) => {
-        //         assert(equalSexprs(assertLiteral(xxx.fn_name_template), doAtom('identity')));
-        //         const cur_input = assertLiteral(xxx.pattern);
-        //         const expected_output = assertLiteral(xxx.template);
-        //         const actual_output = scorer.applyFunktion(fnk.name, cur_input);
-        //         if (!equalSexprs(expected_output, actual_output)) {
-        //             console.log(`Bad result for ${sexprToString(fnk.name, '@')} on ${sexprToString(cur_input, '@')}. Expected ${sexprToString(expected_output, '@')}, got ${sexprToString(actual_output, '@')}`);
-        //             return;
-        //         }
-        //     });
-        // });
-        // console.log(`max depth: ${scorer.max_stack}`);
-        // console.log(`total time: ${scorer.total_time}`);
-        // console.log(`total size: ${scorer.total_code_size}`);
     } else {
         try stdout.print(
             \\  valid commands:
@@ -897,7 +922,7 @@ fn fnkFromSexpr(s: *const Sexpr, allocator_for_cases: std.mem.Allocator, pool: *
 fn fnkFromSexprHelper(s: *const Sexpr, arena: std.mem.Allocator, pool: *MemoryPool(Sexpr)) !?MatchCases {
     var cases = std.ArrayListUnmanaged(MatchCaseDefinition){};
     switch (s.*) {
-        .atom_lit => return if (s.equals(&Sexpr.@"return")) null else error.BAD_INPUT,
+        .atom_lit => return if (s.equals(&Sexpr.@"return")) null else error.InvalidMetaFnk,
         .atom_var => return error.BAD_INPUT,
         .pair => |p| {
             var cur_parent = p;
@@ -918,7 +943,7 @@ fn fnkFromSexprHelper(s: *const Sexpr, arena: std.mem.Allocator, pool: *MemoryPo
                         if (a.equals(Sexpr.nil.atom_lit)) {
                             break;
                         } else {
-                            return error.BAD_INPUT;
+                            return error.InvalidMetaFnk;
                         }
                     },
                     .atom_var => return error.BAD_INPUT,
@@ -935,13 +960,13 @@ fn fnkFromSexprHelper(s: *const Sexpr, arena: std.mem.Allocator, pool: *MemoryPo
 // ((atom . aaa) . (var . bbb)) => (aaa . @bbb)
 fn internalFromExternal(s: *const Sexpr, pool: *MemoryPool(Sexpr)) !*const Sexpr {
     switch (s.*) {
-        .atom_var, .atom_lit => return error.BAD_INPUT,
+        .atom_var, .atom_lit => return error.InvalidMetaFnk,
         .pair => |p| {
             if (p.left.equals(&Sexpr.atom)) {
                 return p.right;
             } else if (p.left.equals(&Sexpr.@"var")) {
                 switch (p.right.*) {
-                    .pair => return error.BAD_INPUT,
+                    .pair => return error.InvalidMetaFnk,
                     .atom_var => return error.BAD_INPUT,
                     .atom_lit => |a| {
                         const res: *Sexpr = try pool.create();
