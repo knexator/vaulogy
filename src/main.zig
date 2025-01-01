@@ -186,23 +186,23 @@ const StackThing = struct {
     cur_cases: ?[]const MatchCaseDefinition,
     cur_bindings: Bindings,
 
-    pub fn init(fn_name: *const Sexpr, permanent_stuff: *PermamentGameStuff) !StackThing {
-        const bindings = std.ArrayList(Binding).init(permanent_stuff.arena_for_bindings.allocator());
-
-        const cases = blk: {
-            inline for (builtin_fnks) |builtin| {
-                if (builtin.name.equals(fn_name)) {
-                    break :blk null;
-                }
-            } else {
-                break :blk (try permanent_stuff.findFunktion(fn_name)).*.items;
+    pub fn init(input: *const Sexpr, fn_name: *const Sexpr, permanent_stuff: *PermamentGameStuff) !union(enum) {
+        builtin: *const Sexpr,
+        stack_thing: StackThing,
+    } {
+        inline for (builtin_fnks) |builtin| {
+            if (builtin.name.equals(fn_name)) {
+                return .{ .builtin = builtin.fnk(input) };
             }
-        };
-        return StackThing{
+        }
+
+        const bindings = std.ArrayList(Binding).init(permanent_stuff.arena_for_bindings.allocator());
+        const cases = (try permanent_stuff.findFunktion(fn_name)).*.items;
+        return .{ .stack_thing = StackThing{
             .cur_bindings = bindings,
             .cur_cases = cases,
             .cur_fn_name = fn_name,
-        };
+        } };
     }
 
     pub fn deinit(this: *StackThing) void {
@@ -221,8 +221,13 @@ const ExecutionThread = struct {
         permanent_stuff: *PermamentGameStuff,
     ) !ExecutionThread {
         var stack = std.ArrayList(StackThing).init(permanent_stuff.allocator_for_stack);
-        try stack.append(try StackThing.init(fn_name, permanent_stuff));
-        return ExecutionThread{ .active_value = input, .stack = stack };
+        switch (try StackThing.init(input, fn_name, permanent_stuff)) {
+            .builtin => |res| return ExecutionThread{ .active_value = res, .stack = stack },
+            .stack_thing => |first| {
+                try stack.append(first);
+                return ExecutionThread{ .active_value = input, .stack = stack };
+            },
+        }
     }
 
     pub fn advanceStep(this: *ExecutionThread, permanent_stuff: *PermamentGameStuff) !?*const Sexpr {
@@ -236,7 +241,7 @@ const ExecutionThread = struct {
                         continue;
                     }
                     const argument = try fillTemplate(case.template, last_stack_ptr.cur_bindings, &permanent_stuff.pool_for_sexprs);
-                    const new_stack_thing = try StackThing.init(case.fn_name, permanent_stuff);
+                    this.active_value = argument;
 
                     if (case.next) |next| {
                         last_stack_ptr.cur_cases = next.items;
@@ -244,20 +249,23 @@ const ExecutionThread = struct {
                         _ = this.stack.pop();
                     }
 
-                    try this.stack.append(new_stack_thing);
-
-                    this.active_value = argument;
+                    const new_thing = try StackThing.init(this.active_value, case.fn_name, permanent_stuff);
+                    switch (new_thing) {
+                        .stack_thing => |x| {
+                            try this.stack.append(x);
+                        },
+                        .builtin => |r| {
+                            this.active_value = r;
+                        },
+                    }
 
                     return null;
                 }
                 return error.BAD_INPUT;
             } else {
                 // ran out of cases
-                // is it a builtin fnk?
                 inline for (builtin_fnks) |builtin| {
-                    if (Sexpr.equals(builtin.name, last_stack_ptr.cur_fn_name)) {
-                        this.active_value = builtin.fnk(this.active_value);
-                    }
+                    std.debug.assert(!Sexpr.equals(builtin.name, last_stack_ptr.cur_fn_name));
                 }
                 _ = this.stack.pop();
                 return null;
