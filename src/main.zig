@@ -439,10 +439,7 @@ pub fn main() !u8 {
     }
 
     var gpa = std.heap.GeneralPurposeAllocator(.{ .safety = true, .never_unmap = true, .retain_metadata = true }){};
-    defer {
-        const deinit_status = gpa.deinit();
-        if (deinit_status == .leak) std.debug.panic("leaked memory!", .{});
-    }
+    defer std.debug.assert(gpa.deinit() == .ok);
     const allocator = gpa.allocator();
 
     var args = try std.process.argsWithAllocator(allocator);
