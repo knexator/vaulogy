@@ -24,21 +24,21 @@ pub const Sexpr = union(enum) {
     atom_lit: Atom,
     pair: Pair,
 
-    pub const debug = Sexpr.lit("DEBUGGG");
-    pub const @"return" = Sexpr.lit("return");
-    pub const @"var" = Sexpr.lit("var");
-    pub const atom = Sexpr.lit("atom");
-    pub const nil = Sexpr.lit("nil");
-    pub const identity = Sexpr.lit("identity");
-    pub const @"eqAtoms?" = Sexpr.lit("eqAtoms?");
-    pub const @"true" = Sexpr.lit("true");
-    pub const @"false" = Sexpr.lit("false");
+    pub const debug = Sexpr.doLit("DEBUGGG");
+    pub const @"return" = Sexpr.doLit("return");
+    pub const @"var" = Sexpr.doLit("var");
+    pub const atom = Sexpr.doLit("atom");
+    pub const nil = Sexpr.doLit("nil");
+    pub const identity = Sexpr.doLit("identity");
+    pub const @"eqAtoms?" = Sexpr.doLit("eqAtoms?");
+    pub const @"true" = Sexpr.doLit("true");
+    pub const @"false" = Sexpr.doLit("false");
 
-    pub fn pair(a: *const Sexpr, b: *const Sexpr) Sexpr {
+    pub fn doPair(a: *const Sexpr, b: *const Sexpr) Sexpr {
         return .{ .pair = .{ .left = a, .right = b } };
     }
 
-    pub fn lit(v: []const u8) Sexpr {
+    pub fn doLit(v: []const u8) Sexpr {
         return .{ .atom_lit = .{ .value = v } };
     }
 
@@ -659,10 +659,10 @@ test "main test" {
     defer game.deinit();
 
     const actual = try game.getFinalResult();
-    const expected = Sexpr.lit("output");
+    const expected = Sexpr.doLit("output");
     try expectEqualSexprs(&expected, actual);
 
-    var exec = try ExecutionThread.init(&Sexpr.lit("input"), &Sexpr.lit("fn_name"), &game.permanent_stuff);
+    var exec = try ExecutionThread.init(&Sexpr.doLit("input"), &Sexpr.doLit("fn_name"), &game.permanent_stuff);
     defer exec.deinit();
     try expectEqualSexprs(&expected, try exec.getFinalResult(&game.permanent_stuff));
 }
@@ -697,7 +697,7 @@ test "with comptime" {
     //         &Sexpr.nil,
     //      ),
     // );
-    const expected = Sexpr.lit("c");
+    const expected = Sexpr.doLit("c");
     // const expected = Sexpr{ .atom_lit = .{ .value = "output" } };
     try expectEqualSexprs(&expected, actual);
 }
@@ -742,12 +742,12 @@ test "scoring bubbleUp" {
     var exec = try ExecutionThread.initFromText("(a b X c d)", "bubbleUp", &mem);
     defer exec.deinit();
 
-    const expected = Sexpr.pair(&Sexpr.lit("X"), &Sexpr.pair(
-        &Sexpr.lit("a"),
-        &Sexpr.pair(&Sexpr.lit("b"), &Sexpr.pair(
-            &Sexpr.lit("c"),
-            &Sexpr.pair(
-                &Sexpr.lit("d"),
+    const expected = Sexpr.doPair(&Sexpr.doLit("X"), &Sexpr.doPair(
+        &Sexpr.doLit("a"),
+        &Sexpr.doPair(&Sexpr.doLit("b"), &Sexpr.doPair(
+            &Sexpr.doLit("c"),
+            &Sexpr.doPair(
+                &Sexpr.doLit("d"),
                 &Sexpr.nil,
             ),
         )),
@@ -784,7 +784,7 @@ test "scoring with comptime" {
     var exec = try ExecutionThread.initFromText("2", "stuff", &mem);
     defer exec.deinit();
 
-    const expected = Sexpr.lit("c");
+    const expected = Sexpr.doLit("c");
 
     const actual = try exec.getFinalResult(&mem);
     try expectEqualSexprs(&expected, actual);
