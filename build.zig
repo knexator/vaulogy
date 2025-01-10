@@ -81,6 +81,8 @@ pub fn build(b: *std.Build) void {
                 .os_tag = .freestanding,
             }),
             .optimize = optimize,
+            .use_llvm = optimize != .Debug,
+            .use_lld = optimize != .Debug,
         },
     );
 
