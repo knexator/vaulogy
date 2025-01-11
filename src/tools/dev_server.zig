@@ -6,7 +6,7 @@ const mime = @import("mime");
 // Stole code from https://github.com/ziglang/zig/blob/master/lib/compiler/std-docs.zig
 
 pub fn main() !void {
-    const addr = try std.net.Address.parseIp("127.0.0.1", 0);
+    const addr = try std.net.Address.parseIp("127.0.0.1", 3000);
     var http_server = try addr.listen(.{ .reuse_address = true });
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -20,9 +20,6 @@ pub fn main() !void {
 
     const static_dir = try std.fs.openDirAbsolute(static_dir_name, .{});
 
-    var per_request_arena = std.heap.ArenaAllocator.init(gpa.allocator());
-    defer per_request_arena.deinit();
-
     const port = http_server.listen_address.in.getPort();
     const url_with_newline = try std.fmt.allocPrint(gpa.allocator(), "http://127.0.0.1:{d}/\n", .{port});
     defer gpa.allocator().free(url_with_newline);
@@ -31,37 +28,49 @@ pub fn main() !void {
         std.log.err("unable to open browser: {s}", .{@errorName(err)});
     };
 
-    var read_buffer: [8000]u8 = undefined;
-    accept: while (true) {
+    while (true) {
         const connection = try http_server.accept();
-        defer connection.stream.close();
 
-        var server = std.http.Server.init(connection, &read_buffer);
-        while (server.state == .ready) {
-            var request: std.http.Server.Request = server.receiveHead() catch |err| {
-                std.debug.print("error: {s}\n", .{@errorName(err)});
-                continue :accept;
-            };
+        _ = std.Thread.spawn(.{}, accept, .{ connection, gpa.allocator(), static_dir }) catch |err| {
+            std.log.err("unable to accept connection: {s}", .{@errorName(err)});
+            connection.stream.close();
+            continue;
+        };
+    }
+}
 
-            const file_path = if (std.mem.eql(u8, request.head.target, "/")) "/index.html" else request.head.target;
-            std.debug.assert(file_path[0] == '/');
+fn accept(connection: std.net.Server.Connection, allocator: std.mem.Allocator, static_dir: std.fs.Dir) !void {
+    defer connection.stream.close();
 
-            const cur_file = static_dir.openFile(file_path[1..], .{}) catch |err| {
-                std.log.err("could not open the request file {s} due to error {s}\n", .{ file_path, @errorName(err) });
-                try request.respond("can't find that file", .{ .status = .not_found });
-                continue :accept;
-            };
-            const contents = try cur_file.readToEndAlloc(per_request_arena.allocator(), std.math.maxInt(usize));
-            defer per_request_arena.allocator().free(contents);
-            const ext = std.fs.path.extension(std.fs.path.basename(file_path));
-            const mime_type = mime.extension_map.get(ext) orelse .@"application/octet-stream";
-            try request.respond(contents, .{
-                .extra_headers = &.{
-                    .{ .name = "content-type", .value = @tagName(mime_type) },
-                    cache_control_header,
-                },
-            });
-        }
+    var read_buffer: [8000]u8 = undefined;
+    var server = std.http.Server.init(connection, &read_buffer);
+    while (server.state == .ready) {
+        var request: std.http.Server.Request = server.receiveHead() catch |err| switch (err) {
+            error.HttpConnectionClosing => return,
+            else => {
+                std.log.err("closing http connection: {s}", .{@errorName(err)});
+                return;
+            },
+        };
+
+        const file_path = if (std.mem.eql(u8, request.head.target, "/")) "/index.html" else request.head.target;
+        std.debug.assert(file_path[0] == '/');
+
+        const cur_file = static_dir.openFile(file_path[1..], .{}) catch |err| {
+            std.log.err("could not open the request file {s} due to error {s}\n", .{ file_path, @errorName(err) });
+            try request.respond("can't find that file", .{ .status = .not_found });
+            return;
+        };
+        const contents = try cur_file.readToEndAlloc(allocator, std.math.maxInt(usize));
+        defer allocator.free(contents);
+        const ext = std.fs.path.extension(std.fs.path.basename(file_path));
+        const mime_type = mime.extension_map.get(ext) orelse .@"application/octet-stream";
+        try request.respond(contents, .{
+            .extra_headers = &.{
+                .{ .name = "content-type", .value = @tagName(mime_type) },
+                cache_control_header,
+            },
+        });
     }
 }
 
