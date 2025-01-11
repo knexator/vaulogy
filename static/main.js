@@ -1,7 +1,5 @@
 import { keys } from "./keycodes.js";
 
-console.log(keys);
-
 const container = document.querySelector("#canvas_container");
 const canvas = document.querySelector("#ctx_canvas");
 const ctx = canvas.getContext("2d");
@@ -33,7 +31,11 @@ const asdf = await WebAssembly.instantiateStreaming(fetch("main.wasm"), {
 const wasm_exports = asdf.instance.exports;
 const wasm_memory = new Uint8Array(wasm_exports.memory.buffer);
 
-document.addEventListener("resize", (_) => {
+let last_timestamp_millis = 0;
+function every_frame(cur_timestamp_millis) {
+  const delta_seconds = (cur_timestamp_millis - last_timestamp_millis) / 1000;
+  last_timestamp_millis = cur_timestamp_millis;
+
   if (
     canvas.width !== canvas.clientWidth ||
     canvas.height !== canvas.clientHeight
@@ -41,12 +43,6 @@ document.addEventListener("resize", (_) => {
     canvas.width = canvas.clientWidth;
     canvas.height = canvas.clientHeight;
   }
-});
-
-let last_timestamp_millis = 0;
-function every_frame(cur_timestamp_millis) {
-  const delta_seconds = (cur_timestamp_millis - last_timestamp_millis) / 1000;
-  last_timestamp_millis = cur_timestamp_millis;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
