@@ -61,17 +61,25 @@ function every_frame(cur_timestamp_millis) {
 
 requestAnimationFrame(every_frame);
 
-var last_ctime = 0;
-setInterval(async () => {
-  const x = await fetch("@mtime/main.wasm");
-  const y = await x.arrayBuffer();
-  const z = new Uint32Array(y, 0);
-  const cur_ctime = z[0];
-  if (cur_ctime !== last_ctime) {
-    last_ctime = cur_ctime;
-    ({ wasm_exports, wasm_memory } = await getWasm());
+// var last_ctime = 0;
+// setInterval(async () => {
+//   const x = await fetch("@mtime/main.wasm");
+//   const y = await x.arrayBuffer();
+//   const z = new Uint32Array(y, 0);
+//   const cur_ctime = z[0];
+//   if (cur_ctime !== last_ctime) {
+//     last_ctime = cur_ctime;
+//     ({ wasm_exports, wasm_memory } = await getWasm());
+//   }
+// }, 250);
+
+const ws = new WebSocket("ws://" + location.host);
+ws.onmessage = (event) => {
+  if (event.data === "reload") {
+    console.log("reloading wasm");
+    getWasm().then((res) => ({ wasm_exports, wasm_memory } = res));
   }
-}, 250);
+};
 
 document.addEventListener("keydown", (ev) => {
   if (ev.repeat) return;

@@ -86,12 +86,14 @@ pub fn build(b: *std.Build) void {
         },
     );
 
-    // taken from https://github.com/daneelsan/minimal-zig-wasm-canvas/blob/master/build.zig
-    webgame_wasm.global_base = 6560;
-    webgame_wasm.entry = .disabled;
-    webgame_wasm.rdynamic = true;
-    webgame_wasm.export_memory = true;
-    webgame_wasm.stack_size = std.wasm.page_size;
+    {
+        // taken from https://github.com/daneelsan/minimal-zig-wasm-canvas/blob/master/build.zig
+        webgame_wasm.global_base = 6560;
+        webgame_wasm.entry = .disabled;
+        webgame_wasm.rdynamic = true;
+        webgame_wasm.export_memory = true;
+        webgame_wasm.stack_size = std.wasm.page_size;
+    }
 
     const compile_wasm = b.addInstallArtifact(webgame_wasm, .{
         .dest_dir = .{ .override = webgame_install_dir },
@@ -127,6 +129,15 @@ pub fn build(b: *std.Build) void {
     const run_dev_server = b.addRunArtifact(dev_server_exe);
     run_dev_server.step.dependOn(b.getInstallStep());
     run_dev_server.addArg(b.getInstallPath(webgame_install_dir, ""));
-    const run_dev_server_step = b.step("dev", "Run the dev server");
+    const run_dev_server_step = b.step("dev-pure-zig", "Run the dev server");
     run_dev_server_step.dependOn(&run_dev_server.step);
+
+    // dev server for testing the webgame, with WebSockets + hot reloading
+    // FUTURE TODO: remove this step if zig gets a fs.watch equivalent
+    const run_dev_server_cmd = b.addSystemCommand(&.{"bun"});
+    run_dev_server_cmd.step.dependOn(b.getInstallStep());
+    run_dev_server_cmd.addFileArg(b.path("src/tools/dev_server.js"));
+    run_dev_server_cmd.addArg(b.getInstallPath(webgame_install_dir, ""));
+    const run_dev_server_cmd_step = b.step("dev", "Run the dev server");
+    run_dev_server_cmd_step.dependOn(&run_dev_server_cmd.step);
 }

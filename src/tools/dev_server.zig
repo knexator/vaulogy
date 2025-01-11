@@ -53,6 +53,7 @@ fn accept(connection: std.net.Server.Connection, allocator: std.mem.Allocator, s
             },
         };
 
+        // FUTURE TODO: change this mess to WebSocket-based hot reloading
         if (std.mem.startsWith(u8, request.head.target, "/@mtime/")) {
             const file_path = request.head.target["/@mtime/".len..];
             const stat = static_dir.statFile(file_path) catch |err| switch (err) {
