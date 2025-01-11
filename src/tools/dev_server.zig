@@ -53,24 +53,53 @@ fn accept(connection: std.net.Server.Connection, allocator: std.mem.Allocator, s
             },
         };
 
-        const file_path = if (std.mem.eql(u8, request.head.target, "/")) "/index.html" else request.head.target;
-        std.debug.assert(file_path[0] == '/');
+        if (std.mem.startsWith(u8, request.head.target, "/@mtime/")) {
+            const file_path = request.head.target["/@mtime/".len..];
+            const stat = static_dir.statFile(file_path) catch |err| switch (err) {
+                error.FileNotFound => {
+                    std.log.err("could not find the request file {s}\n", .{file_path});
+                    try request.respond("can't find that file", .{ .status = .not_found });
+                    return;
+                },
+                else => {
+                    std.log.err("could not open the request file {s} due to error {s}\n", .{ file_path, @errorName(err) });
+                    try request.respond("internal error", .{ .status = .internal_server_error });
+                    return;
+                },
+            };
+            try request.respond(std.mem.asBytes(&stat.mtime)[0..4], .{
+                .extra_headers = &.{
+                    .{ .name = "content-type", .value = "application/octet-stream" },
+                    cache_control_header,
+                },
+            });
+        } else {
+            const file_path = if (std.mem.eql(u8, request.head.target, "/")) "/index.html" else request.head.target;
+            std.debug.assert(file_path[0] == '/');
 
-        const cur_file = static_dir.openFile(file_path[1..], .{}) catch |err| {
-            std.log.err("could not open the request file {s} due to error {s}\n", .{ file_path, @errorName(err) });
-            try request.respond("can't find that file", .{ .status = .not_found });
-            return;
-        };
-        const contents = try cur_file.readToEndAlloc(allocator, std.math.maxInt(usize));
-        defer allocator.free(contents);
-        const ext = std.fs.path.extension(std.fs.path.basename(file_path));
-        const mime_type = mime.extension_map.get(ext) orelse .@"application/octet-stream";
-        try request.respond(contents, .{
-            .extra_headers = &.{
-                .{ .name = "content-type", .value = @tagName(mime_type) },
-                cache_control_header,
-            },
-        });
+            const cur_file = static_dir.openFile(file_path[1..], .{}) catch |err| switch (err) {
+                error.FileNotFound => {
+                    std.log.err("could not find the request file {s}\n", .{file_path});
+                    try request.respond("can't find that file", .{ .status = .not_found });
+                    return;
+                },
+                else => {
+                    std.log.err("could not open the request file {s} due to error {s}\n", .{ file_path, @errorName(err) });
+                    try request.respond("internal error", .{ .status = .internal_server_error });
+                    return;
+                },
+            };
+            const contents = try cur_file.readToEndAlloc(allocator, std.math.maxInt(usize));
+            defer allocator.free(contents);
+            const ext = std.fs.path.extension(std.fs.path.basename(file_path));
+            const mime_type = mime.extension_map.get(ext) orelse .@"application/octet-stream";
+            try request.respond(contents, .{
+                .extra_headers = &.{
+                    .{ .name = "content-type", .value = @tagName(mime_type) },
+                    cache_control_header,
+                },
+            });
+        }
     }
 }
 
