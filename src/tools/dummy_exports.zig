@@ -57,6 +57,15 @@ export fn fillRect(x: f32, y: f32, w: f32, h: f32) void {
     _ = h;
     unreachable;
 }
+export fn arc(x: f32, y: f32, radius: f32, startAngle: f32, endAngle: f32, counterclockwise: bool) void {
+    _ = x;
+    _ = y;
+    _ = radius;
+    _ = startAngle;
+    _ = endAngle;
+    _ = counterclockwise;
+    unreachable;
+}
 export fn getWidth() u32 {
     unreachable;
 }

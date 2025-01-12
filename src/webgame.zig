@@ -18,10 +18,11 @@ const js = struct {
         extern fn setStrokeColor(r: u8, g: u8, b: u8) void;
         extern fn setGlobalAlpha(a: f32) void;
         extern fn fillRect(x: f32, y: f32, w: f32, h: f32) void;
+        extern fn arc(x: f32, y: f32, radius: f32, startAngle: f32, endAngle: f32, counterclockwise: bool) void;
         extern fn getWidth() u32;
         extern fn getHeight() u32;
 
-        // TODO: save/restore, translate/rotate/scale/resetTransform, rect/arc, fillText
+        // TODO: save/restore, translate/rotate/scale/resetTransform, rect, fillText
     };
 };
 
@@ -64,9 +65,18 @@ const Vec2 = struct {
         );
     }
 
+    test "rotate" {
+        try Vec2.expectApproxEqAbs(Vec2.e2, rotate(Vec2.e1, 0.25), 0.001);
+    }
+
     pub fn expectApproxEqRel(expected: Vec2, actual: Vec2, tolerance: anytype) !void {
         try std.testing.expectApproxEqRel(expected.x, actual.x, tolerance);
         try std.testing.expectApproxEqRel(expected.y, actual.y, tolerance);
+    }
+
+    pub fn expectApproxEqAbs(expected: Vec2, actual: Vec2, tolerance: anytype) !void {
+        try std.testing.expectApproxEqAbs(expected.x, actual.x, tolerance);
+        try std.testing.expectApproxEqAbs(expected.y, actual.y, tolerance);
     }
 };
 
@@ -118,6 +128,10 @@ const layer1 = struct {
             lineTo(pos);
         }
         js.canvas.closePath();
+    }
+
+    pub fn circle(center: Vec2, radius: f32) void {
+        js.canvas.arc(center.x, center.y, radius, 0, std.math.tau, false);
     }
 };
 
@@ -244,6 +258,7 @@ const Drawer = struct {
             screen_positions[i] = screen_point.applyToLocalPosition(pos);
         }
         layer1.pathLoop(&screen_positions);
+        js.canvas.setLineWidth(1);
         layer1.setFillColor(Color.white);
         layer1.setStrokeColor(Color.black);
         js.canvas.fill();
@@ -255,6 +270,26 @@ const Drawer = struct {
         const screen_to = this.camera.screenFromWorld(.{ .pos = world_to }).pos;
         layer1.setStrokeColor(Color.black);
         js.canvas.setLineWidth(1);
+        js.canvas.beginPath();
+        layer1.moveTo(screen_from);
+        layer1.lineTo(screen_to);
+        js.canvas.stroke();
+    }
+
+    pub fn drawAsdfDevice(this: Drawer, world_point: Point) void {
+        this.drawCable(world_point.applyToLocalPosition(.new(0, -0.25)), world_point.applyToLocalPosition(.new(0, -0.75)));
+        this.drawCable(world_point.pos, world_point.applyToLocalPosition(.new(0.5, 0)));
+        const screen_point = this.camera.screenFromWorld(world_point);
+        js.canvas.beginPath();
+        layer1.circle(screen_point.pos, screen_point.scale * 0.25);
+        js.canvas.stroke();
+    }
+
+    pub fn drawCord(this: Drawer, world_from: Vec2, world_to: Vec2) void {
+        const screen_from = this.camera.screenFromWorld(.{ .pos = world_from }).pos;
+        const screen_to = this.camera.screenFromWorld(.{ .pos = world_to }).pos;
+        layer1.setStrokeColor(Color.black);
+        js.canvas.setLineWidth(5);
         js.canvas.beginPath();
         layer1.moveTo(screen_from);
         layer1.lineTo(screen_to);
@@ -275,16 +310,16 @@ export fn draw() void {
     ));
     const camera = Camera.fromStuff(
         canvas_side,
-        .{ .pos = Vec2.zero, .scale = 1 },
-        .{ .pos = .new(0.5, 0.5), .scale = 0.5 / 3.0 },
+        .{ .pos = .zero, .scale = 1 },
+        .{ .pos = .new(0.5, 0.5), .scale = 0.5 / 4.0 },
     );
     const drawer = Drawer{ .camera = camera };
     layer1.clear(COLORS.background);
-    drawer.drawAtomDebug(.{ .pos = .new(0, 0), .scale = 1 });
-    drawer.drawAtomDebug(.{ .pos = .new(0, 2), .scale = 1 });
-    drawer.drawAtomDebug(.{ .pos = .new(0, -2), .scale = 1 });
-
-    drawer.drawCable(.new(-2.5, 0), .new(-0.5, 0));
+    drawer.drawAtomDebug(.{ .pos = .new(1, 0), .scale = 1 });
+    drawer.drawAtomDebug(.{ .pos = .new(0, -1.25), .scale = 1, .turns = -0.25 });
+    drawer.drawCable(.new(-3, 0), .new(0, 0));
+    drawer.drawAsdfDevice(.{ .pos = Vec2.zero, .scale = 1 });
+    drawer.drawCord(.zero, .new(0, 3));
 }
 
 fn programmerError() void {
