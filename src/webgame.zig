@@ -401,18 +401,21 @@ const DebugAnimation = struct {
     const Phase = enum {
         moving_up,
         interlocking,
+        floating_away,
 
         pub fn duration(x: Phase) f32 {
             return switch (x) {
                 .moving_up => 2,
                 .interlocking => 1,
+                .floating_away => 1,
             };
         }
 
         pub fn next(x: Phase) Phase {
             return switch (x) {
                 .moving_up => .interlocking,
-                .interlocking => .moving_up,
+                .interlocking => .floating_away,
+                .floating_away => .moving_up,
             };
         }
     };
@@ -446,36 +449,48 @@ const DebugAnimation = struct {
         layer1.clear(COLORS.background);
 
         const t = this.local_t;
-        drawer.drawAtomDebug(.{ .pos = .new(1, 0), .scale = 1 });
-        drawer.drawAtomDebug(.{ .pos = .new(0, -1.25), .scale = 1, .turns = -0.25 });
-        drawer.drawAsdfDevice(.{ .pos = Vec2.zero, .scale = 1 });
-        const x = switch (this.phase) {
-            .moving_up => 4.8,
-            .interlocking => 4.8 - t * 0.8,
-        };
-        const y = switch (this.phase) {
-            .moving_up => 2.5 * (1 - t),
-            .interlocking => 0,
-        };
-        drawer.drawAtomPatternDebug(.{ .pos = .new(x, y), .scale = 1 });
-        // drawer.drawAtomPatternDebug(.{ .pos = .new(4.25, 2.5 + 0.25 - t), .scale = 1, .turns = 0.05 });
-        drawer.drawCable(.new(-3, 0), .zero, 1, -y - x);
+        if (this.phase == .floating_away) {
+            const y = -4 * t;
+            drawer.drawAtomDebug(.{ .pos = .new(1, y), .scale = 1 });
+            drawer.drawAtomDebug(.{ .pos = .new(0, y - 1.25), .scale = 1, .turns = -0.25 });
+            drawer.drawAsdfDevice(.{ .pos = .new(0, y), .scale = 1 });
+            drawer.drawAtomPatternDebug(.{ .pos = .new(4, y), .scale = 1 });
 
-        // TODO: single call
-        drawer.drawCords(&.{
-            .zero,
-            .new(0, y + 1),
-            .new(x, y + 1),
-            .new(x + 0.5, y),
-            .new(x + 2, y),
-            // .new(x + 0.5, y),
-        }, 1, &.{ -y - x, -x, 0, 0 });
-        // drawer.drawCord(.zero, .new(0, y + 1), 1, -y);
-        // drawer.drawCord(.new(0, y + 1), .new(x, y + 1), 1, 0);
-        // drawer.drawCord(.new(x, y + 1), .new(x + 0.5, y), 1, 0);
-        // drawer.drawCord(.new(x + 0.5, y), .new(x + 2, y), 1, 0);
-
-        drawer.drawAtomDebug(.{ .pos = .new(x + 2.5, y), .scale = 1 });
+            drawer.drawCable(.new(-3, 0), .zero, 1, -4);
+            drawer.drawCords(&.{
+                .zero,
+                .new(0, 1),
+                .new(4, 1),
+                .new(4 + 0.5, 0),
+                .new(4 + 2, 0),
+            }, 1, &.{ -4, -4, 0, 0 });
+            drawer.drawAtomDebug(.{ .pos = .new(4 + 2.5, 0), .scale = 1 });
+        } else {
+            drawer.drawAtomDebug(.{ .pos = .new(1, 0), .scale = 1 });
+            drawer.drawAtomDebug(.{ .pos = .new(0, -1.25), .scale = 1, .turns = -0.25 });
+            drawer.drawAsdfDevice(.{ .pos = Vec2.zero, .scale = 1 });
+            const x = switch (this.phase) {
+                .moving_up => 4.8,
+                .interlocking => 4.8 - t * 0.8,
+                else => unreachable,
+            };
+            const y = switch (this.phase) {
+                .moving_up => 2.5 * (1 - t),
+                .interlocking => 0,
+                else => unreachable,
+            };
+            drawer.drawAtomPatternDebug(.{ .pos = .new(x, y), .scale = 1 });
+            // drawer.drawAtomPatternDebug(.{ .pos = .new(4.25, 2.5 + 0.25 - t), .scale = 1, .turns = 0.05 });
+            drawer.drawCable(.new(-3, 0), .zero, 1, -y - x);
+            drawer.drawCords(&.{
+                .zero,
+                .new(0, y + 1),
+                .new(x, y + 1),
+                .new(x + 0.5, y),
+                .new(x + 2, y),
+            }, 1, &.{ -y - x, -x, 0, 0 });
+            drawer.drawAtomDebug(.{ .pos = .new(x + 2.5, y), .scale = 1 });
+        }
     }
 };
 
