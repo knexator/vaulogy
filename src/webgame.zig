@@ -56,6 +56,10 @@ const Vec2 = struct {
         return new(v.x * s, v.y * s);
     }
 
+    pub fn perpCW(v: Self) Self {
+        return new(-v.y, v.x);
+    }
+
     pub fn rotate(v: Self, turns: f32) Self {
         const c = @cos(turns * std.math.tau);
         const s = @sin(turns * std.math.tau);
@@ -67,6 +71,22 @@ const Vec2 = struct {
 
     test "rotate" {
         try Vec2.expectApproxEqAbs(Vec2.e2, rotate(Vec2.e1, 0.25), 0.001);
+    }
+
+    pub fn normalized(v: Self) Self {
+        return v.scale(1 / v.mag());
+    }
+
+    pub fn mag(v: Self) Scalar {
+        return @sqrt(v.magSq());
+    }
+
+    pub fn magSq(v: Self) Scalar {
+        return dot(v, v);
+    }
+
+    pub fn dot(a: Self, b: Self) Scalar {
+        return a.x * b.x + a.y * b.y;
     }
 
     pub fn expectApproxEqRel(expected: Vec2, actual: Vec2, tolerance: anytype) !void {
@@ -168,6 +188,14 @@ const Point = struct {
         return local.scale(t.scale).rotate(t.turns).add(t.pos);
     }
 
+    pub fn applyToLocalPoint(t: Point, local: Point) Point {
+        return .{
+            .pos = t.applyToLocalPosition(local.pos),
+            .scale = t.scale * local.scale,
+            .turns = t.turns + local.turns,
+        };
+    }
+
     pub fn expectApproxEqRel(expected: Point, actual: Point, tolerance: anytype) !void {
         try std.testing.expectApproxEqRel(expected.scale, actual.scale, tolerance);
         try std.testing.expectApproxEqRel(expected.turns, actual.turns, tolerance);
@@ -210,10 +238,18 @@ pub const Camera = struct {
 
     pub fn screenFromWorld(this: Camera, world_point: Point) Point {
         return .{
-            .pos = world_point.pos.sub(this.topleft).scale(this.asdf),
-            .scale = world_point.scale * this.asdf,
+            .pos = this.screenFromWorldPosition(world_point.pos),
+            .scale = this.screenFromWorldScale(world_point.scale),
             .turns = world_point.turns,
         };
+    }
+
+    pub fn screenFromWorldPosition(this: Camera, world_pos: Vec2) Vec2 {
+        return world_pos.sub(this.topleft).scale(this.asdf);
+    }
+
+    pub fn screenFromWorldScale(this: Camera, world_scale: f32) f32 {
+        return this.asdf * world_scale;
     }
 
     pub fn worldFromScreen(this: Camera, screen_point: Point) Point {
@@ -265,35 +301,78 @@ const Drawer = struct {
         js.canvas.stroke();
     }
 
-    pub fn drawCable(this: Drawer, world_from: Vec2, world_to: Vec2) void {
-        const screen_from = this.camera.screenFromWorld(.{ .pos = world_from }).pos;
-        const screen_to = this.camera.screenFromWorld(.{ .pos = world_to }).pos;
+    pub fn drawCable(this: Drawer, world_from: Vec2, world_to: Vec2, world_scale: f32, offset: f32) void {
+        const screen_from = this.camera.screenFromWorldPosition(world_from);
+        const screen_to = this.camera.screenFromWorldPosition(world_to);
+        const scale = this.camera.screenFromWorldScale(world_scale);
         layer1.setStrokeColor(Color.black);
         js.canvas.setLineWidth(1);
         js.canvas.beginPath();
         layer1.moveTo(screen_from);
         layer1.lineTo(screen_to);
         js.canvas.stroke();
+
+        js.canvas.beginPath();
+        const delta = screen_to.sub(screen_from);
+        const length = delta.mag();
+        const dir = delta.scale(1 / length);
+        var done: f32 = 0;
+        layer1.moveTo(screen_from);
+        while (done < length) : (done += 1) {
+            layer1.lineTo(screen_from.add(dir.scale(done)).add(dir.perpCW().scale(cableOffset(done + offset * scale, scale))));
+        }
+        layer1.lineTo(screen_to);
+        js.canvas.stroke();
     }
 
     pub fn drawAsdfDevice(this: Drawer, world_point: Point) void {
-        this.drawCable(world_point.applyToLocalPosition(.new(0, -0.25)), world_point.applyToLocalPosition(.new(0, -0.75)));
-        this.drawCable(world_point.pos, world_point.applyToLocalPosition(.new(0.5, 0)));
+        this.drawCable(
+            world_point.applyToLocalPosition(.new(0, -0.25)),
+            world_point.applyToLocalPosition(.new(0, -0.75)),
+            world_point.scale,
+            0,
+        );
+        this.drawCable(
+            world_point.pos,
+            world_point.applyToLocalPosition(.new(0.5, 0)),
+            world_point.scale,
+            0,
+        );
         const screen_point = this.camera.screenFromWorld(world_point);
         js.canvas.beginPath();
         layer1.circle(screen_point.pos, screen_point.scale * 0.25);
         js.canvas.stroke();
     }
 
-    pub fn drawCord(this: Drawer, world_from: Vec2, world_to: Vec2) void {
+    pub fn drawCord(this: Drawer, world_from: Vec2, world_to: Vec2, world_scale: f32, offset: f32) void {
         const screen_from = this.camera.screenFromWorld(.{ .pos = world_from }).pos;
         const screen_to = this.camera.screenFromWorld(.{ .pos = world_to }).pos;
+        const scale = this.camera.screenFromWorldScale(world_scale);
         layer1.setStrokeColor(Color.black);
-        js.canvas.setLineWidth(5);
+        js.canvas.setLineWidth(scale * 0.1);
         js.canvas.beginPath();
         layer1.moveTo(screen_from);
         layer1.lineTo(screen_to);
         js.canvas.stroke();
+
+        js.canvas.setLineWidth(1);
+        js.canvas.beginPath();
+        const delta = screen_to.sub(screen_from);
+        const length = delta.mag();
+        const dir = delta.scale(1 / length);
+        var done: f32 = 0;
+        layer1.moveTo(screen_from);
+        while (done < length) : (done += 1) {
+            layer1.lineTo(screen_from.add(dir.scale(done)).add(dir.perpCW().scale(cableOffset(done + offset * scale, scale))));
+        }
+        layer1.lineTo(screen_to);
+        js.canvas.stroke();
+    }
+
+    fn cableOffset(x: f32, scale: f32) f32 {
+        const z = x * 20 / scale;
+        const y = @sin(z) + 0.2 * @sin(z * 1.3) + 0.3 * @sin(z * 3.1);
+        return y * 0.1 * scale;
     }
 };
 
@@ -317,9 +396,9 @@ export fn draw() void {
     layer1.clear(COLORS.background);
     drawer.drawAtomDebug(.{ .pos = .new(1, 0), .scale = 1 });
     drawer.drawAtomDebug(.{ .pos = .new(0, -1.25), .scale = 1, .turns = -0.25 });
-    drawer.drawCable(.new(-3, 0), .new(0, 0));
+    drawer.drawCable(.new(-3, 0), .zero, 1, total_time);
     drawer.drawAsdfDevice(.{ .pos = Vec2.zero, .scale = 1 });
-    drawer.drawCord(.zero, .new(0, 3));
+    drawer.drawCord(.zero, .new(0, 3), 1, total_time);
 }
 
 fn programmerError() void {
