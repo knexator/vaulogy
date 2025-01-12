@@ -147,7 +147,7 @@ const COLORS = struct {
 
 const Point = struct {
     pos: Vec2,
-    scale: f32,
+    scale: f32 = 1,
     turns: f32 = 0,
 
     pub fn applyToLocalPosition(t: Point, local: Vec2) Vec2 {
@@ -227,8 +227,11 @@ pub const Camera = struct {
     }
 };
 
-const layer2 = struct {
-    pub fn drawAtomDebug(screen_point: Point) void {
+const Drawer = struct {
+    camera: Camera,
+
+    pub fn drawAtomDebug(this: Drawer, world_point: Point) void {
+        const screen_point = this.camera.screenFromWorld(world_point);
         const local_positions = [_]Vec2{
             Vec2.new(-0.5, 0),
             Vec2.new(0, 1),
@@ -244,6 +247,17 @@ const layer2 = struct {
         layer1.setFillColor(Color.white);
         layer1.setStrokeColor(Color.black);
         js.canvas.fill();
+        js.canvas.stroke();
+    }
+
+    pub fn drawCable(this: Drawer, world_from: Vec2, world_to: Vec2) void {
+        const screen_from = this.camera.screenFromWorld(.{ .pos = world_from }).pos;
+        const screen_to = this.camera.screenFromWorld(.{ .pos = world_to }).pos;
+        layer1.setStrokeColor(Color.black);
+        js.canvas.setLineWidth(1);
+        js.canvas.beginPath();
+        layer1.moveTo(screen_from);
+        layer1.lineTo(screen_to);
         js.canvas.stroke();
     }
 };
@@ -264,10 +278,13 @@ export fn draw() void {
         .{ .pos = Vec2.zero, .scale = 1 },
         .{ .pos = .new(0.5, 0.5), .scale = 0.5 / 3.0 },
     );
+    const drawer = Drawer{ .camera = camera };
     layer1.clear(COLORS.background);
-    layer2.drawAtomDebug(camera.screenFromWorld(.{ .pos = .new(0, 0), .scale = 1 }));
-    layer2.drawAtomDebug(camera.screenFromWorld(.{ .pos = .new(0, 2), .scale = 1 }));
-    layer2.drawAtomDebug(camera.screenFromWorld(.{ .pos = .new(0, -2), .scale = 1 }));
+    drawer.drawAtomDebug(.{ .pos = .new(0, 0), .scale = 1 });
+    drawer.drawAtomDebug(.{ .pos = .new(0, 2), .scale = 1 });
+    drawer.drawAtomDebug(.{ .pos = .new(0, -2), .scale = 1 });
+
+    drawer.drawCable(.new(-2.5, 0), .new(-0.5, 0));
 }
 
 fn programmerError() void {
