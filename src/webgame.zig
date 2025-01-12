@@ -343,7 +343,7 @@ const Drawer = struct {
             0,
         );
         this.drawCable(
-            world_point.pos,
+            world_point.applyToLocalPosition(.new(0.25, 0)),
             world_point.applyToLocalPosition(.new(0.5, 0)),
             world_point.scale,
             0,
@@ -352,6 +352,15 @@ const Drawer = struct {
         js.canvas.beginPath();
         layer1.circle(screen_point.pos, screen_point.scale * 0.25);
         js.canvas.stroke();
+    }
+
+    pub fn drawCords(this: Drawer, points: []const Vec2, world_scale: f32, offsets: []const f32) void {
+        std.debug.assert(points.len == 1 + offsets.len);
+        if (points.len < 2) programmerError();
+        this.drawCord(points[0], points[1], world_scale, offsets[0]);
+        for (points[1 .. points.len - 1], points[2..], offsets[1..]) |a, b, offset| {
+            this.drawCord(a, b, world_scale, offset);
+        }
     }
 
     pub fn drawCord(this: Drawer, world_from: Vec2, world_to: Vec2, world_scale: f32, offset: f32) void {
@@ -389,14 +398,34 @@ const Drawer = struct {
 // 1 world unit = half an atom
 
 const DebugAnimation = struct {
-    global_t: f32 = 0,
-    // state: union(enum) {
-    //     first: void,
-    // },
+    const Phase = enum {
+        moving_up,
+        interlocking,
+
+        pub fn duration(x: Phase) f32 {
+            return switch (x) {
+                .moving_up => 2,
+                .interlocking => 1,
+            };
+        }
+
+        pub fn next(x: Phase) Phase {
+            return switch (x) {
+                .moving_up => .interlocking,
+                .interlocking => .moving_up,
+            };
+        }
+    };
+
+    local_t: f32 = 0,
+    phase: Phase = .moving_up,
 
     pub fn update(this: *DebugAnimation, delta_seconds: f32) void {
-        this.global_t += delta_seconds * 2;
-        this.global_t = @min(this.global_t, 2.5);
+        this.local_t += delta_seconds / this.phase.duration();
+        if (this.local_t >= 1) {
+            this.local_t = 0;
+            this.phase = this.phase.next();
+        }
     }
 
     pub fn draw(this: DebugAnimation) void {
@@ -415,25 +444,54 @@ const DebugAnimation = struct {
         );
         const drawer = Drawer{ .camera = camera };
         layer1.clear(COLORS.background);
+
+        const t = this.local_t;
         drawer.drawAtomDebug(.{ .pos = .new(1, 0), .scale = 1 });
         drawer.drawAtomDebug(.{ .pos = .new(0, -1.25), .scale = 1, .turns = -0.25 });
-        drawer.drawAtomPatternDebug(.{ .pos = .new(4.8, 2.5 - this.global_t), .scale = 1 });
-        drawer.drawCable(.new(-3, 0), .zero, 1, this.global_t);
         drawer.drawAsdfDevice(.{ .pos = Vec2.zero, .scale = 1 });
-        drawer.drawCord(.zero, .new(0, 3.5 - this.global_t), 1, this.global_t);
-        drawer.drawCord(.new(0, 3.5 - this.global_t), .new(4.8, 3.5 - this.global_t), 1, 0);
+        const x = switch (this.phase) {
+            .moving_up => 4.8,
+            .interlocking => 4.8 - t * 0.8,
+        };
+        const y = switch (this.phase) {
+            .moving_up => 2.5 * (1 - t),
+            .interlocking => 0,
+        };
+        drawer.drawAtomPatternDebug(.{ .pos = .new(x, y), .scale = 1 });
+        // drawer.drawAtomPatternDebug(.{ .pos = .new(4.25, 2.5 + 0.25 - t), .scale = 1, .turns = 0.05 });
+        drawer.drawCable(.new(-3, 0), .zero, 1, -y - x);
+
+        // TODO: single call
+        drawer.drawCords(&.{
+            .zero,
+            .new(0, y + 1),
+            .new(x, y + 1),
+            .new(x + 0.5, y),
+            .new(x + 2, y),
+            // .new(x + 0.5, y),
+        }, 1, &.{ -y - x, -x, 0, 0 });
+        // drawer.drawCord(.zero, .new(0, y + 1), 1, -y);
+        // drawer.drawCord(.new(0, y + 1), .new(x, y + 1), 1, 0);
+        // drawer.drawCord(.new(x, y + 1), .new(x + 0.5, y), 1, 0);
+        // drawer.drawCord(.new(x + 0.5, y), .new(x + 2, y), 1, 0);
+
+        drawer.drawAtomDebug(.{ .pos = .new(x + 2.5, y), .scale = 1 });
     }
 };
 
 var debug_animation = DebugAnimation{};
+var paused = false;
 
 export fn keydown(code: KeyCode) void {
     if (code == .KeyA) {
         debug_animation = DebugAnimation{};
+    } else if (code == .KeyD) {
+        paused = !paused;
     }
 }
 
 export fn frame(delta_seconds: f32) void {
+    if (paused) return;
     debug_animation.update(delta_seconds);
 }
 
