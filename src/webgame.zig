@@ -25,36 +25,51 @@ const js = struct {
     };
 };
 
-fn TVec2(comptime Scalar: type) type {
-    return struct {
-        x: Scalar,
-        y: Scalar,
+const Vec2 = struct {
+    pub const Scalar = f32;
 
-        const Self = @This();
+    x: Scalar,
+    y: Scalar,
 
-        pub fn new(x: Scalar, y: Scalar) Self {
-            return .{ .x = x, .y = y };
-        }
+    const Self = @This();
 
-        pub fn add(a: Self, b: Self) Self {
-            return Self.new(a.x + b.x, a.y + b.y);
-        }
+    pub const zero = new(0, 0);
+    pub const one = new(1, 1);
+    pub const half = new(0.5, 0.5);
+    pub const e1 = new(1, 0);
+    pub const e2 = new(0, 1);
 
-        pub fn scale(v: Self, s: Scalar) Self {
-            return Self.new(v.x * s, v.y * s);
-        }
+    pub fn new(x: Scalar, y: Scalar) Self {
+        return .{ .x = x, .y = y };
+    }
 
-        pub fn rotate(v: Self, turns: f32) Self {
-            const c = @cos(turns * std.math.tau);
-            const s = @sin(turns * std.math.tau);
-            return Self.new(
-                v.x * c - v.y * s,
-                v.x * s + v.y * c,
-            );
-        }
-    };
-}
-const Vec2 = TVec2(f32);
+    pub fn add(a: Self, b: Self) Self {
+        return new(a.x + b.x, a.y + b.y);
+    }
+
+    pub fn sub(a: Self, b: Self) Self {
+        return new(a.x - b.x, a.y - b.y);
+    }
+
+    pub fn scale(v: Self, s: Scalar) Self {
+        return new(v.x * s, v.y * s);
+    }
+
+    pub fn rotate(v: Self, turns: f32) Self {
+        const c = @cos(turns * std.math.tau);
+        const s = @sin(turns * std.math.tau);
+        return new(
+            v.x * c - v.y * s,
+            v.x * s + v.y * c,
+        );
+    }
+
+    pub fn expectApproxEqRel(expected: Vec2, actual: Vec2, tolerance: anytype) !void {
+        try std.testing.expectApproxEqRel(expected.x, actual.x, tolerance);
+        try std.testing.expectApproxEqRel(expected.y, actual.y, tolerance);
+    }
+};
+
 const Color = struct {
     r: u8,
     g: u8,
@@ -130,18 +145,90 @@ const COLORS = struct {
     const background = Color.new(128, 128, 128);
 };
 
-const ScreenPoint = struct {
+const Point = struct {
     pos: Vec2,
     scale: f32,
     turns: f32 = 0,
 
-    pub fn screenPositionFromLocalPosition(t: ScreenPoint, local: Vec2) Vec2 {
+    pub fn applyToLocalPosition(t: Point, local: Vec2) Vec2 {
         return local.scale(t.scale).rotate(t.turns).add(t.pos);
+    }
+
+    pub fn expectApproxEqRel(expected: Point, actual: Point, tolerance: anytype) !void {
+        try std.testing.expectApproxEqRel(expected.scale, actual.scale, tolerance);
+        try std.testing.expectApproxEqRel(expected.turns, actual.turns, tolerance);
+        try Vec2.expectApproxEqRel(expected.pos, actual.pos, tolerance);
+    }
+};
+
+pub const Camera = struct {
+    // an object at [camera.topleft] will be drawn on the top left of the screen
+    // an object at [camera.topleft.addX(1) will be drawn 'asdf' pixels to the right of that
+
+    topleft: Vec2,
+    // how many pixels in a world unit
+    asdf: f32,
+
+    pub fn fromStuff(screen_side: f32, original_world: Point, target_screen_relative: Point) Camera {
+        const asdf = target_screen_relative.scale * screen_side / original_world.scale;
+        return .{
+            .topleft = original_world.pos.sub(
+                target_screen_relative.pos.scale(screen_side).scale(1 / asdf),
+            ),
+            .asdf = asdf,
+        };
+    }
+
+    test "fromStuff" {
+        {
+            const original = Point{ .pos = .new(3, 4), .scale = 1 };
+            const target_relative = Point{ .pos = Vec2.half, .scale = 0.1 };
+            const screen_side = 300;
+
+            const camera = fromStuff(screen_side, original, target_relative);
+            try Point.expectApproxEqRel(
+                .{ .pos = .new(150, 150), .scale = 30 },
+                camera.screenFromWorld(original),
+                0.000001,
+            );
+        }
+    }
+
+    pub fn screenFromWorld(this: Camera, world_point: Point) Point {
+        return .{
+            .pos = world_point.pos.sub(this.topleft).scale(this.asdf),
+            .scale = world_point.scale * this.asdf,
+            .turns = world_point.turns,
+        };
+    }
+
+    pub fn worldFromScreen(this: Camera, screen_point: Point) Point {
+        return .{
+            .pos = screen_point.pos.scale(1 / this.asdf).add(this.topleft),
+            .scale = screen_point.scale / this.asdf,
+            .turns = screen_point.turns,
+        };
+    }
+
+    test "basic camera" {
+        const camera = Camera{ .topleft = .new(2, 3), .asdf = 100 };
+        try std.testing.expectEqual(
+            Point{ .pos = Vec2.zero, .scale = 100 },
+            camera.screenFromWorld(
+                .{ .pos = .new(2, 3), .scale = 1 },
+            ),
+        );
+        try std.testing.expectEqual(
+            Point{ .pos = .new(100, 100), .scale = 50 },
+            camera.screenFromWorld(
+                .{ .pos = .new(3, 4), .scale = 0.5 },
+            ),
+        );
     }
 };
 
 const layer2 = struct {
-    pub fn drawAtomDebug(p: ScreenPoint) void {
+    pub fn drawAtomDebug(screen_point: Point) void {
         const local_positions = [_]Vec2{
             Vec2.new(-0.5, 0),
             Vec2.new(0, 1),
@@ -151,7 +238,7 @@ const layer2 = struct {
         };
         var screen_positions: [local_positions.len]Vec2 = undefined;
         for (local_positions, 0..) |pos, i| {
-            screen_positions[i] = p.screenPositionFromLocalPosition(pos);
+            screen_positions[i] = screen_point.applyToLocalPosition(pos);
         }
         layer1.pathLoop(&screen_positions);
         layer1.setFillColor(Color.white);
@@ -161,9 +248,26 @@ const layer2 = struct {
     }
 };
 
+// 1 world unit = half an atom
+
 export fn draw() void {
+    const canvas_size = layer1.getCanvasSize();
+    const canvas_side = canvas_size.y;
+    std.debug.assert(std.math.approxEqRel(
+        f32,
+        canvas_side * 16 / 9,
+        canvas_size.x,
+        0.01,
+    ));
+    const camera = Camera.fromStuff(
+        canvas_side,
+        .{ .pos = Vec2.zero, .scale = 1 },
+        .{ .pos = .new(0.5, 0.5), .scale = 0.5 / 3.0 },
+    );
     layer1.clear(COLORS.background);
-    layer2.drawAtomDebug(.{ .pos = Vec2.new(150, 150), .scale = 100 });
+    layer2.drawAtomDebug(camera.screenFromWorld(.{ .pos = .new(0, 0), .scale = 1 }));
+    layer2.drawAtomDebug(camera.screenFromWorld(.{ .pos = .new(0, 2), .scale = 1 }));
+    layer2.drawAtomDebug(camera.screenFromWorld(.{ .pos = .new(0, -2), .scale = 1 }));
 }
 
 fn programmerError() void {

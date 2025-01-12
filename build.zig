@@ -58,9 +58,20 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .filters = test_filters,
-        .use_llvm = optimize != .Debug,
-        .use_lld = optimize != .Debug,
+        // FUTURE TODO: put these back once there's no "TODOImplementWritingLibFiles" error
+        // .use_llvm = optimize != .Debug,
+        // .use_lld = optimize != .Debug,
     });
+    const dummy_exports = b.addStaticLibrary(.{
+        .name = "dummy_exports",
+        .root_source_file = b.path("src/tools/dummy_exports.zig"),
+        .target = target,
+        .optimize = optimize,
+        // FUTURE TODO: put these back once there's no "TODOImplementWritingLibFiles" error
+        // .use_llvm = optimize != .Debug,
+        // .use_lld = optimize != .Debug,
+    });
+    exe_unit_tests.linkLibrary(dummy_exports);
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 
