@@ -157,18 +157,7 @@ const layer1 = struct {
 
 const KeyCode = @import("./tools/generate_keycodes_js.zig").KeyCode;
 
-export fn keydown(code: KeyCode) void {
-    if (code == .KeyA) {
-        total_time = 0;
-    }
-}
-
 // Goal for now: hardcoded animation showing a fnk application
-
-var total_time: f32 = 0;
-export fn frame(delta_seconds: f32) void {
-    total_time += delta_seconds;
-}
 
 const core = @import("main.zig");
 const Atom = core.Atom;
@@ -301,6 +290,27 @@ const Drawer = struct {
         js.canvas.stroke();
     }
 
+    pub fn drawAtomPatternDebug(this: Drawer, world_point: Point) void {
+        const screen_point = this.camera.screenFromWorld(world_point);
+        const local_positions = [_]Vec2{
+            Vec2.new(0.5, 0),
+            Vec2.new(0, 1),
+            Vec2.new(-1, 1),
+            Vec2.new(-1, -1),
+            Vec2.new(0, -1),
+        };
+        var screen_positions: [local_positions.len]Vec2 = undefined;
+        for (local_positions, 0..) |pos, i| {
+            screen_positions[i] = screen_point.applyToLocalPosition(pos);
+        }
+        layer1.pathLoop(&screen_positions);
+        js.canvas.setLineWidth(1);
+        layer1.setFillColor(Color.white);
+        layer1.setStrokeColor(Color.black);
+        js.canvas.fill();
+        js.canvas.stroke();
+    }
+
     pub fn drawCable(this: Drawer, world_from: Vec2, world_to: Vec2, world_scale: f32, offset: f32) void {
         const screen_from = this.camera.screenFromWorldPosition(world_from);
         const screen_to = this.camera.screenFromWorldPosition(world_to);
@@ -378,27 +388,57 @@ const Drawer = struct {
 
 // 1 world unit = half an atom
 
+const DebugAnimation = struct {
+    global_t: f32 = 0,
+    // state: union(enum) {
+    //     first: void,
+    // },
+
+    pub fn update(this: *DebugAnimation, delta_seconds: f32) void {
+        this.global_t += delta_seconds * 2;
+        this.global_t = @min(this.global_t, 2.5);
+    }
+
+    pub fn draw(this: DebugAnimation) void {
+        const canvas_size = layer1.getCanvasSize();
+        const canvas_side = canvas_size.y;
+        std.debug.assert(std.math.approxEqRel(
+            f32,
+            canvas_side * 16 / 9,
+            canvas_size.x,
+            0.01,
+        ));
+        const camera = Camera.fromStuff(
+            canvas_side,
+            .{ .pos = .zero, .scale = 1 },
+            .{ .pos = .new(0.5, 0.5), .scale = 0.5 / 4.0 },
+        );
+        const drawer = Drawer{ .camera = camera };
+        layer1.clear(COLORS.background);
+        drawer.drawAtomDebug(.{ .pos = .new(1, 0), .scale = 1 });
+        drawer.drawAtomDebug(.{ .pos = .new(0, -1.25), .scale = 1, .turns = -0.25 });
+        drawer.drawAtomPatternDebug(.{ .pos = .new(4.8, 2.5 - this.global_t), .scale = 1 });
+        drawer.drawCable(.new(-3, 0), .zero, 1, this.global_t);
+        drawer.drawAsdfDevice(.{ .pos = Vec2.zero, .scale = 1 });
+        drawer.drawCord(.zero, .new(0, 3.5 - this.global_t), 1, this.global_t);
+        drawer.drawCord(.new(0, 3.5 - this.global_t), .new(4.8, 3.5 - this.global_t), 1, 0);
+    }
+};
+
+var debug_animation = DebugAnimation{};
+
+export fn keydown(code: KeyCode) void {
+    if (code == .KeyA) {
+        debug_animation = DebugAnimation{};
+    }
+}
+
+export fn frame(delta_seconds: f32) void {
+    debug_animation.update(delta_seconds);
+}
+
 export fn draw() void {
-    const canvas_size = layer1.getCanvasSize();
-    const canvas_side = canvas_size.y;
-    std.debug.assert(std.math.approxEqRel(
-        f32,
-        canvas_side * 16 / 9,
-        canvas_size.x,
-        0.01,
-    ));
-    const camera = Camera.fromStuff(
-        canvas_side,
-        .{ .pos = .zero, .scale = 1 },
-        .{ .pos = .new(0.5, 0.5), .scale = 0.5 / 4.0 },
-    );
-    const drawer = Drawer{ .camera = camera };
-    layer1.clear(COLORS.background);
-    drawer.drawAtomDebug(.{ .pos = .new(1, 0), .scale = 1 });
-    drawer.drawAtomDebug(.{ .pos = .new(0, -1.25), .scale = 1, .turns = -0.25 });
-    drawer.drawCable(.new(-3, 0), .zero, 1, total_time);
-    drawer.drawAsdfDevice(.{ .pos = Vec2.zero, .scale = 1 });
-    drawer.drawCord(.zero, .new(0, 3), 1, total_time);
+    debug_animation.draw();
 }
 
 fn programmerError() void {
