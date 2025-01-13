@@ -563,14 +563,143 @@ const DebugAnimation = struct {
 };
 
 const DebugAnimation2 = struct {
-    deviceAsdf: Point = .{ .pos = .zero },
+    // deviceAsdf: Point = .{ .pos = .zero },
     // pattern_lower_left: Point = .{ .pos = .new(3.8, 3.5), .turns = 0.00 },
 
-    global_t: f32 = 0,
+    const Phase = enum {
+        moving_up,
+        interlocking,
+        floating_away,
+
+        pub fn duration(x: Phase) f32 {
+            return switch (x) {
+                .moving_up => 1,
+                .interlocking => 0.25,
+                .floating_away => 1,
+            };
+        }
+
+        pub fn next(x: Phase) ?Phase {
+            return switch (x) {
+                .moving_up => .interlocking,
+                .interlocking => .floating_away,
+                .floating_away => null,
+            };
+        }
+    };
+
+    local_t: f32 = 0,
+    phase: Phase = .moving_up,
 
     pub fn update(this: *DebugAnimation2, delta_seconds: f32) void {
-        this.global_t += delta_seconds;
-        this.global_t = @min(this.global_t, 1);
+        this.local_t += delta_seconds / this.phase.duration();
+        if (this.local_t >= 1) {
+            if (this.phase.next()) |next| {
+                this.local_t = 0;
+                this.phase = next;
+            } else {
+                this.local_t = 1;
+            }
+        }
+    }
+
+    fn draw_moving_up(drawer: Drawer, local_t: f32) void {
+        const deviceAsdf: Point = .{ .pos = .zero };
+
+        drawer.drawAtomDebug(deviceAsdf.applyToLocalPoint(.{ .pos = .new(1, 0) }));
+        drawer.drawAtomDebug(deviceAsdf.applyToLocalPoint(.{ .pos = .new(0, -1.25), .turns = -0.25 }));
+        defer drawer.drawAsdfDevice(deviceAsdf);
+
+        const cur_pattern_lower_left = Point.lerp(
+            .{ .pos = .new(3.8, 3.5), .turns = 0.00 },
+            .{ .pos = .new(3, 1), .turns = 0.05 },
+            local_t,
+        );
+
+        drawer.drawAtomPatternDebug(cur_pattern_lower_left.inverseApplyToLocalPoint(.{ .pos = .new(-1, 1) }));
+
+        drawer.drawCable(
+            deviceAsdf.applyToLocalPosition(.new(-3, 0)),
+            deviceAsdf.pos,
+            1,
+            local_t * 1.5,
+        );
+        drawer.drawCords(&.{
+            deviceAsdf.applyToLocalPosition(.new(0, 0.25)),
+            deviceAsdf.applyToLocalPosition(Vec2.lerp(.new(0, 3.5), .one, @min(local_t * 1.5, 1))),
+            cur_pattern_lower_left.pos,
+            cur_pattern_lower_left.applyToLocalPosition(.new(1, 0)),
+            cur_pattern_lower_left.applyToLocalPosition(.new(1.5, -1)),
+            cur_pattern_lower_left.applyToLocalPosition(.new(2.5, -1)),
+        }, 1, &.{ local_t * 2, local_t * 2, 0, 0, 0 });
+        drawer.drawAtomDebug(cur_pattern_lower_left.applyToLocalPoint(.{ .pos = .new(3, -1) }));
+    }
+
+    fn draw_interlocking(drawer: Drawer, local_t: f32) void {
+        const deviceAsdf: Point = .{ .pos = .zero };
+
+        drawer.drawAtomDebug(deviceAsdf.applyToLocalPoint(.{ .pos = .new(1, 0) }));
+        drawer.drawAtomDebug(deviceAsdf.applyToLocalPoint(.{ .pos = .new(0, -1.25), .turns = -0.25 }));
+        defer drawer.drawAsdfDevice(deviceAsdf);
+
+        const cur_pattern_lower_left = Point.lerp(
+            .{ .pos = .new(3, 1), .turns = 0.05 },
+            .{ .pos = .new(3, 1), .turns = 0.00 },
+            local_t,
+        );
+
+        drawer.drawAtomPatternDebug(cur_pattern_lower_left.inverseApplyToLocalPoint(.{ .pos = .new(-1, 1) }));
+
+        drawer.drawCable(
+            deviceAsdf.applyToLocalPosition(.new(-3, 0)),
+            deviceAsdf.pos,
+            1,
+            1.5,
+        );
+        drawer.drawCords(&.{
+            deviceAsdf.applyToLocalPosition(.new(0, 0.25)),
+            deviceAsdf.applyToLocalPosition(.one),
+            cur_pattern_lower_left.pos,
+            cur_pattern_lower_left.applyToLocalPosition(.new(1, 0)),
+            cur_pattern_lower_left.applyToLocalPosition(.new(1.5, -1)),
+            cur_pattern_lower_left.applyToLocalPosition(.new(2.5, -1)),
+        }, 1, &.{ 2, 2, 0, 0, 0 });
+        drawer.drawAtomDebug(cur_pattern_lower_left.applyToLocalPoint(.{ .pos = .new(3, -1) }));
+    }
+
+    fn draw_floating_away(drawer: Drawer, local_t: f32) void {
+        const floating_deviceAsdf = Point.lerp(
+            .{ .pos = .zero },
+            .{ .pos = .new(0, -1), .turns = -0.10 },
+            local_t,
+        );
+
+        const old_deviceAsdf = Point{ .pos = .zero };
+
+        drawer.drawAtomDebug(floating_deviceAsdf.applyToLocalPoint(.{ .pos = .new(1, 0) }));
+        drawer.drawAtomDebug(floating_deviceAsdf.applyToLocalPoint(.{ .pos = .new(0, -1.25), .turns = -0.25 }));
+        defer drawer.drawAsdfDevice(floating_deviceAsdf);
+
+        const cur_pattern_lower_left = floating_deviceAsdf.applyToLocalPoint(.{ .pos = .new(3, 1) });
+        const old_pattern_lower_left = (Point{}).applyToLocalPoint(.{ .pos = .new(3, 1) });
+
+        drawer.drawAtomPatternDebug(cur_pattern_lower_left.inverseApplyToLocalPoint(.{ .pos = .new(-1, 1) }));
+
+        drawer.drawCable(
+            old_deviceAsdf.applyToLocalPosition(.new(-3, 0)),
+            old_deviceAsdf.pos,
+            1,
+            1.5 + local_t,
+        );
+        drawer.drawCords(&.{
+            old_deviceAsdf.applyToLocalPosition(.new(0, std.math.lerp(0.25, 0, @min(1, local_t * 5)))),
+            Vec2.lerp(old_deviceAsdf.applyToLocalPosition(.one), .zero, local_t),
+            Vec2.lerp(old_pattern_lower_left.pos, .zero, local_t),
+            old_pattern_lower_left.applyToLocalPosition(Vec2.lerp(.new(1, 0), .new(0, -1), local_t)),
+            old_pattern_lower_left.applyToLocalPosition(.new(1.5, -1)),
+            old_pattern_lower_left.applyToLocalPosition(.new(2.5, -1)),
+        }, 1, &.{ 2, 2, -local_t * 2, 0, 0 });
+        drawer.drawAtomDebug(old_pattern_lower_left.applyToLocalPoint(.{ .pos = .new(3, -1) }));
     }
 
     // fn animation(this: *DebugAnimation2) void {
@@ -595,32 +724,11 @@ const DebugAnimation2 = struct {
         const drawer = Drawer{ .camera = camera };
         layer1.clear(COLORS.background);
 
-        drawer.drawAtomDebug(this.deviceAsdf.applyToLocalPoint(.{ .pos = .new(1, 0) }));
-        drawer.drawAtomDebug(this.deviceAsdf.applyToLocalPoint(.{ .pos = .new(0, -1.25), .turns = -0.25 }));
-        defer drawer.drawAsdfDevice(this.deviceAsdf);
-
-        const cur_pattern_lower_left = Point.lerp(
-            .{ .pos = .new(3.8, 3.5), .turns = 0.00 },
-            .{ .pos = .new(3, 1), .turns = 0.05 },
-            this.global_t,
-        );
-
-        drawer.drawAtomPatternDebug(cur_pattern_lower_left.inverseApplyToLocalPoint(.{ .pos = .new(-1, 1) }));
-        // drawer.drawAtomPatternDebug(this.pattern_lower_left.inverseApplyToLocalPoint(.{ .pos = .new(-1, 1) }));
-
-        drawer.drawCable(
-            this.deviceAsdf.applyToLocalPosition(.new(-3, 0)),
-            this.deviceAsdf.pos,
-            1,
-            this.global_t * 1.5,
-        );
-        drawer.drawCords(&.{
-            this.deviceAsdf.applyToLocalPosition(.new(0, 0.25)),
-            this.deviceAsdf.applyToLocalPosition(Vec2.lerp(.new(0, 3.5), .one, @min(this.global_t * 1.5, 1))),
-            cur_pattern_lower_left.pos,
-            cur_pattern_lower_left.applyToLocalPosition(.new(1, 0)),
-            cur_pattern_lower_left.applyToLocalPosition(.new(1.5, -1)),
-        }, 1, &.{ this.global_t * 2, this.global_t * 2, 0, 0 });
+        switch (this.phase) {
+            .moving_up => draw_moving_up(drawer, this.local_t),
+            .interlocking => draw_interlocking(drawer, this.local_t),
+            .floating_away => draw_floating_away(drawer, this.local_t),
+        }
     }
 };
 
