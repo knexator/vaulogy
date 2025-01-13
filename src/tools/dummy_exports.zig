@@ -66,6 +66,17 @@ export fn arc(x: f32, y: f32, radius: f32, startAngle: f32, endAngle: f32, count
     _ = counterclockwise;
     unreachable;
 }
+export fn ellipse(x: f32, y: f32, radiusX: f32, radiusY: f32, rotation: f32, startAngle: f32, endAngle: f32, counterclockwise: bool) void {
+    _ = x;
+    _ = y;
+    _ = radiusX;
+    _ = radiusY;
+    _ = rotation;
+    _ = startAngle;
+    _ = endAngle;
+    _ = counterclockwise;
+    unreachable;
+}
 export fn getWidth() u32 {
     unreachable;
 }

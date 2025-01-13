@@ -19,6 +19,7 @@ const js = struct {
         extern fn setGlobalAlpha(a: f32) void;
         extern fn fillRect(x: f32, y: f32, w: f32, h: f32) void;
         extern fn arc(x: f32, y: f32, radius: f32, startAngle: f32, endAngle: f32, counterclockwise: bool) void;
+        extern fn ellipse(x: f32, y: f32, radiusX: f32, radiusY: f32, rotation: f32, startAngle: f32, endAngle: f32, counterclockwise: bool) void;
         extern fn getWidth() u32;
         extern fn getHeight() u32;
 
@@ -89,6 +90,13 @@ const Vec2 = struct {
         return a.x * b.x + a.y * b.y;
     }
 
+    pub fn lerp(a: Self, b: Self, t: f32) Self {
+        return new(
+            std.math.lerp(a.x, b.x, t),
+            std.math.lerp(a.y, b.y, t),
+        );
+    }
+
     pub fn expectApproxEqRel(expected: Vec2, actual: Vec2, tolerance: anytype) !void {
         try std.testing.expectApproxEqRel(expected.x, actual.x, tolerance);
         try std.testing.expectApproxEqRel(expected.y, actual.y, tolerance);
@@ -110,6 +118,10 @@ const Color = struct {
 
     pub fn new(r: u8, g: u8, b: u8) Color {
         return .{ .r = r, .g = g, .b = b };
+    }
+
+    pub fn gray(v: u8) Color {
+        return new(v, v, v);
     }
 };
 
@@ -169,19 +181,28 @@ const COLORS = struct {
 };
 
 const Point = struct {
-    pos: Vec2,
+    pos: Vec2 = .zero,
     scale: f32 = 1,
     turns: f32 = 0,
 
-    pub fn applyToLocalPosition(t: Point, local: Vec2) Vec2 {
-        return local.scale(t.scale).rotate(t.turns).add(t.pos);
+    pub fn lerp(a: Point, b: Point, t: f32) Point {
+        // TODO: properly handle rotation
+        return .{
+            .pos = Vec2.lerp(a.pos, b.pos, t),
+            .scale = std.math.lerp(a.scale, b.scale, t),
+            .turns = std.math.lerp(a.turns, b.turns, t),
+        };
     }
 
-    pub fn applyToLocalPoint(t: Point, local: Point) Point {
+    pub fn applyToLocalPosition(parent: Point, local: Vec2) Vec2 {
+        return local.scale(parent.scale).rotate(parent.turns).add(parent.pos);
+    }
+
+    pub fn applyToLocalPoint(parent: Point, local: Point) Point {
         return .{
-            .pos = t.applyToLocalPosition(local.pos),
-            .scale = t.scale * local.scale,
-            .turns = t.turns + local.turns,
+            .pos = parent.applyToLocalPosition(local.pos),
+            .scale = parent.scale * local.scale,
+            .turns = parent.turns + local.turns,
         };
     }
 
@@ -189,6 +210,30 @@ const Point = struct {
         try std.testing.expectApproxEqRel(expected.scale, actual.scale, tolerance);
         try std.testing.expectApproxEqRel(expected.turns, actual.turns, tolerance);
         try Vec2.expectApproxEqRel(expected.pos, actual.pos, tolerance);
+    }
+
+    pub fn expectApproxEqAbs(expected: Point, actual: Point, tolerance: anytype) !void {
+        try std.testing.expectApproxEqAbs(expected.scale, actual.scale, tolerance);
+        try std.testing.expectApproxEqAbs(expected.turns, actual.turns, tolerance);
+        try Vec2.expectApproxEqAbs(expected.pos, actual.pos, tolerance);
+    }
+
+    pub fn inverseApplyToLocalPoint(applied: Point, local: Point) Point {
+        const scale = applied.scale / local.scale;
+        const turns = applied.turns - local.turns;
+        return .{
+            .pos = applied.pos.sub(local.pos.scale(scale).rotate(turns)),
+            .scale = scale,
+            .turns = turns,
+        };
+    }
+
+    test "inverse apply" {
+        const parent: Point = .{ .pos = .zero, .scale = 2, .turns = 0.25 };
+        const local: Point = .{ .pos = .e1 };
+        const applied = parent.applyToLocalPoint(local);
+        try expectApproxEqAbs(.{ .pos = .new(0, 2), .scale = 2, .turns = 0.25 }, applied, 0.0001);
+        try expectApproxEqAbs(parent, applied.inverseApplyToLocalPoint(local), 0.0001);
     }
 };
 
@@ -349,9 +394,32 @@ const Drawer = struct {
             0,
         );
         const screen_point = this.camera.screenFromWorld(world_point);
+
+        layer1.setStrokeColor(Color.white);
         js.canvas.beginPath();
-        layer1.circle(screen_point.pos, screen_point.scale * 0.25);
+        js.canvas.ellipse(screen_point.pos.x - screen_point.scale * 0.2 + 1, screen_point.pos.y, screen_point.scale * 0.05, screen_point.scale * 0.25, 0, std.math.pi * 1.5, std.math.pi * 0.5, true);
         js.canvas.stroke();
+
+        // Back face
+        // layer1.setFillColor(Color.gray(128 - 32));
+        // js.canvas.beginPath();
+        // js.canvas.ellipse(screen_point.pos.x - screen_point.scale * 0.2, screen_point.pos.y, screen_point.scale * 0.05, screen_point.scale * 0.25, 0, std.math.pi * 1.5, std.math.pi * 0.5, true);
+        // js.canvas.lineTo(screen_point.pos.x + screen_point.scale * 0.2, screen_point.pos.y + screen_point.scale * 0.25);
+        // js.canvas.ellipse(screen_point.pos.x + screen_point.scale * 0.2, screen_point.pos.y, screen_point.scale * 0.05, screen_point.scale * 0.25, 0, std.math.pi * 0.5, std.math.pi * 1.5, false);
+        // js.canvas.closePath();
+        // js.canvas.fill();
+
+        layer1.setFillColor(Color.white);
+        js.canvas.beginPath();
+        js.canvas.ellipse(screen_point.pos.x - screen_point.scale * 0.2, screen_point.pos.y, screen_point.scale * 0.05, screen_point.scale * 0.25, 0, std.math.pi * 1.5, std.math.pi * 0.5, false);
+        js.canvas.lineTo(screen_point.pos.x - screen_point.scale * 0.1, screen_point.pos.y + screen_point.scale * 0.25);
+        js.canvas.lineTo(screen_point.pos.x - screen_point.scale * 0.05, screen_point.pos.y + screen_point.scale * 0.2);
+        js.canvas.lineTo(screen_point.pos.x + screen_point.scale * 0.075, screen_point.pos.y + screen_point.scale * 0.15);
+        js.canvas.lineTo(screen_point.pos.x + screen_point.scale * 0.15, screen_point.pos.y + screen_point.scale * 0.2);
+        js.canvas.lineTo(screen_point.pos.x + screen_point.scale * 0.1, screen_point.pos.y + screen_point.scale * 0.25);
+        js.canvas.ellipse(screen_point.pos.x + screen_point.scale * 0.2, screen_point.pos.y, screen_point.scale * 0.05, screen_point.scale * 0.25, 0, std.math.pi * 0.5, std.math.pi * 1.5, true);
+        js.canvas.closePath();
+        js.canvas.fill();
     }
 
     pub fn drawCords(this: Drawer, points: []const Vec2, world_scale: f32, offsets: []const f32) void {
@@ -453,13 +521,13 @@ const DebugAnimation = struct {
             const y = -4 * t;
             drawer.drawAtomDebug(.{ .pos = .new(1, y), .scale = 1 });
             drawer.drawAtomDebug(.{ .pos = .new(0, y - 1.25), .scale = 1, .turns = -0.25 });
-            drawer.drawAsdfDevice(.{ .pos = .new(0, y), .scale = 1 });
+            defer drawer.drawAsdfDevice(.{ .pos = .new(0, y), .scale = 1 });
             drawer.drawAtomPatternDebug(.{ .pos = .new(4, y), .scale = 1 });
 
             drawer.drawCable(.new(-3, 0), .zero, 1, -4);
             drawer.drawCords(&.{
                 .zero,
-                .new(0, 1),
+                .new(0.8, 1),
                 .new(4, 1),
                 .new(4 + 0.5, 0),
                 .new(4 + 2, 0),
@@ -468,7 +536,7 @@ const DebugAnimation = struct {
         } else {
             drawer.drawAtomDebug(.{ .pos = .new(1, 0), .scale = 1 });
             drawer.drawAtomDebug(.{ .pos = .new(0, -1.25), .scale = 1, .turns = -0.25 });
-            drawer.drawAsdfDevice(.{ .pos = Vec2.zero, .scale = 1 });
+            defer drawer.drawAsdfDevice(.{ .pos = Vec2.zero, .scale = 1 });
             const x = switch (this.phase) {
                 .moving_up => 4.8,
                 .interlocking => 4.8 - t * 0.8,
@@ -484,7 +552,7 @@ const DebugAnimation = struct {
             drawer.drawCable(.new(-3, 0), .zero, 1, -y - x);
             drawer.drawCords(&.{
                 .zero,
-                .new(0, y + 1),
+                .new(4.8 - x, y + 1),
                 .new(x, y + 1),
                 .new(x + 0.5, y),
                 .new(x + 2, y),
@@ -494,12 +562,74 @@ const DebugAnimation = struct {
     }
 };
 
-var debug_animation = DebugAnimation{};
-var paused = false;
+const DebugAnimation2 = struct {
+    deviceAsdf: Point = .{ .pos = .zero },
+    // pattern_lower_left: Point = .{ .pos = .new(3.8, 3.5), .turns = 0.00 },
+
+    global_t: f32 = 0,
+
+    pub fn update(this: *DebugAnimation2, delta_seconds: f32) void {
+        this.global_t += delta_seconds;
+        this.global_t = @min(this.global_t, 1);
+    }
+
+    // fn animation(this: *DebugAnimation2) void {
+    //     lerpTo( pattern_lower_left, Point{.pos = .new(3, 1), .turns = 0.05} );
+    //     pattern_lower_left = lerp()
+    // }
+
+    pub fn draw(this: DebugAnimation2) void {
+        const canvas_size = layer1.getCanvasSize();
+        const canvas_side = canvas_size.y;
+        std.debug.assert(std.math.approxEqRel(
+            f32,
+            canvas_side * 16 / 9,
+            canvas_size.x,
+            0.01,
+        ));
+        const camera = Camera.fromStuff(
+            canvas_side,
+            .{ .pos = .zero, .scale = 1 },
+            .{ .pos = .new(0.5, 0.5), .scale = 0.5 / 4.0 },
+        );
+        const drawer = Drawer{ .camera = camera };
+        layer1.clear(COLORS.background);
+
+        drawer.drawAtomDebug(this.deviceAsdf.applyToLocalPoint(.{ .pos = .new(1, 0) }));
+        drawer.drawAtomDebug(this.deviceAsdf.applyToLocalPoint(.{ .pos = .new(0, -1.25), .turns = -0.25 }));
+        defer drawer.drawAsdfDevice(this.deviceAsdf);
+
+        const cur_pattern_lower_left = Point.lerp(
+            .{ .pos = .new(3.8, 3.5), .turns = 0.00 },
+            .{ .pos = .new(3, 1), .turns = 0.05 },
+            this.global_t,
+        );
+
+        drawer.drawAtomPatternDebug(cur_pattern_lower_left.inverseApplyToLocalPoint(.{ .pos = .new(-1, 1) }));
+        // drawer.drawAtomPatternDebug(this.pattern_lower_left.inverseApplyToLocalPoint(.{ .pos = .new(-1, 1) }));
+
+        drawer.drawCable(
+            this.deviceAsdf.applyToLocalPosition(.new(-3, 0)),
+            this.deviceAsdf.pos,
+            1,
+            this.global_t * 1.5,
+        );
+        drawer.drawCords(&.{
+            this.deviceAsdf.applyToLocalPosition(.new(0, 0.25)),
+            this.deviceAsdf.applyToLocalPosition(Vec2.lerp(.new(0, 3.5), .one, @min(this.global_t * 1.5, 1))),
+            cur_pattern_lower_left.pos,
+            cur_pattern_lower_left.applyToLocalPosition(.new(1, 0)),
+            cur_pattern_lower_left.applyToLocalPosition(.new(1.5, -1)),
+        }, 1, &.{ this.global_t * 2, this.global_t * 2, 0, 0 });
+    }
+};
+
+var debug_animation: if (false) DebugAnimation else DebugAnimation2 = .{};
+var paused = true;
 
 export fn keydown(code: KeyCode) void {
     if (code == .KeyA) {
-        debug_animation = DebugAnimation{};
+        debug_animation = .{};
     } else if (code == .KeyD) {
         paused = !paused;
     }

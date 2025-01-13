@@ -28,6 +28,7 @@ async function getWasm() {
       setGlobalAlpha: (a) => (ctx.globalAlpha = a),
       fillRect: (x, y, w, h) => ctx.fillRect(x, y, w, h),
       arc: (x, y, radius, startAngle, endAngle, couterclockwise) => ctx.arc(x, y, radius, startAngle, endAngle, couterclockwise),
+      ellipse: (x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise) => ctx.ellipse(x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise),
       getWidth: () => canvas.width,
       getHeight: () => canvas.height,
     },
