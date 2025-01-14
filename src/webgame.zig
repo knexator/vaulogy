@@ -732,8 +732,100 @@ const DebugAnimation2 = struct {
     }
 };
 
+const Rope = struct {
+    pub const N = 20;
+    pub const N_ITERS = 20;
+    pub const stiffness = 0.8;
+    cur_positions: [N]Vec2,
+    prev_positions: [N]Vec2,
+
+    pub fn update(this: *Rope, dt: f32) void {
+        this.verlet(dt);
+        for (0..5) |_| {
+            this.jakobsen_step();
+        }
+    }
+
+    fn verlet(this: *Rope, dt: f32) void {
+        _ = dt;
+        for (this.cur_positions, this.prev_positions, 0..) |cur, prev, k| {
+            this.prev_positions[k] = cur;
+            this.cur_positions[k] = cur.add(cur).sub(prev); //.add(acc.scale(dt * dt)); // no acc
+        }
+    }
+
+    fn relax(p1: *Vec2, p2: *Vec2, desired_dist: f32, p1_fixed: bool) void {
+        const delta = p2.sub(p1.*);
+        const dist = delta.mag();
+        const dir = delta.scale(1 / dist);
+        const dd = dist - desired_dist;
+        const stiffness_correction = (1 - std.math.pow(f32, 1 - stiffness, N_ITERS));
+        if (p1_fixed) {
+            p2.* = p2.sub(dir.scale(dd));
+        } else {
+            p1.* = p1.add(dir.scale(dd / 2).scale(stiffness_correction));
+            p2.* = p2.sub(dir.scale(dd / 2).scale(stiffness_correction));
+        }
+    }
+
+    fn jakobsen_step(this: *Rope) void {
+        for (0..N - 1) |k| {
+            relax(
+                &this.cur_positions[k],
+                &this.cur_positions[k + 1],
+                6.0 / @as(comptime_float, N),
+                k == 0,
+            );
+        }
+        for (&this.cur_positions) |*pos| {
+            const delta = pos.sub(.new(2.8, 0.2));
+            if (delta.mag() < 0.2) {
+                pos.* = pos.add(delta.scale(0.01));
+            }
+        }
+    }
+
+    pub fn draw(this: Rope, drawer: Drawer) void {
+        drawer.drawAtomDebug(.{ .pos = .new(2.8, 0.2), .scale = 0.1 });
+        drawer.drawCords(&this.cur_positions, 1, &(.{0} ** (Rope.N - 1)));
+    }
+};
+
+var debug_rope: Rope = blk: {
+    var res: Rope = undefined;
+    for (0..Rope.N) |k| {
+        const t = @as(comptime_float, @floatFromInt(k)) / @as(comptime_float, @floatFromInt(Rope.N));
+        const pos = if (k < Rope.N / 2)
+            Vec2.new(0 + 6 * t, 0)
+        else
+            Vec2.new(3, 6 * (t - 0.5));
+        res.cur_positions[k] = pos;
+        res.prev_positions[k] = pos;
+    }
+    break :blk res;
+};
+
 var debug_animation: if (false) DebugAnimation else DebugAnimation2 = .{};
 var paused = true;
+
+fn getDrawer() Drawer {
+    const canvas_size = layer1.getCanvasSize();
+    const canvas_side = canvas_size.y;
+    std.debug.assert(std.math.approxEqRel(
+        f32,
+        canvas_side * 16 / 9,
+        canvas_size.x,
+        0.01,
+    ));
+    const camera = Camera.fromStuff(
+        canvas_side,
+        .{ .pos = .zero, .scale = 1 },
+        .{ .pos = .new(0.5, 0.5), .scale = 0.5 / 4.0 },
+    );
+    const drawer = Drawer{ .camera = camera };
+    // layer1.clear(COLORS.background);
+    return drawer;
+}
 
 export fn keydown(code: KeyCode) void {
     if (code == .KeyA) {
@@ -743,13 +835,17 @@ export fn keydown(code: KeyCode) void {
     }
 }
 
+// var total: f32 = 0;
 export fn frame(delta_seconds: f32) void {
+    debug_rope.cur_positions[0].x -= delta_seconds * 0.01;
+    debug_rope.update(delta_seconds);
     if (paused) return;
     debug_animation.update(delta_seconds);
 }
 
 export fn draw() void {
     debug_animation.draw();
+    debug_rope.draw(getDrawer());
 }
 
 fn programmerError() void {
