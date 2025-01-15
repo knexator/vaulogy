@@ -41,14 +41,14 @@ fn parseSexprTrue(input: []const u8, pool: *MemoryPool(Sexpr)) error{ OutOfMemor
 fn parseSexprInsideParens(input: []const u8, pool: *MemoryPool(Sexpr)) !struct { sexpr: *const Sexpr, rest: []const u8 } {
     var rest = input;
     skipWhitespace(&rest);
+    if (rest.len == 0) return error.BAD_INPUT;
     if (rest[0] == ')') {
         return .{ .sexpr = &Sexpr.nil, .rest = rest[1..] };
-    }
-    if (rest[0] == '.') {
+    } else if (rest[0] == '.') {
         const final_asdf = try parseSexprTrue(rest[1..], pool);
         rest = final_asdf.rest;
         skipWhitespace(&rest);
-        if (rest[0] != ')') return error.BAD_INPUT;
+        if (rest.len == 0 or rest[0] != ')') return error.BAD_INPUT;
         return .{ .sexpr = final_asdf.sexpr, .rest = rest[1..] };
     }
     const first_asdf = try parseSexprTrue(rest, pool);

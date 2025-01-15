@@ -126,6 +126,14 @@ pub fn build(b: *std.Build) void {
     const output = generate_keycodes_step.addOutputFileArg("keycodes.js");
     b.getInstallStep().dependOn(&b.addInstallFileWithDir(output, webgame_install_dir, "keycodes.js").step);
 
+    // test solutions.txt against puzzles.txt
+    const run_cmd_test = b.addRunArtifact(exe);
+    run_cmd_test.addArg("score");
+    run_cmd_test.addFileArg(b.path("levels/solutions.txt"));
+    run_cmd_test.addFileArg(b.path("levels/puzzles.txt"));
+    const run_cmd_test_step = b.step("levels", "Check solutions.txt against puzzles.txt");
+    run_cmd_test_step.dependOn(&run_cmd_test.step);
+
     // dev server for testing the webgame
     const dev_server_exe = b.addExecutable(.{
         .name = "dev_server",

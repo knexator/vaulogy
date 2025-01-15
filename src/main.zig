@@ -187,7 +187,7 @@ fn fnkSize(fnk: FnkBody) usize {
     return res;
 }
 
-const PermamentGameStuff = struct {
+pub const PermamentGameStuff = struct {
     all_fnks: FnkCollection,
     pool_for_sexprs: MemoryPool(Sexpr),
     arena_for_cases: std.heap.ArenaAllocator,
@@ -210,13 +210,22 @@ const PermamentGameStuff = struct {
         const arena_for_bindings = std.heap.ArenaAllocator.init(allocator);
         var fnk_collection = FnkCollection.init(allocator);
         var remaining_fnk_input = all_fnks_raw;
+        var used_fnks = FnkSet.init(allocator);
+
+        errdefer {
+            pool_for_sexprs.deinit();
+            fnk_collection.deinit();
+            used_fnks.deinit();
+            arena_for_cases.deinit();
+            arena_for_bindings.deinit();
+        }
+
         while (true) {
             parsing.skipWhitespace(&remaining_fnk_input);
             if (remaining_fnk_input.len == 0) break;
             const fnk = try parsing.parseFnk(&remaining_fnk_input, &pool_for_sexprs, arena_for_cases.allocator());
             try fnk_collection.put(fnk.name, fnk.body);
         }
-        const used_fnks = FnkSet.init(allocator);
 
         return PermamentGameStuff{
             .all_fnks = fnk_collection,
@@ -412,6 +421,7 @@ const Game = struct {
         allocator: std.mem.Allocator,
     ) !void {
         result.permanent_stuff = try PermamentGameStuff.init(all_fnks_raw, allocator);
+        errdefer result.permanent_stuff.deinit();
 
         const fn_name = try parsing.parseSingleSexpr(fn_name_raw, &result.permanent_stuff.pool_for_sexprs);
         const input = try parsing.parseSingleSexpr(input_raw, &result.permanent_stuff.pool_for_sexprs);
@@ -446,7 +456,7 @@ pub fn main() !u8 {
     defer args.deinit();
     std.debug.assert(args.skip());
 
-    const verb = args.next().?;
+    const verb = args.next() orelse "help";
 
     if (std.mem.eql(u8, verb, "run") or std.mem.eql(u8, verb, "debug")) {
         const fnks_collection_raw: []const u8 = blk: {
@@ -498,9 +508,21 @@ pub fn main() !u8 {
         std.debug.assert(!args.skip());
         if (std.mem.eql(u8, verb, "run")) {
             var game: Game = undefined;
-            try Game.init(&game, input_raw, fn_name_raw, fnks_collection_raw, allocator);
+            Game.init(&game, input_raw, fn_name_raw, fnks_collection_raw, allocator) catch |err| switch (err) {
+                error.BAD_INPUT => {
+                    try stdout.print("Bad grammar somewhere!\n", .{});
+                    return 1;
+                },
+                else => return err,
+            };
             defer game.deinit();
-            const result = try game.getFinalResult();
+            const result = game.getFinalResult() catch |err| switch (err) {
+                error.BAD_INPUT => {
+                    try stdout.print("Found bad input during execution!\n", .{});
+                    return 1;
+                },
+                else => return err,
+            };
             try stdout.print("result: {any}\n", .{result});
         } else {
             var mem = try PermamentGameStuff.init(fnks_collection_raw, allocator);
@@ -533,6 +555,9 @@ pub fn main() !u8 {
             try stdout.print("final result: {any}\n", .{exec.active_value});
         }
     } else if (std.mem.eql(u8, verb, "score")) {
+        var n_correct: u32 = 0;
+        var n_total: u32 = 0;
+
         const player_fnks_collection_raw: []const u8 = blk: {
             const filename = args.next().?;
             const file = try std.fs.cwd().openFile(filename, .{});
@@ -630,11 +655,19 @@ pub fn main() !u8 {
                     try stdout.print("failed fnk {any}:\texpected {any} for input {any}, got {any}\n", .{ fnk_name, f.expected, f.input, f.actual });
                 },
                 .score => |s| {
-                    try stdout.print("fnk {any}:\tmax stack {d}, required time {d}\n", .{ fnk_name, s.max_stack, s.time });
+                    const fnk_name_str = try std.fmt.allocPrint(allocator, "fnk {any}:", .{fnk_name});
+                    defer allocator.free(fnk_name_str);
+                    const rest = try std.fmt.allocPrint(allocator, "max stack {d}, required time {d}", .{ s.max_stack, s.time });
+                    defer allocator.free(rest);
+                    try stdout.print("{s: <40}{s}\n", .{ fnk_name_str, rest });
+                    // try stdout.print("fnk {s}:\tmax stack {d}, required time {d}\n", .{ fnk_name_str, s.max_stack, s.time });
+                    n_correct += 1;
                 },
             }
+            n_total += 1;
         }
-        try stdout.print("global stats: code size {d}, compile time {d}\n", .{ player_mem.score.code_size, player_mem.score.compile_time });
+        try stdout.print("global stats: code size {d}, compile time {d}, {d}/{d} correct\n", .{ player_mem.score.code_size, player_mem.score.compile_time, n_correct, n_total });
+        return if (n_correct == n_total) 0 else 1;
     } else {
         try stdout.print(
             \\  valid commands:

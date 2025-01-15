@@ -70,6 +70,7 @@
         "build.zig.zon",
         "src",
         "static",
+        "levels",
         // For example...
         //"LICENSE",
         //"README.md",

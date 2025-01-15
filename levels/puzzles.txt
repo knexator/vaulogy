@@ -1,0 +1,87 @@
+// Welcome to Vaulogy 101! In this course you'll learn all we know so far about the newly-discovered alien biology. At it's core, it works by doing a lot of search & replace. Let's start by looking at the Greek Enzyme, which takes an Olympian and produces the corresponding Planet. Look in the 'test cases' for the full set.
+planetFromOlympian {
+    Hermes -> Mercury;
+    Aphrodite -> Venus;
+    Ares -> Mars;
+    Zeus -> Jupiter;
+    Kronos -> Saturn;
+    Poseidon -> Neptune;
+    Hades -> Pluto;
+}
+
+// Of course, alien vaulogy is never that simple. Olympian atoms are quite volatile, so they travel wrapped up in a protective case to prevent them from reacting too soon. Let's look at the enzyme that wraps them:
+wrapOlympian {
+    Hermes -> ((top . Hermes) . bottom);
+    Aphrodite -> ((top . Aphrodite) . bottom);
+    Ares -> ((top . Ares) . bottom);
+    Zeus -> ((top . Zeus) . bottom);
+    Kronos -> ((top . Kronos) . bottom);
+    Poseidon -> ((top . Poseidon) . bottom);
+    Hades -> ((top . Hades) . bottom);
+}
+
+// The magic of vaus is applying one to the result of another. Let's build the real version of the Greek Enzyme, that works on wrapped olympians:
+planetFromWrappedOlympian {
+    ((top . Hermes) . bottom) -> Mercury;
+    ((top . Aphrodite) . bottom) -> Venus;
+    ((top . Ares) . bottom) -> Mars;
+    ((top . Zeus) . bottom) -> Jupiter;
+    ((top . Kronos) . bottom) -> Saturn;
+    ((top . Poseidon) . bottom) -> Neptune;
+    ((top . Hades) . bottom) -> Pluto;
+}
+
+// Another example: return a wrapped planet
+wrappedPlanetFromOlympian {
+    Hermes -> ((top . Mercury) . bottom);
+    Aphrodite -> ((top . Venus) . bottom);
+    Ares -> ((top . Mars) . bottom);
+    Zeus -> ((top . Jupiter) . bottom);
+    Kronos -> ((top . Saturn) . bottom);
+    Poseidon -> ((top . Neptune) . bottom);
+    Hades -> ((top . Pluto) . bottom);
+}
+
+planetPairFromOlympianPair {
+    (Hermes . Hermes) -> (Mercury . Mercury);
+    (Hermes . Aphrodite) -> (Mercury . Venus);
+    (Aphrodite . Hermes) -> (Venus . Mercury);
+    (Ares . Zeus) -> (Mars . Jupiter);
+    (Kronos . Hermes) -> (Saturn . Mercury);
+    (Hades . Aphrodite) -> (Pluto . Venus);
+    (Poseidon . Poseidon) -> (Neptune . Neptune);
+    // etc
+}
+
+// any of (Mercury, Venus, Mars) in the tree?
+rockyPlanetInTree? {
+    Mercury -> true;
+    (Jupiter . Venus) -> true;
+    ( ( Pluto . Saturn ) . Neptune) -> false;
+    ( ( Pluto . Saturn ) . ( Mars . Jupiter) ) -> true;
+    // etc
+}
+
+// any of (Mercury, Venus, Mars) in the list?
+rockyPlanetInList? {
+    () -> false;
+    (Mercury) -> true;
+    (Jupiter Venus) -> true;
+    (Pluto Saturn Neptune) -> false;
+    (Pluto Saturn Mars Jupiter) -> true;
+    // etc
+}
+
+// Addition - Simple
+add {
+    ((S S S) . (S S)) -> (S S S S S); 
+    ((S) . (S S S S)) -> (S S S S S); 
+    ((S S S S S S) . (S S S S S S S)) -> (S S S S S S S S S S S S S); 
+    (() . ()) -> (); 
+}
+
+// Addition - Decimal
+// addDecimals {
+    // ((1 2 3) . (7 7)) -> (2 0 0); 
+    // ((2 0) . (6 0)) -> (1 0 0); 
+// }
