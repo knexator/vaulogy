@@ -82,11 +82,11 @@ onlyRockyPlanets {
     // etc
 }
 
-// mostCommonPlanets {
-    // (Mercury Pluto Mercury) -> (Mercury);
-    // (Mercury Venus Saturn Mercury Saturn) -> (Mercury Saturn);
-    // () -> ();
-// }
+mostCommonPlanets {
+    (Mercury Pluto Mercury) -> (Mercury);
+    (Mercury Venus Saturn Mercury Saturn) -> (Mercury Saturn);
+    () -> ();
+}
 
 ////////////////
 

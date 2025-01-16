@@ -64,7 +64,33 @@ equal? {
 }
 
 mostCommonPlanets {
-    @in -> countStackless: (@in . nil);
+    @in -> countStackless: (@in . nil) {
+        nil -> nil;
+        @counts -> (mostCommonPlanets . lastStep): @counts;
+    }
+}
+
+(mostCommonPlanets . lastStep) {
+    nil -> nil;
+    @in -> (mostCommonPlanets . removeOneFromAll): @in {
+        nil -> (mostCommonPlanets . getHeads): @in;
+        @new -> (mostCommonPlanets . lastStep): @new;
+    }
+}
+
+(mostCommonPlanets . removeOneFromAll) {
+    nil -> nil;
+    ( (@v1 . nil) . @rest ) -> (mostCommonPlanets . removeOneFromAll): @rest;
+    ( (@v1 . (S . @r1)) . @rest ) -> (mostCommonPlanets . removeOneFromAll): @rest {
+        @new_rest -> ((@v1 . @r1) . @new_rest);
+    }
+}
+
+(mostCommonPlanets . getHeads) {
+    nil -> nil;
+    ((@a . @_) . @rest) -> (mostCommonPlanets . getHeads): @rest {
+        @new -> (@a . @new);
+    }
 }
 
 countStackless {
