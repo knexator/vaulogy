@@ -187,17 +187,44 @@ fn fnkSize(fnk: FnkBody) usize {
     return res;
 }
 
-// TODO: separate into the truly permanent stuff and the scoring part
-pub const PermamentGameStuff = struct {
+// TODO: move all_fnks into ScoringRun
+pub const VeryPermamentGameStuff = struct {
     all_fnks: FnkCollection,
     pool_for_sexprs: MemoryPool(Sexpr),
     arena_for_cases: std.heap.ArenaAllocator,
     arena_for_bindings: std.heap.ArenaAllocator,
     allocator_for_stack: std.mem.Allocator,
+    gpa: std.mem.Allocator,
 
-    // TODO: should this go in all_fnks?
+    pub fn init(
+        allocator: std.mem.Allocator,
+    ) VeryPermamentGameStuff {
+        const pool_for_sexprs = MemoryPool(Sexpr).init(allocator);
+        const arena_for_cases = std.heap.ArenaAllocator.init(allocator);
+        const arena_for_bindings = std.heap.ArenaAllocator.init(allocator);
+        const all_fnks = FnkCollection.init(allocator);
+
+        return VeryPermamentGameStuff{
+            .all_fnks = all_fnks,
+            .pool_for_sexprs = pool_for_sexprs,
+            .arena_for_cases = arena_for_cases,
+            .arena_for_bindings = arena_for_bindings,
+            .allocator_for_stack = allocator,
+            .gpa = allocator,
+        };
+    }
+
+    pub fn deinit(this: *VeryPermamentGameStuff) void {
+        this.pool_for_sexprs.deinit();
+        this.all_fnks.deinit();
+        this.arena_for_cases.deinit();
+        this.arena_for_bindings.deinit();
+    }
+};
+
+pub const ScoringRun = struct {
+    mem: *VeryPermamentGameStuff,
     used_fnks: FnkSet,
-
     score: struct {
         code_size: usize,
         compile_time: usize,
@@ -205,53 +232,33 @@ pub const PermamentGameStuff = struct {
 
     pub fn init(
         all_fnks_raw: []const u8,
-        allocator: std.mem.Allocator,
-    ) !PermamentGameStuff {
-        var pool_for_sexprs = MemoryPool(Sexpr).init(allocator);
-        var arena_for_cases = std.heap.ArenaAllocator.init(allocator);
-        const arena_for_bindings = std.heap.ArenaAllocator.init(allocator);
-        var fnk_collection = FnkCollection.init(allocator);
-        var used_fnks = FnkSet.init(allocator);
-
-        errdefer {
-            pool_for_sexprs.deinit();
-            fnk_collection.deinit();
-            used_fnks.deinit();
-            arena_for_cases.deinit();
-            arena_for_bindings.deinit();
-        }
+        mem: *VeryPermamentGameStuff,
+    ) !ScoringRun {
+        const used_fnks = FnkSet.init(mem.gpa);
 
         // var remaining_fnk_input = all_fnks_raw;
         var parser = parsing.Parser{ .remaining_text = all_fnks_raw };
-        try parser.parseFnkCollection(&fnk_collection, &pool_for_sexprs, arena_for_cases.allocator());
+        try parser.parseFnkCollection(&mem.all_fnks, &mem.pool_for_sexprs, mem.arena_for_cases.allocator());
 
-        return PermamentGameStuff{
-            .all_fnks = fnk_collection,
-            .pool_for_sexprs = pool_for_sexprs,
-            .arena_for_cases = arena_for_cases,
-            .arena_for_bindings = arena_for_bindings,
-            .allocator_for_stack = allocator,
+        return ScoringRun{
+            .mem = mem,
             .used_fnks = used_fnks,
             .score = .{ .code_size = 0, .compile_time = 0 },
         };
     }
 
-    pub fn deinit(this: *PermamentGameStuff) void {
-        this.pool_for_sexprs.deinit();
-        this.all_fnks.deinit();
+    pub fn deinit(this: *ScoringRun) void {
         this.used_fnks.deinit();
-        this.arena_for_cases.deinit();
-        this.arena_for_bindings.deinit();
     }
 
-    fn findFunktion(this: *PermamentGameStuff, name: *const Sexpr) error{
+    fn findFunktion(this: *ScoringRun, name: *const Sexpr) error{
         OutOfMemory,
         BAD_INPUT,
         FnkNotFound,
         NoMatchingCase,
         InvalidMetaFnk,
     }!*const FnkBody {
-        if (this.all_fnks.getPtr(name)) |fnk| {
+        if (this.mem.all_fnks.getPtr(name)) |fnk| {
             if (this.used_fnks.get(name) == null) {
                 try this.used_fnks.put(name, {});
                 this.score.code_size += fnkSize(fnk.*);
@@ -265,13 +272,13 @@ pub const PermamentGameStuff = struct {
                 defer exec.deinit();
                 const asdf = try exec.getFinalResult(this);
                 this.score.compile_time += exec.score.successful_matches;
-                const cases = try fnkFromSexpr(asdf, this.arena_for_cases.allocator(), &this.pool_for_sexprs);
+                const cases = try fnkFromSexpr(asdf, this.mem.arena_for_cases.allocator(), &this.mem.pool_for_sexprs);
                 if (DEBUG) {
                     const stderr = std.io.getStdErr().writer();
                     stderr.print("\ncompiled a fnk, the cases are: {any}\n", .{asdf}) catch unreachable;
                 }
-                try this.all_fnks.put(name, cases);
-                return this.all_fnks.getPtr(name).?;
+                try this.mem.all_fnks.put(name, cases);
+                return this.mem.all_fnks.getPtr(name).?;
             },
         }
     }
@@ -282,7 +289,7 @@ const StackThing = struct {
     cur_cases: []const MatchCaseDefinition,
     cur_bindings: Bindings,
 
-    pub fn init(input: *const Sexpr, fn_name: *const Sexpr, permanent_stuff: *PermamentGameStuff) !union(enum) {
+    pub fn init(input: *const Sexpr, fn_name: *const Sexpr, scoring_run: *ScoringRun) !union(enum) {
         builtin: *const Sexpr,
         stack_thing: StackThing,
     } {
@@ -292,8 +299,8 @@ const StackThing = struct {
             }
         }
 
-        const bindings = std.ArrayList(Binding).init(permanent_stuff.arena_for_bindings.allocator());
-        const cases = (try permanent_stuff.findFunktion(fn_name)).*.cases.items;
+        const bindings = std.ArrayList(Binding).init(scoring_run.mem.arena_for_bindings.allocator());
+        const cases = (try scoring_run.findFunktion(fn_name)).*.cases.items;
         return .{ .stack_thing = StackThing{
             .cur_bindings = bindings,
             .cur_cases = cases,
@@ -319,10 +326,10 @@ pub const ExecutionThread = struct {
     pub fn init(
         input: *const Sexpr,
         fn_name: *const Sexpr,
-        permanent_stuff: *PermamentGameStuff,
+        scoring_run: *ScoringRun,
     ) !ExecutionThread {
-        var stack = std.ArrayList(StackThing).init(permanent_stuff.allocator_for_stack);
-        switch (try StackThing.init(input, fn_name, permanent_stuff)) {
+        var stack = std.ArrayList(StackThing).init(scoring_run.mem.allocator_for_stack);
+        switch (try StackThing.init(input, fn_name, scoring_run)) {
             .builtin => |res| return ExecutionThread{
                 .active_value = res,
                 .stack = stack,
@@ -348,14 +355,16 @@ pub const ExecutionThread = struct {
     pub fn initFromText(
         input_raw: []const u8,
         fn_name_raw: []const u8,
-        permanent_stuff: *PermamentGameStuff,
+        scoring_run: *ScoringRun,
     ) !ExecutionThread {
+        var permanent_stuff = scoring_run.mem;
         const fn_name = try parsing.parseSingleSexpr(fn_name_raw, &permanent_stuff.pool_for_sexprs);
         const input = try parsing.parseSingleSexpr(input_raw, &permanent_stuff.pool_for_sexprs);
-        return ExecutionThread.init(input, fn_name, permanent_stuff);
+        return ExecutionThread.init(input, fn_name, scoring_run);
     }
 
-    pub fn advanceStep(this: *ExecutionThread, permanent_stuff: *PermamentGameStuff) !?*const Sexpr {
+    pub fn advanceStep(this: *ExecutionThread, scoring_run: *ScoringRun) !?*const Sexpr {
+        var permanent_stuff = scoring_run.mem;
         if (this.stack.items.len > 0) {
             const last_stack_ptr: *StackThing = &this.stack.items[this.stack.items.len - 1];
             const initial_bindings_count = last_stack_ptr.cur_bindings.items.len;
@@ -375,7 +384,7 @@ pub const ExecutionThread = struct {
 
                 this.score.successful_matches += 1;
 
-                const new_thing = try StackThing.init(this.active_value, case.fn_name, permanent_stuff);
+                const new_thing = try StackThing.init(this.active_value, case.fn_name, scoring_run);
                 switch (new_thing) {
                     .stack_thing => |x| {
                         try this.stack.append(x);
@@ -394,9 +403,9 @@ pub const ExecutionThread = struct {
         }
     }
 
-    pub fn getFinalResult(this: *ExecutionThread, permanent_stuff: *PermamentGameStuff) !*const Sexpr {
+    pub fn getFinalResult(this: *ExecutionThread, scoring_run: *ScoringRun) !*const Sexpr {
         while (true) {
-            if (try this.advanceStep(permanent_stuff)) |res| {
+            if (try this.advanceStep(scoring_run)) |res| {
                 return res;
             }
         }
@@ -408,7 +417,8 @@ pub const ExecutionThread = struct {
 };
 
 const SingleRunHelper = struct {
-    permanent_stuff: PermamentGameStuff,
+    permanent_stuff: VeryPermamentGameStuff,
+    scoring_run: ScoringRun,
     execution: ExecutionThread,
 
     pub fn init(
@@ -418,21 +428,24 @@ const SingleRunHelper = struct {
         all_fnks_raw: []const u8,
         allocator: std.mem.Allocator,
     ) !void {
-        result.permanent_stuff = try PermamentGameStuff.init(all_fnks_raw, allocator);
+        result.permanent_stuff = VeryPermamentGameStuff.init(allocator);
         errdefer result.permanent_stuff.deinit();
+        result.scoring_run = try ScoringRun.init(all_fnks_raw, &result.permanent_stuff);
+        errdefer result.scoring_run.deinit();
 
         const fn_name = try parsing.parseSingleSexpr(fn_name_raw, &result.permanent_stuff.pool_for_sexprs);
         const input = try parsing.parseSingleSexpr(input_raw, &result.permanent_stuff.pool_for_sexprs);
-        result.execution = try ExecutionThread.init(input, fn_name, &result.permanent_stuff);
+        result.execution = try ExecutionThread.init(input, fn_name, &result.scoring_run);
     }
 
     pub fn deinit(this: *SingleRunHelper) void {
         this.permanent_stuff.deinit();
+        this.scoring_run.deinit();
         this.execution.deinit();
     }
 
     pub fn getFinalResult(this: *SingleRunHelper) !*const Sexpr {
-        return this.execution.getFinalResult(&this.permanent_stuff);
+        return this.execution.getFinalResult(&this.scoring_run);
     }
 };
 
@@ -523,9 +536,11 @@ pub fn main() !u8 {
             };
             try stdout.print("result: {any}\n", .{result});
         } else {
-            var mem = try PermamentGameStuff.init(fnks_collection_raw, allocator);
+            var mem = VeryPermamentGameStuff.init(allocator);
             defer mem.deinit();
-            var exec = try ExecutionThread.initFromText(input_raw, fn_name_raw, &mem);
+            var scoring_run = try ScoringRun.init(fnks_collection_raw, &mem);
+            defer scoring_run.deinit();
+            var exec = try ExecutionThread.initFromText(input_raw, fn_name_raw, &scoring_run);
             defer exec.deinit();
 
             // TODO: show already bound vars
@@ -546,7 +561,7 @@ pub fn main() !u8 {
                     });
                 }
                 try stdout.print("\n", .{});
-                _ = try exec.advanceStep(&mem);
+                _ = try exec.advanceStep(&scoring_run);
                 step += 1;
             }
             // try stdout.print("{s}\n", .{"-" ** 10});
@@ -572,12 +587,16 @@ pub fn main() !u8 {
         };
         defer allocator.free(target_fnks_collection_raw);
 
-        var player_mem = try PermamentGameStuff.init(player_fnks_collection_raw, allocator);
+        var player_mem = VeryPermamentGameStuff.init(allocator);
         defer player_mem.deinit();
-        var target_mem = try PermamentGameStuff.init(target_fnks_collection_raw, allocator);
+        var target_mem = VeryPermamentGameStuff.init(allocator);
         defer target_mem.deinit();
+        var player_score = try ScoringRun.init(player_fnks_collection_raw, &player_mem);
+        defer player_score.deinit();
+        var target_score = try ScoringRun.init(target_fnks_collection_raw, &target_mem);
+        defer target_score.deinit();
 
-        var it = target_mem.all_fnks.iterator();
+        var it = target_score.mem.all_fnks.iterator();
         while (it.next()) |x| {
             const fnk_name = x.key_ptr.*;
             const fnk_body = x.value_ptr.*;
@@ -608,7 +627,7 @@ pub fn main() !u8 {
                 const cur_input = case.pattern;
                 const expected_output = case.template;
 
-                var exec = ExecutionThread.init(cur_input, fnk_name, &player_mem) catch |err| switch (err) {
+                var exec = ExecutionThread.init(cur_input, fnk_name, &player_score) catch |err| switch (err) {
                     error.FnkNotFound => {
                         result = .{ .target_fnk_not_defined = {} };
                         break;
@@ -618,7 +637,7 @@ pub fn main() !u8 {
                 };
                 defer exec.deinit();
 
-                const actual_output = exec.getFinalResult(&player_mem) catch |err| switch (err) {
+                const actual_output = exec.getFinalResult(&player_score) catch |err| switch (err) {
                     error.FnkNotFound => {
                         result = .{ .fnk_not_found = .{ .input = cur_input } };
                         break;
@@ -664,7 +683,7 @@ pub fn main() !u8 {
             }
             n_total += 1;
         }
-        try stdout.print("global stats: code size {d}, compile time {d}, {d}/{d} correct\n", .{ player_mem.score.code_size, player_mem.score.compile_time, n_correct, n_total });
+        try stdout.print("global stats: code size {d}, compile time {d}, {d}/{d} correct\n", .{ player_score.score.code_size, player_score.score.compile_time, n_correct, n_total });
         return if (n_correct == n_total) 0 else 1;
     } else {
         try stdout.print(
@@ -693,9 +712,9 @@ test "main test" {
     const expected = Sexpr.doLit("output");
     try expectEqualSexprs(&expected, actual);
 
-    var exec = try ExecutionThread.init(&Sexpr.doLit("input"), &Sexpr.doLit("fn_name"), &game.permanent_stuff);
+    var exec = try ExecutionThread.init(&Sexpr.doLit("input"), &Sexpr.doLit("fn_name"), &game.scoring_run);
     defer exec.deinit();
-    try expectEqualSexprs(&expected, try exec.getFinalResult(&game.permanent_stuff));
+    try expectEqualSexprs(&expected, try exec.getFinalResult(&game.scoring_run));
 }
 
 test "with comptime" {
@@ -759,7 +778,9 @@ test "apply another nested fnk, with ExecutionState" {
 }
 
 test "scoring bubbleUp" {
-    var mem = try PermamentGameStuff.init(
+    var mem = VeryPermamentGameStuff.init(std.testing.allocator);
+    defer mem.deinit();
+    var scoring = try ScoringRun.init(
         \\ 
         \\ bubbleUp {
         \\      (X . @rest) -> (X . @rest);
@@ -767,10 +788,10 @@ test "scoring bubbleUp" {
         \\          (X . @rest) -> (X @a . @rest);
         \\      }
         \\ }
-    , std.testing.allocator);
-    defer mem.deinit();
+    , &mem);
+    defer scoring.deinit();
 
-    var exec = try ExecutionThread.initFromText("(a b X c d)", "bubbleUp", &mem);
+    var exec = try ExecutionThread.initFromText("(a b X c d)", "bubbleUp", &scoring);
     defer exec.deinit();
 
     const expected = Sexpr.doPair(&Sexpr.doLit("X"), &Sexpr.doPair(
@@ -784,7 +805,7 @@ test "scoring bubbleUp" {
         )),
     ));
 
-    const actual = try exec.getFinalResult(&mem);
+    const actual = try exec.getFinalResult(&scoring);
     try expectEqualSexprs(&expected, actual);
 
     try std.testing.expectEqual(3, exec.score.max_stack);
@@ -792,7 +813,9 @@ test "scoring bubbleUp" {
 }
 
 test "scoring with comptime" {
-    var mem = try PermamentGameStuff.init(
+    var mem = VeryPermamentGameStuff.init(std.testing.allocator);
+    defer mem.deinit();
+    var scoring = try ScoringRun.init(
         \\
         \\  stuff {
         \\      @digit -> (compileMap . ( 
@@ -809,22 +832,22 @@ test "scoring with comptime" {
         \\          @rest_compiled -> ( ((atom . @key) identity (atom . @value) . return) . @rest_compiled );
         \\      }
         \\  }
-    , std.testing.allocator);
-    defer mem.deinit();
+    , &mem);
+    defer scoring.deinit();
 
-    var exec = try ExecutionThread.initFromText("2", "stuff", &mem);
+    var exec = try ExecutionThread.initFromText("2", "stuff", &scoring);
     defer exec.deinit();
 
     const expected = Sexpr.doLit("c");
 
-    const actual = try exec.getFinalResult(&mem);
+    const actual = try exec.getFinalResult(&scoring);
     try expectEqualSexprs(&expected, actual);
 
     try std.testing.expectEqual(1, exec.score.max_stack);
     try std.testing.expectEqual(2, exec.score.successful_matches);
 
-    try std.testing.expectEqual(4, mem.score.code_size);
-    try std.testing.expectEqual(9, mem.score.compile_time);
+    try std.testing.expectEqual(4, scoring.score.code_size);
+    try std.testing.expectEqual(9, scoring.score.compile_time);
 }
 
 fn expectEqualSexprs(expected: *const Sexpr, actual: *const Sexpr) !void {
