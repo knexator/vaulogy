@@ -187,6 +187,7 @@ fn fnkSize(fnk: FnkBody) usize {
     return res;
 }
 
+// TODO: separate into the truly permanent stuff and the scoring part
 pub const PermamentGameStuff = struct {
     all_fnks: FnkCollection,
     pool_for_sexprs: MemoryPool(Sexpr),
@@ -196,6 +197,7 @@ pub const PermamentGameStuff = struct {
 
     // TODO: should this go in all_fnks?
     used_fnks: FnkSet,
+
     score: struct {
         code_size: usize,
         compile_time: usize,
@@ -305,7 +307,7 @@ const StackThing = struct {
     }
 };
 
-const ExecutionThread = struct {
+pub const ExecutionThread = struct {
     active_value: *const Sexpr,
     stack: std.ArrayList(StackThing),
 
@@ -405,12 +407,12 @@ const ExecutionThread = struct {
     }
 };
 
-const Game = struct {
+const SingleRunHelper = struct {
     permanent_stuff: PermamentGameStuff,
     execution: ExecutionThread,
 
     pub fn init(
-        result: *Game,
+        result: *SingleRunHelper,
         input_raw: []const u8,
         fn_name_raw: []const u8,
         all_fnks_raw: []const u8,
@@ -424,12 +426,12 @@ const Game = struct {
         result.execution = try ExecutionThread.init(input, fn_name, &result.permanent_stuff);
     }
 
-    pub fn deinit(this: *Game) void {
+    pub fn deinit(this: *SingleRunHelper) void {
         this.permanent_stuff.deinit();
         this.execution.deinit();
     }
 
-    pub fn getFinalResult(this: *Game) !*const Sexpr {
+    pub fn getFinalResult(this: *SingleRunHelper) !*const Sexpr {
         return this.execution.getFinalResult(&this.permanent_stuff);
     }
 };
@@ -503,8 +505,8 @@ pub fn main() !u8 {
 
         std.debug.assert(!args.skip());
         if (std.mem.eql(u8, verb, "run")) {
-            var game: Game = undefined;
-            Game.init(&game, input_raw, fn_name_raw, fnks_collection_raw, allocator) catch |err| switch (err) {
+            var game: SingleRunHelper = undefined;
+            SingleRunHelper.init(&game, input_raw, fn_name_raw, fnks_collection_raw, allocator) catch |err| switch (err) {
                 error.BAD_INPUT => {
                     try stdout.print("Bad grammar somewhere!\n", .{});
                     return 1;
@@ -679,8 +681,8 @@ pub fn main() !u8 {
 }
 
 test "main test" {
-    var game: Game = undefined;
-    try Game.init(&game, "input", "fn_name",
+    var game: SingleRunHelper = undefined;
+    try SingleRunHelper.init(&game, "input", "fn_name",
         \\  fn_name {
         \\      input -> output;    
         \\  }
@@ -697,8 +699,8 @@ test "main test" {
 }
 
 test "with comptime" {
-    var game: Game = undefined;
-    try Game.init(&game, "2", "stuff",
+    var game: SingleRunHelper = undefined;
+    try SingleRunHelper.init(&game, "2", "stuff",
         \\  
         \\  stuff {
         \\      @digit -> (compileMap . ( 
@@ -732,8 +734,8 @@ test "with comptime" {
 }
 
 test "apply another nested fnk, with ExecutionState" {
-    var game: Game = undefined;
-    try Game.init(&game, "(1)", "stuff",
+    var game: SingleRunHelper = undefined;
+    try SingleRunHelper.init(&game, "(1)", "stuff",
         \\ stuff {
         \\      nil -> hola;
         \\      (@a . @rest) -> @a {
