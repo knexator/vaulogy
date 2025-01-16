@@ -5,6 +5,7 @@ const Sexpr = @import("main.zig").Sexpr;
 const Pair = @import("main.zig").Pair;
 const Atom = @import("main.zig").Atom;
 const Fnk = @import("main.zig").Fnk;
+const FnkCollection = @import("main.zig").FnkCollection;
 const MatchCases = @import("main.zig").MatchCases;
 const MatchCaseDefinition = @import("main.zig").MatchCaseDefinition;
 
@@ -153,3 +154,47 @@ fn parseCharIfPossible(input: *[]const u8, comptime expected: u8) bool {
     input.* = input.*[1..];
     return true;
 }
+
+// TODO: this, but much better
+pub const Parser = struct {
+    remaining_text: []const u8,
+
+    pub fn parseFnkCollection(this: *Parser, result: *FnkCollection, pool: *MemoryPool(Sexpr), allocator: std.mem.Allocator) !void {
+        while (true) {
+            this.skipWhitespaceNew();
+            if (this.remaining_text.len == 0) break;
+            const fnk = try this.parseFnkNew(pool, allocator);
+            try result.put(fnk.name, fnk.body);
+        }
+    }
+
+    fn skipWhitespaceNew(this: *Parser) void {
+        skipWhitespace(&this.remaining_text);
+    }
+
+    fn parseFnkNew(this: *Parser, pool: *MemoryPool(Sexpr), allocator: std.mem.Allocator) !Fnk {
+        this.skipWhitespaceNew();
+        const name = try parseSexpr(&this.remaining_text, pool);
+        this.skipWhitespaceNew();
+        if (!consumeChar(this, '{')) {
+            std.debug.print("ERROR: No body found for fnk with name {any}\n", .{name});
+            return error.BAD_INPUT;
+        }
+        const cases = parseMatchCases(&this.remaining_text, pool, allocator) catch |err| switch (err) {
+            error.BAD_INPUT => {
+                std.debug.print("ERROR: Bad input on fnk with name {any}\n", .{name});
+                return err;
+            },
+            else => return err,
+        };
+        this.skipWhitespaceNew();
+        return Fnk{ .name = name, .body = .{ .cases = cases } };
+    }
+
+    fn consumeChar(this: *Parser, comptime expected: u8) bool {
+        if (this.remaining_text.len == 0) return false;
+        if (this.remaining_text[0] != expected) return false;
+        this.remaining_text = this.remaining_text[1..];
+        return true;
+    }
+};

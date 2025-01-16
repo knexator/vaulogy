@@ -158,7 +158,7 @@ const SexprContext = struct {
     }
 };
 const FnkSet = std.ArrayHashMap(*const Sexpr, void, SexprContext, true);
-const FnkCollection = std.ArrayHashMap(*const Sexpr, FnkBody, SexprContext, true);
+pub const FnkCollection = std.ArrayHashMap(*const Sexpr, FnkBody, SexprContext, true);
 
 const builtin_fnks = [_]struct { name: *const Sexpr, fnk: fn (v: *const Sexpr) *const Sexpr }{
     .{ .name = &Sexpr.identity, .fnk = builtin_fnk_identity },
@@ -209,7 +209,6 @@ pub const PermamentGameStuff = struct {
         var arena_for_cases = std.heap.ArenaAllocator.init(allocator);
         const arena_for_bindings = std.heap.ArenaAllocator.init(allocator);
         var fnk_collection = FnkCollection.init(allocator);
-        var remaining_fnk_input = all_fnks_raw;
         var used_fnks = FnkSet.init(allocator);
 
         errdefer {
@@ -220,12 +219,9 @@ pub const PermamentGameStuff = struct {
             arena_for_bindings.deinit();
         }
 
-        while (true) {
-            parsing.skipWhitespace(&remaining_fnk_input);
-            if (remaining_fnk_input.len == 0) break;
-            const fnk = try parsing.parseFnk(&remaining_fnk_input, &pool_for_sexprs, arena_for_cases.allocator());
-            try fnk_collection.put(fnk.name, fnk.body);
-        }
+        // var remaining_fnk_input = all_fnks_raw;
+        var parser = parsing.Parser{ .remaining_text = all_fnks_raw };
+        try parser.parseFnkCollection(&fnk_collection, &pool_for_sexprs, arena_for_cases.allocator());
 
         return PermamentGameStuff{
             .all_fnks = fnk_collection,
