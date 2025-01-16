@@ -21,3 +21,45 @@ onlyRockyPlanets
 
 // too soon?
 mostCommonPlanets
+
+// level ideas:
+// brainfuck interpreter
+// add/multiply in unary, binary, base 4, base N
+// f(f(f(...))), with N nested f, can be applied in log(N) time, if f(f) is known (https://uwu-company-blog.vercel.app/solving_AAmagical)
+// parse S-exprs from a list of characters
+// - move X to front
+// - areEqual
+// - reverseList
+// - remove all X from list
+// - zip 2 lists together
+// - [[e] * n for (e, n) in zip(elements, repeatCount)]
+// - sum all numbers in list
+// - dictLookup, maybe?
+// - peano math
+// - binary math
+// - brainfuck
+// - meta: parser
+// - meta: interpreter
+// - meta: compiler
+// - sorting algorithm
+// - something that is best solved with a tree
+// - run-length encoding?
+// - second most common element of list
+// - DNA repair: "here is a list of common fail patterns, and their correct versions; apply it" (preparation for meta)
+// - f(g(h(x))), something that is best solved with a meta '(-> h g f)' function
+
+
+//////
+// built in: eqAtoms?, identity
+// score: speed, stack size, code size, number of unique atoms used?, compile time?
+
+// can the player choose between "expand this before comptime, 
+//  at the cost of bigger code size but faster time" vs normal comptime?
+// as in, codegen instead of comptime, and they're evaluated on the generated code
+// i'd vote no, since it's against "smallest source code"
+// but also, the player might expand it by hand...
+
+// required tools: 
+//  clipboard(s)
+//  sexpr <=> fnk
+//  list viewer

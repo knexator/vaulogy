@@ -110,47 +110,12 @@ countStackless {
     }
 }
 
+////////////////////////////////////////////////
+
 add {
     (nil . @a) -> @a;
     ((S . @r) . @a) -> add: (@r . (S . @a));
 }
-
-
-// built in: eqAtoms?, identity
-// speed, stack size, code size, number of unique atoms used
-
-// required tools: 
-//  clipboard
-//  sexpr <=> fnk
-//  list viewer
-
-// wrappedEtcEtc { ... }
-
-// level ideas:
-// brainfuck interpreter
-// add/multiply in unary, binary, base 4, base N
-// f(f(f(...))), with N nested f, can be applied in log(N) time, if f(f) is known (https://uwu-company-blog.vercel.app/solving_AAmagical)
-// parse S-exprs from a list of characters
-// - move X to front
-// - areEqual
-// - reverseList
-// - remove all X from list
-// - zip 2 lists together
-// - [[e] * n for (e, n) in zip(elements, repeatCount)]
-// - sum all numbers in list
-// - dictLookup, maybe?
-// - peano math
-// - binary math
-// - brainfuck
-// - meta: parser
-// - meta: interpreter
-// - meta: compiler
-// - sorting algorithm
-// - something that is best solved with a tree
-// - run-length encoding?
-// - second most common element of list
-// - DNA repair: "here is a list of common fail patterns, and their correct versions; apply it" (preparation for meta)
-// - f(g(h(x))), something that is best solved with a meta '(-> h g f)' function
 
 
 // (planetFromOlympian . (
