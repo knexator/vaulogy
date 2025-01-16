@@ -1,0 +1,23 @@
+// Tutorial levels:
+
+// learn hardcoded maps
+planetFromOlympian
+// learn wildcards
+wrapOlympian
+// apply fnk to template
+planetFromWrappedOlympian
+// apply fnk to template, and then apply another
+wrappedPlanetFromOlympian
+
+// test the player:
+planetPairFromOlympianPair
+
+// teach about trees + 'hey you can create helper fnks'
+rockyPlanetInTree?
+
+// teach about lists
+onlyRockyPlanets
+// or maybe 'map planetFromOlympian on a list?'
+
+// too soon?
+mostCommonPlanets

@@ -45,11 +45,42 @@ rockyPlanetInTree? {
     @single -> rockyPlanet?: @single;
 }
 
-rockyPlanetInList? {
-    nil -> false;
+onlyRockyPlanets {
+    nil -> nil;
     (@first . @rest) -> rockyPlanet?: @first {
-        true -> true;
-        false -> rockyPlanetInList?: @rest;
+        false -> onlyRockyPlanets: @rest;
+        true -> onlyRockyPlanets: @rest {
+            @new_rest -> (@first . @new_rest);
+        }
+    }
+}
+
+equal? {
+	((@leftleft . @leftright) . (@rightleft . @rightright)) -> equal?: (@leftleft . @rightleft) {
+		false -> false;
+		true -> equal?: (@leftright . @rightright);
+	}
+	(@left . @right) -> eqAtoms?: (@left . @right);
+}
+
+mostCommonPlanets {
+    @in -> countStackless: (@in . nil);
+}
+
+countStackless {
+    (nil . @acc) -> @acc;
+    ((@f . @r) . @acc) -> (countStackless . incOrAdd): (@f . @acc) {
+        @new_acc -> countStackless: (@r . @new_acc);
+    }
+}
+
+(countStackless . incOrAdd) {
+    (@value . nil) -> ( (@value . nil) );
+    (@value . ( (@v1 . @c1) . @rest ) ) -> equal?: (@value . @v1) {
+        true -> ( (@v1 . (S . @c1)) . @rest );
+        false -> (countStackless . incOrAdd): (@value . @rest) {
+            @new_rest -> ( (@v1 . @c1) . @new_rest );
+        }
     }
 }
 
@@ -65,8 +96,36 @@ add {
 // required tools: 
 //  clipboard
 //  sexpr <=> fnk
+//  list viewer
 
 // wrappedEtcEtc { ... }
+
+// level ideas:
+// brainfuck interpreter
+// add/multiply in unary, binary, base 4, base N
+// f(f(f(...))), with N nested f, can be applied in log(N) time, if f(f) is known (https://uwu-company-blog.vercel.app/solving_AAmagical)
+// parse S-exprs from a list of characters
+// - move X to front
+// - areEqual
+// - reverseList
+// - remove all X from list
+// - zip 2 lists together
+// - [[e] * n for (e, n) in zip(elements, repeatCount)]
+// - sum all numbers in list
+// - dictLookup, maybe?
+// - peano math
+// - binary math
+// - brainfuck
+// - meta: parser
+// - meta: interpreter
+// - meta: compiler
+// - sorting algorithm
+// - something that is best solved with a tree
+// - run-length encoding?
+// - second most common element of list
+// - DNA repair: "here is a list of common fail patterns, and their correct versions; apply it" (preparation for meta)
+// - f(g(h(x))), something that is best solved with a meta '(-> h g f)' function
+
 
 // (planetFromOlympian . (
     // ( (atom . hermes) identity (atom . mercury) . return )
@@ -90,14 +149,6 @@ compileEqAtoms {
     (@first . @rest) -> compileEqAtoms: @rest {
         @rest_compiled -> ( (((atom . @key) . (atom . @key)) identity true . return) . @rest_compiled );
     }
-}
-
-equal? {
-	((@leftleft . @leftright) . (@rightleft . @rightright)) -> equal?: (@leftleft . @rightleft) {
-		false -> false;
-		true -> equal?: (@leftright . @rightright);
-	}
-	(@left . @right) -> eqAtoms?: (@left . @right);
 }
 
 concat {
@@ -730,14 +781,6 @@ compileEqAtoms {
     (@first . @rest) -> compileEqAtoms: @rest {
         @rest_compiled -> ( (((atom . @key) . (atom . @key)) identity true . return) . @rest_compiled );
     }
-}
-
-equal? {
-	((@leftleft . @leftright) . (@rightleft . @rightright)) -> equal?: (@leftleft . @rightleft) {
-		false -> false;
-		true -> equal?: (@leftright . @rightright);
-	}
-	(@left . @right) -> eqAtoms?: (@left . @right);
 }
 
 concat {
