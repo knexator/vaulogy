@@ -134,8 +134,12 @@ fn parseMatchCases(input: *[]const u8, pool: *MemoryPool(Sexpr), allocator: std.
 pub fn skipWhitespace(input: *[]const u8) void {
     input.* = std.mem.trimLeft(u8, input.*, &std.ascii.whitespace);
     while (std.mem.startsWith(u8, input.*, "//")) {
-        input.* = input.*[(std.mem.indexOfScalar(u8, input.*, '\n').? + 1)..];
-        input.* = std.mem.trimLeft(u8, input.*, &std.ascii.whitespace);
+        if (std.mem.indexOfScalar(u8, input.*, '\n')) |end| {
+            input.* = input.*[(end + 1)..];
+            input.* = std.mem.trimLeft(u8, input.*, &std.ascii.whitespace);
+        } else {
+            input.* = input.*[input.len..];
+        }
     }
 }
 
