@@ -47,6 +47,7 @@ mostCommonPlanets
 // - second most common element of list
 // - DNA repair: "here is a list of common fail patterns, and their correct versions; apply it" (preparation for meta)
 // - f(g(h(x))), something that is best solved with a meta '(-> h g f)' function
+// - optimization: lookup element N in an array. 2 levels: same N for many arrays, many N for one array.
 
 
 //////
