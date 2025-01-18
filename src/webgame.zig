@@ -1,9 +1,11 @@
 const std = @import("std");
 
+// pub const Slice = extern struct { ptr: [*]u8, len: usize, null: bool };
 const js = struct {
     pub const debug = struct {
         extern fn logInt(arg: u32) void;
         extern fn logFloat(arg: f32) void;
+        extern fn logString(ptr: [*]const u8, len: usize) void;
     };
 
     pub const canvas = struct {
@@ -24,6 +26,11 @@ const js = struct {
         extern fn getHeight() u32;
 
         // TODO: save/restore, translate/rotate/scale/resetTransform, rect, fillText
+    };
+
+    pub const storage = struct {
+        extern fn getItem(key_ptr: [*]const u8, key_len: usize, dst_ptr: [*]u8) usize;
+        extern fn setItem(key_ptr: [*]const u8, key_len: usize, value_ptr: [*]const u8, value_len: usize) void;
     };
 };
 
@@ -126,6 +133,25 @@ const Color = struct {
 };
 
 const layer1 = struct {
+    pub const debug = struct {
+        pub fn logString(s: []const u8) void {
+            js.debug.logString(s.ptr, s.len);
+        }
+    };
+
+    pub const storage = struct {
+        pub fn getItem(key: []const u8, dst: []u8) !?[]const u8 {
+            const len = js.storage.getItem(key.ptr, key.len, dst.ptr);
+            if (len == 0) return null;
+            if (len > dst.len) return error.BufferTooSmall;
+            return dst[0..len];
+        }
+
+        pub fn setItem(key: []const u8, value: []const u8) void {
+            js.storage.setItem(key.ptr, key.len, value.ptr, value.len);
+        }
+    };
+
     pub fn getCanvasSize() Vec2 {
         return Vec2.new(@floatFromInt(js.canvas.getWidth()), @floatFromInt(js.canvas.getHeight()));
     }
@@ -832,6 +858,11 @@ export fn keydown(code: KeyCode) void {
         debug_animation = .{};
     } else if (code == .KeyD) {
         paused = !paused;
+    } else if (code == .KeyW) {
+        layer1.debug.logString("buenas");
+        layer1.storage.setItem("key", "nuevo");
+        var asdf: [100]u8 = undefined;
+        layer1.debug.logString((layer1.storage.getItem("key", &asdf) catch "baaad slice").?);
     }
 }
 

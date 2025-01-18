@@ -8,6 +8,11 @@ export fn logFloat(arg: f32) void {
     _ = arg;
     unreachable;
 }
+export fn logString(ptr: [*]u8, len: usize) void {
+    _ = ptr;
+    _ = len;
+    unreachable;
+}
 export fn beginPath() void {
     unreachable;
 }
@@ -81,5 +86,19 @@ export fn getWidth() u32 {
     unreachable;
 }
 export fn getHeight() u32 {
+    unreachable;
+}
+
+export fn getItem(key_ptr: [*]const u8, key_len: usize, dst_ptr: [*]u8) usize {
+    _ = key_ptr;
+    _ = key_len;
+    _ = dst_ptr;
+    unreachable;
+}
+export fn setItem(key_ptr: [*]const u8, key_len: usize, value_ptr: [*]const u8, value_len: usize) void {
+    _ = key_ptr;
+    _ = key_len;
+    _ = value_ptr;
+    _ = value_len;
     unreachable;
 }
