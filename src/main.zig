@@ -154,7 +154,7 @@ pub const MatchCaseDefinition = struct {
             try writer.print("{any} -> {any}: {any}", .{ value.pattern, value.fn_name, value.template });
         }
         if (value.next) |next| {
-            try writer.print("{any}", .{FnkBody{ .cases = next }});
+            try writer.print(" {{\n{any}}}", .{FnkBody{ .cases = next }});
         } else {
             try writer.writeAll(";");
         }
@@ -906,34 +906,34 @@ fn expectEqualSexprs(expected: *const Sexpr, actual: *const Sexpr) !void {
                 return std.testing.expectEqualStrings(expected_atom.value, actual_atom.value);
             },
             .atom_var => |actual_atom| {
-                std.debug.print("expected literal '{s}' but found variable '{s}'\n", .{ expected_atom.value, actual_atom.value });
+                std.log.err("expected literal '{s}' but found variable '{s}'\n", .{ expected_atom.value, actual_atom.value });
                 return error.TestExpectedEqual;
             },
             .pair => |actual_pair| {
-                std.debug.print("expected literal '{s}' but found a pair {any}\n", .{ expected_atom.value, actual_pair });
+                std.log.err("expected literal '{s}' but found a pair {any}\n", .{ expected_atom.value, actual_pair });
                 return error.TestExpectedEqual;
             },
         },
         .atom_var => |expected_atom| switch (actual.*) {
             .atom_lit => |actual_atom| {
-                std.debug.print("expected variable '{s}' but found literal '{s}'\n", .{ expected_atom.value, actual_atom.value });
+                std.log.err("expected variable '{s}' but found literal '{s}'\n", .{ expected_atom.value, actual_atom.value });
                 return error.TestExpectedEqual;
             },
             .atom_var => |actual_atom| {
                 return std.testing.expectEqualStrings(expected_atom.value, actual_atom.value);
             },
             .pair => |actual_pair| {
-                std.debug.print("expected variable '{s}' but found a pair {any}\n", .{ expected_atom.value, actual_pair });
+                std.log.err("expected variable '{s}' but found a pair {any}\n", .{ expected_atom.value, actual_pair });
                 return error.TestExpectedEqual;
             },
         },
         .pair => |expected_pair| switch (actual.*) {
             .atom_lit => |actual_atom| {
-                std.debug.print("expected pair but found literal '{s}'\n", .{actual_atom.value});
+                std.log.err("expected pair but found literal '{s}'\n", .{actual_atom.value});
                 return error.TestExpectedEqual;
             },
             .atom_var => |actual_atom| {
-                std.debug.print("expected pair but found literal '{s}'\n", .{actual_atom.value});
+                std.log.err("expected pair but found literal '{s}'\n", .{actual_atom.value});
                 return error.TestExpectedEqual;
             },
             .pair => |actual_pair| {

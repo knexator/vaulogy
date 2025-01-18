@@ -1,6 +1,5 @@
 const std = @import("std");
 
-// pub const Slice = extern struct { ptr: [*]u8, len: usize, null: bool };
 const js = struct {
     pub const debug = struct {
         extern fn logInt(arg: u32) void;

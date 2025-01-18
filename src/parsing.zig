@@ -172,17 +172,17 @@ pub const Parser = struct {
         skipWhitespace(&this.remaining_text);
     }
 
-    fn parseFnkNew(this: *Parser, pool: *MemoryPool(Sexpr), allocator_for_cases: std.mem.Allocator) !Fnk {
+    pub fn parseFnkNew(this: *Parser, pool: *MemoryPool(Sexpr), allocator_for_cases: std.mem.Allocator) !Fnk {
         this.skipWhitespaceNew();
         const name = try parseSexpr(&this.remaining_text, pool);
         this.skipWhitespaceNew();
         if (!consumeChar(this, '{')) {
-            std.debug.print("ERROR: No body found for fnk with name {any}\n", .{name});
+            std.log.err("ERROR: No body found for fnk with name {any}\n", .{name});
             return error.BAD_INPUT;
         }
         const cases = parseMatchCases(&this.remaining_text, pool, allocator_for_cases) catch |err| switch (err) {
             error.BAD_INPUT => {
-                std.debug.print("ERROR: Bad input on fnk with name {any}\n", .{name});
+                std.log.err("ERROR: Bad input on fnk with name {any}\n", .{name});
                 return err;
             },
             else => return err,

@@ -7,10 +7,16 @@ const ctx = canvas.getContext("2d");
 canvas.width = canvas.clientWidth;
 canvas.height = canvas.clientHeight;
 
-let { wasm_exports, wasm_memory } = await getWasm();
-
 const text_decoder = new TextDecoder();
 const text_encoder = new TextEncoder();
+
+let wasm_exports = await getWasm();
+wasm_exports.init();
+
+function wasmMem() {
+  // TODO: keep a permanent variable and only change it if '.detached' is true
+  return new Uint8Array(wasm_exports.memory.buffer);
+}
 
 async function getWasm() {
   console.log("calling getWasm");
@@ -21,7 +27,7 @@ async function getWasm() {
       logString: (ptr, len) =>
         console.log(
           text_decoder.decode(
-            wasm_memory.subarray(ptr, ptr + len),
+            wasmMem().subarray(ptr, ptr + len),
           ),
         ),
 
@@ -61,15 +67,26 @@ async function getWasm() {
       getWidth: () => canvas.width,
       getHeight: () => canvas.height,
 
+      itemSize: (key_ptr, key_len) => {
+        const key = text_decoder.decode(
+          wasmMem().subarray(key_ptr, key_ptr + key_len),
+        );
+        const value = localStorage.getItem(key);
+        if (value !== null) {
+          return text_encoder.encode(value).length;
+        } else {
+          return 0;
+        }
+      },
       getItem: (key_ptr, key_len, dst_ptr) => {
         const key = text_decoder.decode(
-          wasm_memory.subarray(key_ptr, key_ptr + key_len),
+          wasmMem().subarray(key_ptr, key_ptr + key_len),
         );
         const value = localStorage.getItem(key);
         if (value !== null) {
           return text_encoder.encodeInto(
             value,
-            wasm_memory.subarray(dst_ptr),
+            wasmMem().subarray(dst_ptr),
           ).written;
         } else {
           return 0;
@@ -77,20 +94,17 @@ async function getWasm() {
       },
       setItem: (key_ptr, key_len, value_ptr, value_len) => {
         const key = text_decoder.decode(
-          wasm_memory.subarray(key_ptr, key_ptr + key_len),
+          wasmMem().subarray(key_ptr, key_ptr + key_len),
         );
         const value = text_decoder.decode(
-          wasm_memory.subarray(value_ptr, value_ptr + value_len),
+          wasmMem().subarray(value_ptr, value_ptr + value_len),
         );
         localStorage.setItem(key, value);
       },
     },
   });
 
-  const wasm_exports = asdf.instance.exports;
-  const wasm_memory = new Uint8Array(wasm_exports.memory.buffer);
-
-  return { wasm_exports, wasm_memory };
+  return asdf.instance.exports;
 }
 
 let last_timestamp_millis = 0;
@@ -132,7 +146,10 @@ const ws = new WebSocket("ws://" + location.host);
 ws.onmessage = (event) => {
   if (event.data === "reload") {
     console.log("reloading wasm");
-    getWasm().then((res) => ({ wasm_exports, wasm_memory } = res));
+    getWasm().then((res) => { 
+      wasm_exports = res;
+      wasm_exports.init();
+    });
   }
 };
 

@@ -86,7 +86,8 @@ pub fn build(b: *std.Build) void {
     const webgame_wasm = b.addExecutable(
         .{
             .name = "main",
-            .root_source_file = b.path("src/webgame.zig"),
+            // .root_source_file = b.path("src/webgame.zig"),
+            .root_source_file = b.path("src/web_platform.zig"),
             .target = b.resolveTargetQuery(.{
                 .cpu_arch = .wasm32,
                 .os_tag = .freestanding,
