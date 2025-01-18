@@ -187,9 +187,7 @@ fn fnkSize(fnk: FnkBody) usize {
     return res;
 }
 
-// TODO: move all_fnks into ScoringRun
 pub const VeryPermamentGameStuff = struct {
-    all_fnks: FnkCollection,
     pool_for_sexprs: MemoryPool(Sexpr),
     arena_for_cases: std.heap.ArenaAllocator,
     arena_for_bindings: std.heap.ArenaAllocator,
@@ -202,10 +200,8 @@ pub const VeryPermamentGameStuff = struct {
         const pool_for_sexprs = MemoryPool(Sexpr).init(allocator);
         const arena_for_cases = std.heap.ArenaAllocator.init(allocator);
         const arena_for_bindings = std.heap.ArenaAllocator.init(allocator);
-        const all_fnks = FnkCollection.init(allocator);
 
         return VeryPermamentGameStuff{
-            .all_fnks = all_fnks,
             .pool_for_sexprs = pool_for_sexprs,
             .arena_for_cases = arena_for_cases,
             .arena_for_bindings = arena_for_bindings,
@@ -216,7 +212,6 @@ pub const VeryPermamentGameStuff = struct {
 
     pub fn deinit(this: *VeryPermamentGameStuff) void {
         this.pool_for_sexprs.deinit();
-        this.all_fnks.deinit();
         this.arena_for_cases.deinit();
         this.arena_for_bindings.deinit();
     }
@@ -224,6 +219,7 @@ pub const VeryPermamentGameStuff = struct {
 
 pub const ScoringRun = struct {
     mem: *VeryPermamentGameStuff,
+    all_fnks: FnkCollection,
     used_fnks: FnkSet,
     score: struct {
         code_size: usize,
@@ -235,20 +231,23 @@ pub const ScoringRun = struct {
         mem: *VeryPermamentGameStuff,
     ) !ScoringRun {
         const used_fnks = FnkSet.init(mem.gpa);
+        var all_fnks = FnkCollection.init(mem.gpa);
 
         // var remaining_fnk_input = all_fnks_raw;
         var parser = parsing.Parser{ .remaining_text = all_fnks_raw };
-        try parser.parseFnkCollection(&mem.all_fnks, &mem.pool_for_sexprs, mem.arena_for_cases.allocator());
+        try parser.parseFnkCollection(&all_fnks, &mem.pool_for_sexprs, mem.arena_for_cases.allocator());
 
         return ScoringRun{
             .mem = mem,
             .used_fnks = used_fnks,
+            .all_fnks = all_fnks,
             .score = .{ .code_size = 0, .compile_time = 0 },
         };
     }
 
     pub fn deinit(this: *ScoringRun) void {
         this.used_fnks.deinit();
+        this.all_fnks.deinit();
     }
 
     fn findFunktion(this: *ScoringRun, name: *const Sexpr) error{
@@ -258,7 +257,7 @@ pub const ScoringRun = struct {
         NoMatchingCase,
         InvalidMetaFnk,
     }!*const FnkBody {
-        if (this.mem.all_fnks.getPtr(name)) |fnk| {
+        if (this.all_fnks.getPtr(name)) |fnk| {
             if (this.used_fnks.get(name) == null) {
                 try this.used_fnks.put(name, {});
                 this.score.code_size += fnkSize(fnk.*);
@@ -277,8 +276,8 @@ pub const ScoringRun = struct {
                     const stderr = std.io.getStdErr().writer();
                     stderr.print("\ncompiled a fnk, the cases are: {any}\n", .{asdf}) catch unreachable;
                 }
-                try this.mem.all_fnks.put(name, cases);
-                return this.mem.all_fnks.getPtr(name).?;
+                try this.all_fnks.put(name, cases);
+                return this.all_fnks.getPtr(name).?;
             },
         }
     }
@@ -587,16 +586,14 @@ pub fn main() !u8 {
         };
         defer allocator.free(target_fnks_collection_raw);
 
-        var player_mem = VeryPermamentGameStuff.init(allocator);
-        defer player_mem.deinit();
-        var target_mem = VeryPermamentGameStuff.init(allocator);
-        defer target_mem.deinit();
-        var player_score = try ScoringRun.init(player_fnks_collection_raw, &player_mem);
+        var mem = VeryPermamentGameStuff.init(allocator);
+        defer mem.deinit();
+        var player_score = try ScoringRun.init(player_fnks_collection_raw, &mem);
         defer player_score.deinit();
-        var target_score = try ScoringRun.init(target_fnks_collection_raw, &target_mem);
+        var target_score = try ScoringRun.init(target_fnks_collection_raw, &mem);
         defer target_score.deinit();
 
-        var it = target_score.mem.all_fnks.iterator();
+        var it = target_score.all_fnks.iterator();
         while (it.next()) |x| {
             const fnk_name = x.key_ptr.*;
             const fnk_body = x.value_ptr.*;

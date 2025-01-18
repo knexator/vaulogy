@@ -73,13 +73,13 @@ fn parseAtom(input: []const u8) !struct { atom: Atom, is_var: bool, rest: []cons
     };
 }
 
-pub fn parseFnk(input: *[]const u8, pool: *MemoryPool(Sexpr), allocator: std.mem.Allocator) !Fnk {
-    const result = try parseFnkTrue(input.*, pool, allocator);
+pub fn parseFnk(input: *[]const u8, pool: *MemoryPool(Sexpr), allocator_for_cases: std.mem.Allocator) !Fnk {
+    const result = try parseFnkTrue(input.*, pool, allocator_for_cases);
     input.* = result.rest;
     return result.fnk;
 }
 
-fn parseFnkTrue(input: []const u8, pool: *MemoryPool(Sexpr), allocator: std.mem.Allocator) !struct { fnk: Fnk, rest: []const u8 } {
+fn parseFnkTrue(input: []const u8, pool: *MemoryPool(Sexpr), allocator_for_cases: std.mem.Allocator) !struct { fnk: Fnk, rest: []const u8 } {
     var rest = input;
     skipWhitespace(&rest);
     const name = try parseSexpr(&rest, pool);
@@ -87,12 +87,12 @@ fn parseFnkTrue(input: []const u8, pool: *MemoryPool(Sexpr), allocator: std.mem.
     // try parseChar(&rest, ':');
     // skipWhitespace(&rest);
     try parseChar(&rest, '{');
-    const cases = try parseMatchCases(&rest, pool, allocator);
+    const cases = try parseMatchCases(&rest, pool, allocator_for_cases);
     skipWhitespace(&rest);
     return .{ .fnk = Fnk{ .name = name, .body = .{ .cases = cases } }, .rest = rest };
 }
 
-fn parseMatchCases(input: *[]const u8, pool: *MemoryPool(Sexpr), allocator: std.mem.Allocator) !MatchCases {
+fn parseMatchCases(input: *[]const u8, pool: *MemoryPool(Sexpr), allocator_for_cases: std.mem.Allocator) !MatchCases {
     var list = std.ArrayListUnmanaged(MatchCaseDefinition){};
     skipWhitespace(input);
     while (!parseCharIfPossible(input, '}')) {
@@ -118,11 +118,11 @@ fn parseMatchCases(input: *[]const u8, pool: *MemoryPool(Sexpr), allocator: std.
             next = null;
         } else {
             try parseChar(input, '{');
-            next = try parseMatchCases(input, pool, allocator);
+            next = try parseMatchCases(input, pool, allocator_for_cases);
         }
         skipWhitespace(input);
 
-        try list.append(allocator, .{
+        try list.append(allocator_for_cases, .{
             .pattern = pattern,
             .fn_name = fn_name,
             .template = template,
@@ -159,11 +159,11 @@ fn parseCharIfPossible(input: *[]const u8, comptime expected: u8) bool {
 pub const Parser = struct {
     remaining_text: []const u8,
 
-    pub fn parseFnkCollection(this: *Parser, result: *FnkCollection, pool: *MemoryPool(Sexpr), allocator: std.mem.Allocator) !void {
+    pub fn parseFnkCollection(this: *Parser, result: *FnkCollection, pool: *MemoryPool(Sexpr), allocator_for_cases: std.mem.Allocator) !void {
         while (true) {
             this.skipWhitespaceNew();
             if (this.remaining_text.len == 0) break;
-            const fnk = try this.parseFnkNew(pool, allocator);
+            const fnk = try this.parseFnkNew(pool, allocator_for_cases);
             try result.put(fnk.name, fnk.body);
         }
     }
@@ -172,7 +172,7 @@ pub const Parser = struct {
         skipWhitespace(&this.remaining_text);
     }
 
-    fn parseFnkNew(this: *Parser, pool: *MemoryPool(Sexpr), allocator: std.mem.Allocator) !Fnk {
+    fn parseFnkNew(this: *Parser, pool: *MemoryPool(Sexpr), allocator_for_cases: std.mem.Allocator) !Fnk {
         this.skipWhitespaceNew();
         const name = try parseSexpr(&this.remaining_text, pool);
         this.skipWhitespaceNew();
@@ -180,7 +180,7 @@ pub const Parser = struct {
             std.debug.print("ERROR: No body found for fnk with name {any}\n", .{name});
             return error.BAD_INPUT;
         }
-        const cases = parseMatchCases(&this.remaining_text, pool, allocator) catch |err| switch (err) {
+        const cases = parseMatchCases(&this.remaining_text, pool, allocator_for_cases) catch |err| switch (err) {
             error.BAD_INPUT => {
                 std.debug.print("ERROR: Bad input on fnk with name {any}\n", .{name});
                 return err;
