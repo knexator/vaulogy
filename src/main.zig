@@ -92,6 +92,7 @@ pub const Sexpr = union(enum) {
 
     pub fn format(value: *const Sexpr, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: std.io.AnyWriter) !void {
         std.debug.assert(std.mem.eql(u8, fmt, ""));
+        std.debug.assert(std.meta.eql(options, .{}));
         switch (value.*) {
             .atom_lit => |a| try writer.writeAll(a.value),
             .atom_var => |a| {
@@ -117,9 +118,25 @@ pub const Sexpr = union(enum) {
     }
 };
 
-pub const Fnk = struct { name: *const Sexpr, body: FnkBody };
+pub const Fnk = struct {
+    name: *const Sexpr,
+    body: FnkBody,
+
+    pub fn format(value: Fnk, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: std.io.AnyWriter) !void {
+        std.debug.assert(std.mem.eql(u8, fmt, ""));
+        std.debug.assert(std.meta.eql(options, .{}));
+        try writer.print("{any} {{\n{any}}}", .{ value.name, value.body });
+    }
+};
 pub const FnkBody = struct {
-    cases: std.ArrayListUnmanaged(MatchCaseDefinition),
+    cases: MatchCases,
+    pub fn format(value: FnkBody, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: std.io.AnyWriter) !void {
+        std.debug.assert(std.mem.eql(u8, fmt, ""));
+        std.debug.assert(std.meta.eql(options, .{}));
+        for (value.cases.items) |case| {
+            try writer.print("{any}\n", .{case});
+        }
+    }
 };
 pub const MatchCases = std.ArrayListUnmanaged(MatchCaseDefinition);
 pub const MatchCaseDefinition = struct {
@@ -127,6 +144,21 @@ pub const MatchCaseDefinition = struct {
     fn_name: *const Sexpr,
     template: *const Sexpr,
     next: ?MatchCases,
+
+    pub fn format(value: MatchCaseDefinition, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: std.io.AnyWriter) !void {
+        std.debug.assert(std.mem.eql(u8, fmt, ""));
+        std.debug.assert(std.meta.eql(options, .{}));
+        if (value.fn_name.equals(&Sexpr.identity)) {
+            try writer.print("{any} -> {any}", .{ value.pattern, value.template });
+        } else {
+            try writer.print("{any} -> {any}: {any}", .{ value.pattern, value.fn_name, value.template });
+        }
+        if (value.next) |next| {
+            try writer.print("{any}", .{FnkBody{ .cases = next }});
+        } else {
+            try writer.writeAll(";");
+        }
+    }
 };
 
 const Binding = struct {
@@ -682,6 +714,25 @@ pub fn main() !u8 {
         }
         try stdout.print("global stats: code size {d}, compile time {d}, {d}/{d} correct\n", .{ player_score.score.code_size, player_score.score.compile_time, n_correct, n_total });
         return if (n_correct == n_total) 0 else 1;
+    } else if (std.mem.eql(u8, verb, "see-fnk")) {
+        const fnks_collection_raw: []const u8 = blk: {
+            const filename = args.next().?;
+            const file = try std.fs.cwd().openFile(filename, .{});
+            defer file.close();
+            break :blk try file.readToEndAlloc(allocator, std.math.maxInt(usize));
+        };
+        defer allocator.free(fnks_collection_raw);
+
+        const fn_name_raw: []const u8 = args.next().?;
+        std.debug.assert(!args.skip());
+
+        var mem = VeryPermamentGameStuff.init(allocator);
+        defer mem.deinit();
+        var run = try ScoringRun.init(fnks_collection_raw, &mem);
+        defer run.deinit();
+        const fn_name = try parsing.parseSingleSexpr(fn_name_raw, &mem.pool_for_sexprs);
+        const result = try run.findFunktion(fn_name);
+        try stdout.print("{any}\n", .{Fnk{ .name = fn_name, .body = result.* }});
     } else {
         try stdout.print(
             \\  valid commands:
@@ -690,6 +741,7 @@ pub fn main() !u8 {
             \\      run [fnk-lib] [fnk-name] file raw [input-filename]
             \\      score [my-fnk-lib] [target-fnk-lib]
             \\      debug [fnk-lib] [fnk-name] [input]
+            \\      see-fnk [fnk-lib] [fnk-name]
         , .{});
         return 1;
     }
