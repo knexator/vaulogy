@@ -153,93 +153,28 @@ const WebPlatform = struct {
     }
 };
 
-// TODO: delete this
-pub const CameraOld = struct {
-    // an object at [camera.topleft] will be drawn on the top left of the screen
-    // an object at [camera.topleft.addX(1) will be drawn 'asdf' pixels to the right of that
-
-    topleft: Vec2,
-    // how many pixels in a world unit
-    asdf: f32,
-
-    pub fn fromStuff(screen_side: f32, original_world: Point, target_screen_relative: Point) CameraOld {
-        const asdf = target_screen_relative.scale * screen_side / original_world.scale;
-        return .{
-            .topleft = original_world.pos.sub(
-                target_screen_relative.pos.scale(screen_side).scale(1 / asdf),
-            ),
-            .asdf = asdf,
-        };
-    }
-
-    test "fromStuff" {
-        {
-            const original = Point{ .pos = .new(3, 4), .scale = 1 };
-            const target_relative = Point{ .pos = Vec2.half, .scale = 0.1 };
-            const screen_side = 300;
-
-            const camera = fromStuff(screen_side, original, target_relative);
-            try Point.expectApproxEqRel(
-                .{ .pos = .new(150, 150), .scale = 30 },
-                camera.screenFromWorld(original),
-                0.000001,
-            );
-        }
-    }
-
-    pub fn screenFromWorld(this: CameraOld, world_point: Point) Point {
-        return .{
-            .pos = this.screenFromWorldPosition(world_point.pos),
-            .scale = this.screenFromWorldScale(world_point.scale),
-            .turns = world_point.turns,
-        };
-    }
-
-    pub fn screenFromWorldPosition(this: CameraOld, world_pos: Vec2) Vec2 {
-        return world_pos.sub(this.topleft).scale(this.asdf);
-    }
-
-    pub fn screenFromWorldScale(this: CameraOld, world_scale: f32) f32 {
-        return this.asdf * world_scale;
-    }
-
-    pub fn worldFromScreen(this: CameraOld, screen_point: Point) Point {
-        return .{
-            .pos = screen_point.pos.scale(1 / this.asdf).add(this.topleft),
-            .scale = screen_point.scale / this.asdf,
-            .turns = screen_point.turns,
-        };
-    }
-
-    test "basic camera" {
-        const camera = CameraOld{ .topleft = .new(2, 3), .asdf = 100 };
-        try std.testing.expectEqual(
-            Point{ .pos = Vec2.zero, .scale = 100 },
-            camera.screenFromWorld(
-                .{ .pos = .new(2, 3), .scale = 1 },
-            ),
-        );
-        try std.testing.expectEqual(
-            Point{ .pos = .new(100, 100), .scale = 50 },
-            camera.screenFromWorld(
-                .{ .pos = .new(3, 4), .scale = 0.5 },
-            ),
-        );
-    }
-};
-
 const Camera = presenter.Camera;
 const Point = presenter.Point;
 const Vec2 = presenter.Vec2;
 const Color = presenter.Color;
+const Rect = presenter.Rect;
 const WebDrawer = struct {
     fn screenFromWorld(camera: Camera, world_point: Point) Point {
-        const camera_old = CameraOld.fromStuff(
-            js_better.canvas.getSize().y,
-            .{ .pos = camera.center, .scale = 1 },
-            .{ .pos = .half, .scale = 1.0 / camera.height },
-        );
-        return camera_old.screenFromWorld(world_point);
+        const rect = camera.toRect();
+        const local = Point.inverseApplyGetLocal(Point{
+            .pos = rect.top_left,
+            .scale = rect.size.y,
+        }, world_point);
+        const screen = Point{ .pos = .zero, .scale = js_better.canvas.getSize().y };
+        return screen.applyToLocalPoint(local);
+    }
+
+    fn screenFromWorldPosition(camera: Camera, world_position: Vec2) Vec2 {
+        return screenFromWorld(camera, .{ .pos = world_position }).pos;
+    }
+
+    fn screenFromWorldScale(camera: Camera, world_scale: f32) f32 {
+        return screenFromWorld(camera, .{ .scale = world_scale }).scale;
     }
 
     pub fn drawAtomDebug(camera: Camera, world_point: Point) void {
@@ -248,6 +183,8 @@ const WebDrawer = struct {
             Vec2.new(-0.5, 0),
             Vec2.new(0, 1),
             Vec2.new(2, 1),
+            Vec2.new(2.2, 1.0 / 3.0),
+            Vec2.new(1.8, -1.0 / 3.0),
             Vec2.new(2, -1),
             Vec2.new(0, -1),
         };
@@ -262,6 +199,60 @@ const WebDrawer = struct {
         js.canvas.fill();
         js.canvas.stroke();
     }
+
+    pub fn drawAtomPatternDebug(camera: Camera, world_point: Point) void {
+        const screen_point = screenFromWorld(camera, world_point);
+        const local_positions = [_]Vec2{
+            Vec2.new(0.5, 0),
+            Vec2.new(0, 1),
+            Vec2.new(-1, 1),
+            Vec2.new(-0.8, 1.0 / 3.0),
+            Vec2.new(-1.2, -1.0 / 3.0),
+            Vec2.new(-1, -1),
+            Vec2.new(0, -1),
+        };
+        var screen_positions: [local_positions.len]Vec2 = undefined;
+        for (local_positions, 0..) |pos, i| {
+            screen_positions[i] = screen_point.applyToLocalPosition(pos);
+        }
+        js_better.canvas.pathLoop(&screen_positions);
+        js.canvas.setLineWidth(1);
+        js_better.canvas.setFillColor(Color.white);
+        js_better.canvas.setStrokeColor(Color.black);
+        js.canvas.fill();
+        js.canvas.stroke();
+    }
+
+    pub fn drawCable(camera: Camera, world_from: Vec2, world_to: Vec2, world_scale: f32, offset: f32) void {
+        const screen_from = screenFromWorldPosition(camera, world_from);
+        const screen_to = screenFromWorldPosition(camera, world_to);
+        const scale = screenFromWorldScale(camera, world_scale);
+        js_better.canvas.setStrokeColor(Color.black);
+        js.canvas.setLineWidth(1);
+        js.canvas.beginPath();
+        js_better.canvas.moveTo(screen_from);
+        js_better.canvas.lineTo(screen_to);
+        js.canvas.stroke();
+
+        js.canvas.setLineWidth(scale * 0.02);
+        js.canvas.beginPath();
+        const delta = screen_to.sub(screen_from);
+        const length = delta.mag();
+        const dir = delta.scale(1 / length);
+        var done: f32 = 0;
+        js_better.canvas.moveTo(screen_from);
+        while (done < length) : (done += 1) {
+            js_better.canvas.lineTo(screen_from.add(dir.scale(done)).add(dir.perpCW().scale(cableOffset(done + offset * scale, scale))));
+        }
+        js_better.canvas.lineTo(screen_to);
+        js.canvas.stroke();
+    }
+
+    fn cableOffset(x: f32, scale: f32) f32 {
+        const z = x * 20 / scale;
+        const y = @sin(z) + 0.2 * @sin(z * 1.3) + 0.3 * @sin(z * 3.1);
+        return y * 0.1 * scale;
+    }
 };
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
@@ -273,6 +264,8 @@ const web_platform = presenter.Platform{
 const web_drawer = presenter.Drawer{
     .clear = js_better.canvas.clear,
     .drawAtomDebug = WebDrawer.drawAtomDebug,
+    .drawAtomPatternDebug = WebDrawer.drawAtomPatternDebug,
+    .drawCable = WebDrawer.drawCable,
 };
 
 var game: presenter.Presenter(web_platform, web_drawer) = undefined;

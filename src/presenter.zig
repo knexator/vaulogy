@@ -185,6 +185,11 @@ pub const Vec2 = struct {
     }
 };
 
+pub const Rect = struct {
+    top_left: Vec2,
+    size: Vec2,
+};
+
 pub const Color = struct {
     r: u8,
     g: u8,
@@ -250,26 +255,50 @@ pub const Point = struct {
         };
     }
 
+    pub fn inverseApplyGetLocal(parent: Point, applied: Point) Point {
+        return .{
+            .pos = applied.pos.sub(parent.pos).rotate(-parent.turns).scale(1 / parent.scale),
+            .scale = applied.scale / parent.scale,
+            .turns = applied.turns - parent.turns,
+        };
+    }
+
     test "inverse apply" {
         const parent: Point = .{ .pos = .zero, .scale = 2, .turns = 0.25 };
         const local: Point = .{ .pos = .e1 };
         const applied = parent.applyToLocalPoint(local);
         try expectApproxEqAbs(.{ .pos = .new(0, 2), .scale = 2, .turns = 0.25 }, applied, 0.0001);
         try expectApproxEqAbs(parent, applied.inverseApplyToLocalPoint(local), 0.0001);
+        try expectApproxEqAbs(local, parent.inverseApplyGetLocal(applied), 0.0001);
     }
 };
 
 pub const Camera = struct {
+    const aspect_ratio: f32 = 16.0 / 9.0;
+
     center: Vec2,
     /// how many world units fit between the top and bottom of the camera view
     height: f32,
+
+    pub fn toRect(self: Camera) Rect {
+        const size = Vec2.new(self.height * aspect_ratio, self.height);
+        const top_left = self.center.sub(size.scale(0.5));
+        return Rect{ .top_left = top_left, .size = size };
+    }
+
+    pub fn lerp(a: Camera, b: Camera, t: f32) Camera {
+        return Camera{
+            .center = Vec2.lerp(a.center, b.center, t),
+            .height = std.math.lerp(a.height, b.height, t),
+        };
+    }
 };
 
 pub const Drawer = struct {
     clear: fn (color: Color) void,
     drawAtomDebug: fn (camera: Camera, world_point: Point) void,
-    // drawAtomPatternDebug: fn (camera: Camera, world_point: Point) void,
-    // drawCable: fn (camera: Camera, world_from: Vec2, world_to: Vec2, world_scale: f32, offset: f32) void,
+    drawAtomPatternDebug: fn (camera: Camera, world_point: Point) void,
+    drawCable: fn (camera: Camera, world_from: Vec2, world_to: Vec2, world_scale: f32, offset: f32) void,
 };
 
 /// The full game, from loading screen to end credits
@@ -281,12 +310,8 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
         persistence: PlayerData,
 
         state: union(enum) {
-            intro: IntroSequence,
+            intro: IntroSequence(platform, drawer),
         },
-
-        const IntroSequence = struct {
-            t: f32,
-        };
 
         pub fn init() !Self {
             const platform_alloc = platform.gpa;
@@ -314,9 +339,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 .mem = mem,
                 .persistence = player_data,
                 .state = .{
-                    .intro = .{
-                        .t = 0.0,
-                    },
+                    .intro = .init(),
                 },
             };
             // result.openLevel();
@@ -327,7 +350,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
         pub fn update(self: *Self, delta_seconds: f32) void {
             switch (self.state) {
                 .intro => |*intro| {
-                    intro.t += delta_seconds;
+                    intro.update(delta_seconds);
                 },
             }
         }
@@ -335,16 +358,161 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
         pub fn draw(self: Self) void {
             switch (self.state) {
                 .intro => |intro| {
-                    drawer.clear(Color.gray(128));
-                    drawer.drawAtomDebug(
-                        Camera{
-                            .center = .zero,
-                            .height = std.math.lerp(20, 4, std.math.clamp(intro.t / 2.0, 0.0, 1.0)),
-                        },
-                        Point{ .pos = .zero, .scale = 1, .turns = 0 },
-                    );
+                    intro.draw();
                 },
             }
         }
     };
+}
+
+const Random = struct {
+    rnd: std.Random,
+
+    fn between(this: Random, at_least: f32, less_than: f32) f32 {
+        return this.rnd.float(f32) * (less_than - at_least) + at_least;
+    }
+
+    fn inRect(this: Random, rect: Rect) Vec2 {
+        return Vec2.new(
+            this.between(rect.top_left.x, rect.top_left.x + rect.size.x),
+            this.between(rect.top_left.y, rect.top_left.y + rect.size.y),
+        );
+    }
+
+    fn around0(this: Random, radius: f32) f32 {
+        return this.between(-radius, radius);
+    }
+
+    fn direction(this: Random) Vec2 {
+        return Vec2.e1.rotate(this.rnd.float(f32));
+    }
+};
+
+pub fn IntroSequence(platform: Platform, drawer: Drawer) type {
+    _ = platform;
+    return struct {
+        const Self = @This();
+
+        t: f32,
+        background_atoms: [40]struct {
+            cur: Point,
+            vel: Point,
+        },
+
+        const initial_camera = Camera{
+            .center = .zero,
+            .height = 50,
+        };
+        const second_camera = Camera{
+            .center = .new(4, 0),
+            .height = 12,
+        };
+
+        const snap = .{
+            .pos = Point{ .pos = .new(3, 0) },
+            // the velocity at the moment of snapping
+            .vel = Point{
+                .pos = .new(-1, -1),
+                .turns = -0.1,
+            },
+        };
+
+        pub fn init() Self {
+            var background_atoms: @FieldType(Self, "background_atoms") = undefined;
+            var rnd_state = std.Random.DefaultPrng.init(14);
+            const rnd = Random{ .rnd = rnd_state.random() };
+
+            for (&background_atoms) |*atom| {
+                atom.* = .{ .cur = .{
+                    .pos = rnd.inRect(initial_camera.toRect()),
+                    .turns = rnd.rnd.floatNorm(f32) / 100.0,
+                }, .vel = Point{
+                    .pos = rnd.direction().scale(0.2),
+                    .turns = rnd.around0(0.02),
+                } };
+            }
+            // hack
+            background_atoms[30] = .{ .cur = .{
+                .pos = rnd.inRect(initial_camera.toRect()),
+                .turns = rnd.rnd.floatNorm(f32) / 100.0,
+            }, .vel = Point{
+                .pos = rnd.direction().scale(0.2),
+                .turns = rnd.around0(0.02),
+            } };
+            return .{ .t = 0, .background_atoms = background_atoms };
+        }
+
+        pub fn update(self: *Self, delta_seconds: f32) void {
+            for (&self.background_atoms) |*atom| {
+                atom.cur.pos = atom.cur.pos.add(atom.vel.pos.scale(delta_seconds));
+                atom.cur.turns += delta_seconds * atom.vel.turns;
+            }
+            self.t += delta_seconds;
+            // self.t = std.math.clamp(self.t, 0, 1);
+        }
+
+        pub fn draw(self: Self) void {
+            drawer.clear(Color.gray(128));
+            const camera = Camera.lerp(
+                initial_camera,
+                second_camera,
+                smoothstep(self.t, 2, 6),
+            );
+            for (self.background_atoms) |atom| {
+                drawer.drawAtomDebug(camera, atom.cur);
+            }
+
+            if (self.t <= 8) {
+                drawer.drawCable(camera, .new(-50, 0), .new(-0.5, 0), 1, 0);
+                drawer.drawAtomDebug(
+                    camera,
+                    Point{ .pos = .zero, .scale = 1, .turns = 0 },
+                );
+
+                const cur = Point.lerp(
+                    .{
+                        .pos = snap.pos.pos.sub(snap.vel.pos).scale(8),
+                        .turns = (snap.pos.turns - snap.vel.turns) * 8,
+                    },
+                    snap.pos,
+                    clamp(self.t / 8, 0, 1),
+                );
+                drawer.drawAtomPatternDebug(camera, cur);
+                drawer.drawAtomDebug(camera, cur.applyToLocalPoint(.{ .pos = .new(3.8, 0) }));
+                drawer.drawCable(
+                    camera,
+                    cur.applyToLocalPosition(.new(0.5, 0)),
+                    cur.applyToLocalPosition(.new(3.3, 0)),
+                    1,
+                    53.5,
+                );
+            } else {
+                const pull = smoothstep(self.t, 8.3, 12) * 6.8;
+                drawer.drawCable(camera, .new(-50, 0), .new(6.3 - pull, 0), 1, pull);
+                drawer.drawAtomDebug(camera, snap.pos.applyToLocalPoint(.{ .pos = .new(3.8 - pull, 0) }));
+
+                const cur = Point.lerp(
+                    snap.pos,
+                    .{
+                        .pos = snap.pos.pos.sub(snap.vel.pos).add(.new(0, 3)).scale(-4),
+                        .turns = (snap.pos.turns - snap.vel.turns) * -12,
+                    },
+                    clamp((self.t - 8) / 8, 0, 1),
+                );
+                drawer.drawAtomDebug(camera, cur.applyToLocalPoint(.{ .pos = .new(-3, 0) }));
+                drawer.drawAtomPatternDebug(camera, cur);
+            }
+        }
+    };
+}
+
+const clamp = std.math.clamp;
+
+fn clamp01(value: anytype) @TypeOf(value, 0.0) {
+    return std.math.clamp(value, 0.0, 1.0);
+}
+
+fn smoothstep(x: anytype, edge0: anytype, edge1: anytype) @TypeOf(x, edge0, edge1) {
+    const y = std.math.clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+    return y * y * (3.0 - 2.0 * y);
 }
