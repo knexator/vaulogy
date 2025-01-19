@@ -114,7 +114,6 @@ const WebPlatform = struct {
 var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
 const web_platform = presenter.Platform{
     .gpa = gpa.allocator(),
-    .debugLog = js_better.debug.logString,
     .getPlayerData = WebPlatform.getPlayerData,
     .setPlayerData = WebPlatform.setPlayerData,
 };

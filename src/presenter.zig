@@ -15,7 +15,6 @@ const OoM = error{OutOfMemory};
 
 pub const Platform = struct {
     gpa: std.mem.Allocator,
-    debugLog: fn (message: []const u8) void,
     getPlayerData: fn (mem: *VeryPermamentGameStuff) OoM!?PlayerData,
     setPlayerData: fn (player_data: PlayerData, mem: *VeryPermamentGameStuff) OoM!void,
 };
@@ -23,7 +22,9 @@ pub const Platform = struct {
 pub const PlayerData = struct {
     // TODO: this field should not be here.
     ascii_data: []const u8,
+
     fnks: FnkCollection,
+    first_time: bool = true,
 
     pub fn empty(mem: *VeryPermamentGameStuff) PlayerData {
         return PlayerData{
@@ -116,19 +117,27 @@ pub fn Presenter(platform: Platform) type {
             var mem = VeryPermamentGameStuff.init(platform_alloc);
             var player_data = (try platform.getPlayerData(&mem)) orelse PlayerData.empty(&mem);
 
-            const asdf =
-                \\foo {
-                \\  x -> y;
+            if (!player_data.first_time) return error.TODO;
+            const tutorial_fnk =
+                \\planetFromOlympian {
+                \\  Hermes -> Mercury;
+                \\  Aphrodite -> Venus;
+                \\  Ares -> Mars;
+                \\  Zeus -> Jupiter;
+                \\  Kronos -> Saturn;
+                \\  Poseidon -> Neptune;
+                \\  // Hades -> Pluto;
                 \\}
             ;
-            var parser = parsing.Parser{ .remaining_text = asdf };
+            var parser = parsing.Parser{ .remaining_text = tutorial_fnk };
             const fnk = try parser.parseFnkNew(&mem.pool_for_sexprs, mem.arena_for_cases.allocator());
-            // std.log.debug("{any}", .{fnk});
             try player_data.fnks.put(fnk.name, fnk.body);
             try platform.setPlayerData(player_data, &mem);
 
+            const result = Self{ .mem = mem, .persistence = player_data };
+            // result.openLevel();
             // platform.showMenu()
-            return Self{ .mem = mem, .persistence = player_data };
+            return result;
         }
     };
 }
