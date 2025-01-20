@@ -13,10 +13,41 @@ const parsing = @import("parsing.zig");
 
 const OoM = error{OutOfMemory};
 
+pub const MouseState = struct {
+    // TODO: rename these, make into a Vec2
+    clientX: f32,
+    clientY: f32,
+    buttons: struct {
+        left: bool,
+        middle: bool,
+        right: bool,
+    },
+
+    pub const init: MouseState = .{
+        .clientX = 0,
+        .clientY = 0,
+        .buttons = .{
+            .left = false,
+            .middle = false,
+            .right = false,
+        },
+    };
+
+    pub fn pos(self: MouseState, camera: Camera) Vec2 {
+        return camera.worldFromScreen(Vec2.new(self.clientX, self.clientY));
+    }
+};
+
+pub const Mouse = struct {
+    cur: MouseState,
+    prev: MouseState,
+};
+
 pub const Platform = struct {
     gpa: std.mem.Allocator,
     getPlayerData: fn (mem: *VeryPermamentGameStuff) OoM!?PlayerData,
     setPlayerData: fn (player_data: PlayerData, mem: *VeryPermamentGameStuff) OoM!void,
+    getMouse: fn () Mouse,
 };
 
 pub const PlayerData = struct {
@@ -134,6 +165,18 @@ pub const Vec2 = struct {
         return new(v.x * s, v.y * s);
     }
 
+    pub fn mul(a: Self, b: Self) Self {
+        return new(a.x * b.x, a.y * b.y);
+    }
+
+    pub fn addX(a: Self, b: f32) Self {
+        return new(a.x + b, a.y);
+    }
+
+    pub fn addY(a: Self, b: f32) Self {
+        return new(a.x, a.y + b);
+    }
+
     pub fn perpCW(v: Self) Self {
         return new(-v.y, v.x);
     }
@@ -185,9 +228,18 @@ pub const Vec2 = struct {
     }
 };
 
+fn inRange(value: f32, min_inclusive: f32, max_exclusive: f32) bool {
+    return min_inclusive <= value and value < max_exclusive;
+}
+
 pub const Rect = struct {
     top_left: Vec2,
     size: Vec2,
+
+    pub fn contains(self: Rect, p: Vec2) bool {
+        return inRange(p.x, self.top_left.x, self.top_left.x + self.size.x) and
+            inRange(p.y, self.top_left.y, self.top_left.y + self.size.y);
+    }
 };
 
 pub const Color = struct {
@@ -280,6 +332,12 @@ pub const Camera = struct {
     /// how many world units fit between the top and bottom of the camera view
     height: f32,
 
+    pub fn fromTopleftAndHeight(top_left: Vec2, height: f32) Camera {
+        return .{ .center = top_left.add(
+            Vec2.new(aspect_ratio, 1).scale(height).scale(0.5),
+        ), .height = height };
+    }
+
     pub fn toRect(self: Camera) Rect {
         const size = Vec2.new(self.height * aspect_ratio, self.height);
         const top_left = self.center.sub(size.scale(0.5));
@@ -292,10 +350,17 @@ pub const Camera = struct {
             .height = std.math.lerp(a.height, b.height, t),
         };
     }
+
+    /// screen_pos is in ([0..aspect_ratio], [0..1])
+    pub fn worldFromScreen(self: Camera, screen_pos: Vec2) Vec2 {
+        const rect = self.toRect();
+        return rect.top_left.add(screen_pos.scale(self.height));
+    }
 };
 
 pub const Drawer = struct {
     clear: fn (color: Color) void,
+    drawRect: fn (camera: Camera, rect: Rect) void,
     drawAtomDebug: fn (camera: Camera, world_point: Point) void,
     drawAtomPatternDebug: fn (camera: Camera, world_point: Point) void,
     drawCable: fn (camera: Camera, world_from: Vec2, world_to: Vec2, world_scale: f32, offset: f32) void,
@@ -310,7 +375,9 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
         persistence: PlayerData,
 
         state: union(enum) {
+            /// not used for now
             intro: IntroSequence(platform, drawer),
+            level_select: LevelSelect(platform, drawer),
         },
 
         pub fn init() !Self {
@@ -339,7 +406,8 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 .mem = mem,
                 .persistence = player_data,
                 .state = .{
-                    .intro = .init(),
+                    // .intro = .init(),
+                    .level_select = .init(),
                 },
             };
             // result.openLevel();
@@ -349,17 +417,15 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
 
         pub fn update(self: *Self, delta_seconds: f32) void {
             switch (self.state) {
-                .intro => |*intro| {
-                    intro.update(delta_seconds);
-                },
+                .intro => |*intro| intro.update(delta_seconds),
+                .level_select => |*level_select| level_select.update(delta_seconds),
             }
         }
 
         pub fn draw(self: Self) void {
             switch (self.state) {
-                .intro => |intro| {
-                    intro.draw();
-                },
+                .intro => |intro| intro.draw(),
+                .level_select => |level_select| level_select.draw(),
             }
         }
     };
@@ -387,6 +453,81 @@ const Random = struct {
         return Vec2.e1.rotate(this.rnd.float(f32));
     }
 };
+
+// pub fn Template(platform: Platform, drawer: Drawer) type {
+//     _ = platform;
+//     _ = drawer;
+//     return struct {
+//         const Self = @This();
+//         pub fn init() Self {}
+//         pub fn update(self: *Self, delta_seconds: f32) void {
+//             _ = self;
+//             _ = delta_seconds;
+//         }
+//         pub fn draw(self: Self) void {
+//             _ = self;
+//         }
+//     };
+// }
+
+const UI = struct {
+    pub const Button = struct {
+        pos: Rect,
+        hot: bool = false,
+        active: bool = false,
+    };
+};
+
+pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
+    // _ = platform;
+    return struct {
+        const Self = @This();
+
+        const Level = struct { name: []const u8 };
+        const levels: []const Level = &.{
+            .{ .name = "test" },
+            .{ .name = "test2" },
+            .{ .name = "test3" },
+        };
+        const ui_cam = Camera.fromTopleftAndHeight(Vec2.zero, 15);
+        const ui_buttons = [levels.len]UI.Button{
+            .{ .pos = Rect{ .top_left = .new(2, 2.5), .size = .one } },
+            .{ .pos = Rect{ .top_left = .new(2, 5), .size = .one } },
+            .{ .pos = Rect{ .top_left = .new(2, 7.5), .size = .one } },
+        };
+
+        pub fn init() Self {
+            return .{};
+        }
+
+        pub fn update(self: *Self, delta_seconds: f32) void {
+            _ = self;
+            _ = delta_seconds;
+        }
+
+        pub fn draw(self: Self) void {
+            _ = self;
+            drawer.clear(Color.gray(128));
+            for (ui_buttons) |button| {
+                drawer.drawRect(ui_cam, button.pos);
+                // drawer.drawAtomDebug(ui_cam, .{
+                //     .pos = button.pos.top_left,
+                // });
+                if (button.pos.contains(platform.getMouse().cur.pos(ui_cam))) {
+                    drawer.drawAtomDebug(ui_cam, .{
+                        .pos = button.pos.top_left.add(.new(1, 0.5)),
+                    });
+                }
+            }
+            // for (levels, 0..) |level, k| {
+            //     _ = level;
+            //     drawer.drawAtomDebug(ui_cam, .{
+            //         .pos = .new(1.5, 2 + @as(f32, @floatFromInt(k)) * 2.5),
+            //     });
+            // }
+        }
+    };
+}
 
 pub fn IntroSequence(platform: Platform, drawer: Drawer) type {
     _ = platform;

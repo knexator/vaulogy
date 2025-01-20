@@ -146,7 +146,7 @@ const ws = new WebSocket("ws://" + location.host);
 ws.onmessage = (event) => {
   if (event.data === "reload") {
     console.log("reloading wasm");
-    getWasm().then((res) => { 
+    getWasm().then((res) => {
       wasm_exports = res;
       wasm_exports.init();
     });
@@ -159,6 +159,24 @@ document.addEventListener("keydown", (ev) => {
   if (key_num !== undefined) {
     wasm_exports.keydown(key_num);
   }
+});
+
+document.addEventListener("pointermove", (ev) => {
+  const rect = canvas.getBoundingClientRect();
+  wasm_exports.pointermove(ev.clientX - rect.left, ev.clientY - rect.top);
+});
+
+document.addEventListener("pointerup", (ev) => {
+  wasm_exports.pointerup(ev.button);
+});
+
+document.addEventListener("pointerdown", (ev) => {
+  wasm_exports.pointerdown(ev.button);
+});
+
+document.addEventListener("contextmenu", (ev) => {
+  ev.preventDefault();
+  return false;
 });
 
 function rgbToHex(r, g, b) {

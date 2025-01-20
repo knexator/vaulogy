@@ -113,7 +113,7 @@ const js_better = struct {
             js.canvas.fillRect(0, 0, size.x, size.y);
         }
 
-        pub fn pathLoop(all_positions: []Vec2) void {
+        pub fn pathLoop(all_positions: []const Vec2) void {
             if (all_positions.len < 3) programmerError();
             js.canvas.beginPath();
             moveTo(all_positions[0]);
@@ -151,6 +151,10 @@ const WebPlatform = struct {
         defer mem.gpa.free(ascii);
         js_better.storage.setItem("vaulogy_player_data", ascii);
     }
+
+    pub fn getMouse() presenter.Mouse {
+        return mouse;
+    }
 };
 
 const Camera = presenter.Camera;
@@ -175,6 +179,30 @@ const WebDrawer = struct {
 
     fn screenFromWorldScale(camera: Camera, world_scale: f32) f32 {
         return screenFromWorld(camera, .{ .scale = world_scale }).scale;
+    }
+
+    fn screenFromWorldSize(camera: Camera, world_size: Vec2) Vec2 {
+        return Vec2.new(
+            screenFromWorldScale(camera, world_size.x),
+            screenFromWorldScale(camera, world_size.y),
+        );
+    }
+
+    pub fn drawRect(camera: Camera, rect: Rect) void {
+        const screen_top_left = screenFromWorldPosition(camera, rect.top_left);
+        const screen_size = screenFromWorldSize(camera, rect.size);
+        const screen_positions = [_]Vec2{
+            screen_top_left,
+            screen_top_left.addX(screen_size.x),
+            screen_top_left.add(screen_size),
+            screen_top_left.addY(screen_size.y),
+        };
+        js_better.canvas.pathLoop(&screen_positions);
+        js.canvas.setLineWidth(1);
+        js_better.canvas.setFillColor(Color.white);
+        js_better.canvas.setStrokeColor(Color.black);
+        js.canvas.fill();
+        js.canvas.stroke();
     }
 
     pub fn drawAtomDebug(camera: Camera, world_point: Point) void {
@@ -260,9 +288,11 @@ const web_platform = presenter.Platform{
     .gpa = gpa.allocator(),
     .getPlayerData = WebPlatform.getPlayerData,
     .setPlayerData = WebPlatform.setPlayerData,
+    .getMouse = WebPlatform.getMouse,
 };
 const web_drawer = presenter.Drawer{
     .clear = js_better.canvas.clear,
+    .drawRect = WebDrawer.drawRect,
     .drawAtomDebug = WebDrawer.drawAtomDebug,
     .drawAtomPatternDebug = WebDrawer.drawAtomPatternDebug,
     .drawCable = WebDrawer.drawCable,
@@ -279,15 +309,51 @@ export fn init() void {
 
 const KeyCode = @import("./tools/generate_keycodes_js.zig").KeyCode;
 export fn keydown(code: KeyCode) void {
-    _ = code;
+    if (code == .KeyA) paused = !paused;
 }
 
+var paused = false;
 export fn frame(delta_seconds: f32) void {
+    if (paused) return;
     game.update(delta_seconds);
+    mouse.prev = mouse.cur;
 }
 
 export fn draw() void {
     game.draw();
+}
+
+const MouseState = presenter.MouseState;
+var mouse = presenter.Mouse{ .cur = .init, .prev = .init };
+
+export fn pointermove(x: f32, y: f32) void {
+    mouse.cur.clientX = x / js_better.canvas.getSize().y;
+    mouse.cur.clientY = y / js_better.canvas.getSize().y;
+}
+
+const MouseButton = enum(u8) {
+    left = 0,
+    middle = 1,
+    right = 2,
+    _,
+};
+
+export fn pointerup(button: MouseButton) void {
+    switch (button) {
+        .left => mouse.cur.buttons.left = true,
+        .middle => mouse.cur.buttons.middle = true,
+        .right => mouse.cur.buttons.right = true,
+        _ => {},
+    }
+}
+
+export fn pointerdown(button: MouseButton) void {
+    switch (button) {
+        .left => mouse.cur.buttons.left = false,
+        .middle => mouse.cur.buttons.middle = false,
+        .right => mouse.cur.buttons.right = false,
+        _ => {},
+    }
 }
 
 fn programmerError() noreturn {
