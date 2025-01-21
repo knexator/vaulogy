@@ -13,6 +13,7 @@ const parsing = @import("parsing.zig");
 
 const OoM = error{OutOfMemory};
 
+const MouseButton = enum { left, right, middle };
 pub const MouseState = struct {
     // TODO: rename these, make into a Vec2
     clientX: f32,
@@ -36,11 +37,23 @@ pub const MouseState = struct {
     pub fn pos(self: MouseState, camera: Camera) Vec2 {
         return camera.worldFromScreen(Vec2.new(self.clientX, self.clientY));
     }
+
+    pub fn isDown(self: MouseState, button: MouseButton) bool {
+        return switch (button) {
+            .left => self.buttons.left,
+            .middle => self.buttons.middle,
+            .right => self.buttons.right,
+        };
+    }
 };
 
 pub const Mouse = struct {
     cur: MouseState,
     prev: MouseState,
+
+    pub fn wasPressed(self: Mouse, button: MouseButton) bool {
+        return self.cur.isDown(button) and !self.prev.isDown(button);
+    }
 };
 
 pub const Platform = struct {
@@ -406,17 +419,19 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 .mem = mem,
                 .persistence = player_data,
                 .state = .{
-                    // .intro = .init(),
                     .level_select = .init(),
                 },
             };
-            // result.openLevel();
-            // platform.showMenu()
             return result;
         }
 
         pub fn update(self: *Self, delta_seconds: f32) void {
             switch (self.state) {
+                .level_select => |*ui| if (ui.update(delta_seconds)) |level_index| {
+                    std.log.info("opening level {d}", .{level_index});
+                    // TODO: actual level
+                    self.state = .{ .intro = .init() };
+                },
                 inline else => |*x| x.update(delta_seconds),
             }
         }
@@ -469,12 +484,44 @@ const Random = struct {
 // }
 
 const UI = struct {
+    const cam = Camera.fromTopleftAndHeight(Vec2.zero, 15);
+
+    pub const State = struct {
+        hot: ?usize = null,
+        active: ?usize = null,
+        buttons: []Button,
+
+        pub fn isHot(self: State, k: usize) bool {
+            return if (self.hot) |hot| hot == k else false;
+        }
+
+        pub fn isActive(self: State, k: usize) bool {
+            return if (self.active) |active| active == k else false;
+        }
+    };
+
     pub const Button = struct {
         pos: Rect,
-        hot: bool = false,
-        active: bool = false,
+        hot_t: f32 = 0,
+        active_t: f32 = 0,
     };
 };
+
+fn towards(v: *f32, goal: f32, max_delta: f32) void {
+    if (@abs(v.* - goal) <= max_delta) {
+        v.* = goal;
+    } else if (v.* < goal) {
+        v.* += max_delta;
+    } else {
+        v.* -= max_delta;
+    }
+}
+
+fn lerp_towards(v: *f32, goal: f32, ratio: f32, delta_seconds: f32) void {
+    // TODO: make this framerate independent
+    _ = delta_seconds;
+    v.* = std.math.lerp(v.*, goal, ratio);
+}
 
 pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
     // _ = platform;
@@ -487,42 +534,74 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
             .{ .name = "test2" },
             .{ .name = "test3" },
         };
-        const ui_cam = Camera.fromTopleftAndHeight(Vec2.zero, 15);
-        const ui_buttons = [levels.len]UI.Button{
-            .{ .pos = Rect{ .top_left = .new(2, 2.5), .size = .one } },
-            .{ .pos = Rect{ .top_left = .new(2, 5), .size = .one } },
-            .{ .pos = Rect{ .top_left = .new(2, 7.5), .size = .one } },
-        };
+
+        // asdf: [3]UI.Button = .{
+        //     .{ .pos = Rect{ .top_left = .new(2, 2.5), .size = .one } },
+        //     .{ .pos = Rect{ .top_left = .new(2, 5), .size = .one } },
+        //     .{ .pos = Rect{ .top_left = .new(2, 7.5), .size = .one } },
+        // },
+
+        ui_state: UI.State,
 
         pub fn init() Self {
-            return .{};
+            var res = platform.gpa.alloc(UI.Button, 3) catch unreachable;
+            res[0] = .{ .pos = Rect{ .top_left = .new(2, 2.5), .size = .one } };
+            res[1] = .{ .pos = Rect{ .top_left = .new(2, 5), .size = .one } };
+            res[2] = .{ .pos = Rect{ .top_left = .new(2, 7.5), .size = .one } };
+            return Self{ .ui_state = .{ .buttons = res } };
         }
 
-        pub fn update(self: *Self, delta_seconds: f32) void {
-            _ = self;
-            _ = delta_seconds;
+        pub fn update(self: *Self, delta_seconds: f32) ?usize {
+            const mouse = platform.getMouse();
+            self.ui_state.hot = null;
+            for (self.ui_state.buttons, 0..) |button, k| {
+                if (button.pos.contains(mouse.cur.pos(UI.cam))) {
+                    self.ui_state.hot = k;
+                    if (self.ui_state.active == null and mouse.cur.isDown(.left)) {
+                        self.ui_state.active = k;
+                    }
+                }
+
+                if (self.ui_state.isActive(k) and self.ui_state.isHot(k) and !mouse.cur.isDown(.left)) {
+                    return k;
+                }
+            }
+            if (!mouse.cur.isDown(.left)) {
+                if (self.ui_state.active) |_| {
+                    self.ui_state.active = null;
+                }
+            } else if (self.ui_state.active == null) {
+                // TODO: better
+                self.ui_state.active = 999;
+            }
+            for (self.ui_state.buttons, 0..) |*button, k| {
+                lerp_towards(
+                    &button.hot_t,
+                    if (self.ui_state.isHot(k)) 1 else 0,
+                    0.6,
+                    delta_seconds,
+                );
+                lerp_towards(
+                    &button.active_t,
+                    if (self.ui_state.isActive(k)) 1 else 0,
+                    0.6,
+                    delta_seconds,
+                );
+            }
+            return null;
         }
 
         pub fn draw(self: Self) void {
-            _ = self;
             drawer.clear(Color.gray(128));
-            for (ui_buttons) |button| {
-                drawer.drawRect(ui_cam, button.pos);
-                // drawer.drawAtomDebug(ui_cam, .{
-                //     .pos = button.pos.top_left,
-                // });
-                if (button.pos.contains(platform.getMouse().cur.pos(ui_cam))) {
-                    drawer.drawAtomDebug(ui_cam, .{
-                        .pos = button.pos.top_left.add(.new(1, 0.5)),
+            for (self.ui_state.buttons) |button| {
+                drawer.drawRect(UI.cam, button.pos);
+                if (button.hot_t > 0 or button.active_t > 0) {
+                    drawer.drawAtomDebug(UI.cam, .{
+                        .pos = button.pos.top_left.add(.new(2 - button.active_t, 0.5)),
+                        .scale = button.hot_t,
                     });
                 }
             }
-            // for (levels, 0..) |level, k| {
-            //     _ = level;
-            //     drawer.drawAtomDebug(ui_cam, .{
-            //         .pos = .new(1.5, 2 + @as(f32, @floatFromInt(k)) * 2.5),
-            //     });
-            // }
         }
     };
 }

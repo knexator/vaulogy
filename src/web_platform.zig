@@ -340,18 +340,18 @@ const MouseButton = enum(u8) {
 
 export fn pointerup(button: MouseButton) void {
     switch (button) {
-        .left => mouse.cur.buttons.left = true,
-        .middle => mouse.cur.buttons.middle = true,
-        .right => mouse.cur.buttons.right = true,
+        .left => mouse.cur.buttons.left = false,
+        .middle => mouse.cur.buttons.middle = false,
+        .right => mouse.cur.buttons.right = false,
         _ => {},
     }
 }
 
 export fn pointerdown(button: MouseButton) void {
     switch (button) {
-        .left => mouse.cur.buttons.left = false,
-        .middle => mouse.cur.buttons.middle = false,
-        .right => mouse.cur.buttons.right = false,
+        .left => mouse.cur.buttons.left = true,
+        .middle => mouse.cur.buttons.middle = true,
+        .right => mouse.cur.buttons.right = true,
         _ => {},
     }
 }
