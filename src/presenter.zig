@@ -7,6 +7,7 @@ const Atom = core.Atom;
 const Pair = core.Pair;
 const Sexpr = core.Sexpr;
 const Fnk = core.Fnk;
+const FnkBody = core.FnkBody;
 const FnkCollection = core.FnkCollection;
 const VeryPermamentGameStuff = core.VeryPermamentGameStuff;
 const parsing = @import("parsing.zig");
@@ -391,7 +392,19 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             /// not used for now
             intro: IntroSequence(platform, drawer),
             level_select: LevelSelect(platform, drawer),
+            editing_level: EditingFnk(platform, drawer),
         },
+
+        fn defaultFnkBody(mem: *VeryPermamentGameStuff) FnkBody {
+            const default_fnk =
+                \\default {
+                \\  foo -> bar;
+                \\}
+            ;
+            var parser = parsing.Parser{ .remaining_text = default_fnk };
+            const fnk = parser.parseFnkNew(&mem.pool_for_sexprs, mem.arena_for_cases.allocator()) catch unreachable;
+            return fnk.body;
+        }
 
         pub fn init() !Self {
             const platform_alloc = platform.gpa;
@@ -428,9 +441,11 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
         pub fn update(self: *Self, delta_seconds: f32) void {
             switch (self.state) {
                 .level_select => |*ui| if (ui.update(delta_seconds)) |level_index| {
-                    std.log.info("opening level {d}", .{level_index});
-                    // TODO: actual level
-                    self.state = .{ .intro = .init() };
+                    const fnk_name = levels[level_index].fnk_name;
+                    const fnk_body = self.persistence.fnks.get(fnk_name) orelse defaultFnkBody(&self.mem);
+                    self.state = .{ .editing_level = .init(
+                        Fnk{ .name = fnk_name, .body = fnk_body },
+                    ) };
                 },
                 inline else => |*x| x.update(delta_seconds),
             }
@@ -483,6 +498,57 @@ const Random = struct {
 //     };
 // }
 
+const Level = struct { fnk_name: *const Sexpr };
+const levels: []const Level = &.{
+    .{ .fnk_name = &Sexpr.doLit("planetFromOlympian") },
+    .{ .fnk_name = &Sexpr.doLit("testing") },
+};
+
+/// Like Drawer, but higher level
+fn Artist(platform: Platform, drawer: Drawer) type {
+    _ = drawer;
+    return struct {
+        const AtomProfile = []Vec2;
+
+        var asdf: std.StringHashMap(AtomProfile) = .init(platform.gpa);
+
+        pub fn getAtomProfile(name: []const u8) AtomProfile {
+            if (asdf.get(name)) |res| {
+                return res;
+            } else {
+                // TODO: actual random profile
+                const profile = &[1].{Vec2.zero};
+                asdf.put(name, profile);
+                return profile;
+            }
+        }
+    };
+}
+
+pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
+    return struct {
+        const Self = @This();
+        const artist = Artist(platform, drawer);
+
+        fnk: Fnk,
+        sample_input: *const Sexpr,
+
+        pub fn init(fnk: Fnk) Self {
+            return .{ .fnk = fnk, .sample_input = &Sexpr.true };
+        }
+
+        pub fn update(self: *Self, delta_seconds: f32) void {
+            _ = self;
+            _ = delta_seconds;
+        }
+
+        pub fn draw(self: Self) void {
+            _ = self;
+            drawer.clear(Color.gray(128));
+        }
+    };
+}
+
 const UI = struct {
     const cam = Camera.fromTopleftAndHeight(Vec2.zero, 15);
 
@@ -528,13 +594,6 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
     return struct {
         const Self = @This();
 
-        const Level = struct { name: []const u8 };
-        const levels: []const Level = &.{
-            .{ .name = "test" },
-            .{ .name = "test2" },
-            .{ .name = "test3" },
-        };
-
         // asdf: [3]UI.Button = .{
         //     .{ .pos = Rect{ .top_left = .new(2, 2.5), .size = .one } },
         //     .{ .pos = Rect{ .top_left = .new(2, 5), .size = .one } },
@@ -544,10 +603,10 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
         ui_state: UI.State,
 
         pub fn init() Self {
-            var res = platform.gpa.alloc(UI.Button, 3) catch unreachable;
-            res[0] = .{ .pos = Rect{ .top_left = .new(2, 2.5), .size = .one } };
-            res[1] = .{ .pos = Rect{ .top_left = .new(2, 5), .size = .one } };
-            res[2] = .{ .pos = Rect{ .top_left = .new(2, 7.5), .size = .one } };
+            const res = platform.gpa.alloc(UI.Button, levels.len) catch unreachable;
+            for (res, 0..) |*b, k| {
+                b.* = .{ .pos = Rect{ .top_left = .new(2, 2.5 + 2.5 * @as(f32, @floatFromInt(k))), .size = .one } };
+            }
             return Self{ .ui_state = .{ .buttons = res } };
         }
 
