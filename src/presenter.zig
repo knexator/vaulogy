@@ -417,15 +417,13 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
 
         pub fn update(self: *Self, delta_seconds: f32) void {
             switch (self.state) {
-                .intro => |*intro| intro.update(delta_seconds),
-                .level_select => |*level_select| level_select.update(delta_seconds),
+                inline else => |*x| x.update(delta_seconds),
             }
         }
 
         pub fn draw(self: Self) void {
             switch (self.state) {
-                .intro => |intro| intro.draw(),
-                .level_select => |level_select| level_select.draw(),
+                inline else => |x| x.draw(),
             }
         }
     };
