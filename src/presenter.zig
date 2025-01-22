@@ -268,6 +268,14 @@ pub const Color = struct {
         return .{ .r = r, .g = g, .b = b };
     }
 
+    pub fn from01(r: f32, g: f32, b: f32) Color {
+        return Color.new(
+            @intFromFloat(r * 255),
+            @intFromFloat(g * 255),
+            @intFromFloat(b * 255),
+        );
+    }
+
     pub fn gray(v: u8) Color {
         return new(v, v, v);
     }
@@ -372,12 +380,16 @@ pub const Camera = struct {
     }
 };
 
-pub const AtomProfile = []const Vec2;
+pub const AtomVisuals = struct {
+    profile: []const Vec2,
+    color: Color,
+};
+
 pub const Drawer = struct {
     clear: fn (color: Color) void,
     drawRect: fn (camera: Camera, rect: Rect) void,
     drawAtomDebug: fn (camera: Camera, world_point: Point) void,
-    drawAtom: fn (camera: Camera, world_point: Point, profile: AtomProfile) void,
+    drawAtom: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
     drawAtomPatternDebug: fn (camera: Camera, world_point: Point) void,
     drawCable: fn (camera: Camera, world_from: Vec2, world_to: Vec2, world_scale: f32, offset: f32) void,
 };
@@ -484,6 +496,14 @@ const Random = struct {
     fn direction(this: Random) Vec2 {
         return Vec2.e1.rotate(this.rnd.float(f32));
     }
+
+    fn color(this: Random) Color {
+        return Color.new(
+            this.rnd.int(u8),
+            this.rnd.int(u8),
+            this.rnd.int(u8),
+        );
+    }
 };
 
 // pub fn Template(platform: Platform, drawer: Drawer) type {
@@ -510,41 +530,64 @@ const levels: []const Level = &.{
 
 /// Like Drawer, but higher level
 fn Artist(platform: Platform, drawer: Drawer) type {
-    const AtomProfilesCache = struct {
-        var profiles_cache: std.StringHashMap(AtomProfile) = std.StringHashMap(AtomProfile).init(platform.gpa);
+    const AtomVisualCache = struct {
+        var visuals_cache: std.StringHashMap(AtomVisuals) = std.StringHashMap(AtomVisuals).init(platform.gpa);
 
-        const hardcoded_profiles = .{
-            .identity = [_]Vec2{},
-            .nil = [_]Vec2{Vec2.new(0.75, -0.25)},
-            .input = [_]Vec2{ Vec2.new(0.2, 0.2), Vec2.new(0.8, 0.2) },
+        const hardcoded_visuals = .{
+            .identity = AtomVisuals{
+                .color = Color.white,
+                .profile = &.{},
+            },
+            .nil = AtomVisuals{
+                .color = .from01(0.45, 0.45, 0.45),
+                .profile = &.{.new(0.75, -0.25)},
+            },
+            .input = AtomVisuals{
+                .color = .from01(0.1, 0.6, 0.6),
+                .profile = &.{ .new(0.2, 0.2), .new(0.8, 0.2) },
+            },
         };
 
         pub fn init() !void {
-            inline for (std.meta.fields(@TypeOf(hardcoded_profiles))) |field| {
-                const magic: []const Vec2 = @as([*]const Vec2, @ptrCast(@alignCast(field.default_value)))[0..@typeInfo(field.type).array.len];
-                try profiles_cache.put(field.name, magic);
+            inline for (std.meta.fields(@TypeOf(hardcoded_visuals))) |field| {
+                const atom_name = field.name;
+                const atom_visuals = @field(hardcoded_visuals, field.name);
+                try visuals_cache.put(atom_name, atom_visuals);
             }
         }
 
-        pub fn getAtomProfile(name: []const u8) !AtomProfile {
-            const v = try profiles_cache.getOrPut(name);
-            if (!v.found_existing) {
-                std.log.debug("new! {s}", .{name});
-                var rnd_state = std.Random.DefaultPrng.init(name.len);
-                var rnd = Random{ .rnd = rnd_state.random() };
+        fn newAtomProfile(name: []const u8) ![]const Vec2 {
+            var rnd_state = std.Random.DefaultPrng.init(name.len);
+            var rnd = Random{ .rnd = rnd_state.random() };
 
-                const profile = try platform.gpa.alloc(Vec2, rnd.rnd.intRangeLessThan(usize, 2, 15));
-                for (profile) |*p| {
-                    p.* = Vec2.new(rnd.between(0, 1), rnd.around0(0.2));
+            const profile = try platform.gpa.alloc(Vec2, rnd.rnd.intRangeLessThan(usize, 2, 15));
+            for (profile) |*p| {
+                p.* = Vec2.new(rnd.between(0, 1), rnd.around0(0.2));
+            }
+            std.mem.sortUnstable(Vec2, profile, {}, struct {
+                pub fn lessThanFn(context: void, lhs: Vec2, rhs: Vec2) bool {
+                    _ = context;
+                    return lhs.x < rhs.x;
                 }
-                std.mem.sortUnstable(Vec2, profile, {}, struct {
-                    pub fn lessThanFn(context: void, lhs: Vec2, rhs: Vec2) bool {
-                        _ = context;
-                        return lhs.x < rhs.x;
-                    }
-                }.lessThanFn);
+            }.lessThanFn);
+            return profile;
+        }
 
-                v.value_ptr.* = profile;
+        fn newAtomColor(name: []const u8) !Color {
+            var rnd_state = std.Random.DefaultPrng.init(name.len);
+            var rnd = Random{ .rnd = rnd_state.random() };
+            const color = rnd.color();
+            return color;
+        }
+
+        pub fn getAtomVisuals(name: []const u8) !AtomVisuals {
+            const v = try visuals_cache.getOrPut(name);
+            if (!v.found_existing) {
+                const res = AtomVisuals{
+                    .color = try newAtomColor(name),
+                    .profile = try newAtomProfile(name),
+                };
+                v.value_ptr.* = res;
             }
             return v.value_ptr.*;
         }
@@ -552,16 +595,12 @@ fn Artist(platform: Platform, drawer: Drawer) type {
 
     return struct {
         pub fn init() !void {
-            return AtomProfilesCache.init();
+            return AtomVisualCache.init();
         }
 
         pub fn drawAtom(camera: Camera, world_point: Point, name: []const u8) !void {
-            const profile = try AtomProfilesCache.getAtomProfile(name);
-            drawer.drawAtom(camera, world_point, profile);
-        }
-
-        pub fn getAtomProfile(name: []const u8) !AtomProfile {
-            return AtomProfilesCache.getAtomProfile(name);
+            const visuals = try AtomVisualCache.getAtomVisuals(name);
+            drawer.drawAtom(camera, world_point, visuals);
         }
     };
 }
@@ -704,7 +743,7 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
                     try artist.drawAtom(UI.cam, .{
                         .pos = button.pos.top_left.add(.new(2 - button.active_t, 0.5)),
                         .scale = button.hot_t,
-                    }, if (button.pos.top_left.y < 5) "nl" else "iput");
+                    }, if (button.pos.top_left.y < 5) "nl" else "input");
                 }
             }
         }

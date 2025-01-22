@@ -228,7 +228,8 @@ const WebDrawer = struct {
         js.canvas.stroke();
     }
 
-    pub fn drawAtom(camera: Camera, world_point: Point, profile: presenter.AtomProfile) void {
+    pub fn drawAtom(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {
+        const profile = visuals.profile;
         const screen_point = screenFromWorld(camera, world_point);
         const local_positions = [_]Vec2{
             Vec2.new(2, -1),
@@ -253,7 +254,7 @@ const WebDrawer = struct {
         }
         js_better.canvas.pathLoop(screen_positions);
         js.canvas.setLineWidth(1);
-        js_better.canvas.setFillColor(Color.white);
+        js_better.canvas.setFillColor(visuals.color);
         js_better.canvas.setStrokeColor(Color.black);
         js.canvas.fill();
         js.canvas.stroke();
