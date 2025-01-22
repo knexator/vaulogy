@@ -228,6 +228,37 @@ const WebDrawer = struct {
         js.canvas.stroke();
     }
 
+    pub fn drawAtom(camera: Camera, world_point: Point, profile: presenter.AtomProfile) void {
+        const screen_point = screenFromWorld(camera, world_point);
+        const local_positions = [_]Vec2{
+            Vec2.new(2, -1),
+            Vec2.new(0, -1),
+            Vec2.new(-0.5, 0),
+            Vec2.new(0, 1),
+            Vec2.new(2, 1),
+        };
+        // TODO: no allocations
+        var screen_positions: []Vec2 = gpa.allocator().alloc(Vec2, local_positions.len + profile.len * 2) catch @panic("TODO");
+        defer gpa.allocator().free(screen_positions);
+        for (local_positions, 0..) |pos, i| {
+            screen_positions[i] = screen_point.applyToLocalPosition(pos);
+        }
+        for (profile, 0..) |pos, i| {
+            screen_positions[local_positions.len + i] = screen_point.applyToLocalPosition(
+                Vec2.new(2.0 - pos.y, 1.0 - pos.x),
+            );
+            screen_positions[local_positions.len + profile.len * 2 - i - 1] = screen_point.applyToLocalPosition(
+                Vec2.new(2.0 + pos.y, -1.0 + pos.x),
+            );
+        }
+        js_better.canvas.pathLoop(screen_positions);
+        js.canvas.setLineWidth(1);
+        js_better.canvas.setFillColor(Color.white);
+        js_better.canvas.setStrokeColor(Color.black);
+        js.canvas.fill();
+        js.canvas.stroke();
+    }
+
     pub fn drawAtomPatternDebug(camera: Camera, world_point: Point) void {
         const screen_point = screenFromWorld(camera, world_point);
         const local_positions = [_]Vec2{
@@ -293,6 +324,7 @@ const web_platform = presenter.Platform{
 const web_drawer = presenter.Drawer{
     .clear = js_better.canvas.clear,
     .drawRect = WebDrawer.drawRect,
+    .drawAtom = WebDrawer.drawAtom,
     .drawAtomDebug = WebDrawer.drawAtomDebug,
     .drawAtomPatternDebug = WebDrawer.drawAtomPatternDebug,
     .drawCable = WebDrawer.drawCable,
@@ -320,7 +352,7 @@ export fn frame(delta_seconds: f32) void {
 }
 
 export fn draw() void {
-    game.draw();
+    game.draw() catch OoM();
 }
 
 const MouseState = presenter.MouseState;
@@ -359,4 +391,9 @@ export fn pointerdown(button: MouseButton) void {
 fn programmerError() noreturn {
     js.debug.logInt(666);
     std.debug.panic("programmer error!", .{});
+}
+
+fn OoM() noreturn {
+    js.debug.logInt(321);
+    std.debug.panic("OoM!", .{});
 }

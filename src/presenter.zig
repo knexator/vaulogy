@@ -372,10 +372,12 @@ pub const Camera = struct {
     }
 };
 
+pub const AtomProfile = []const Vec2;
 pub const Drawer = struct {
     clear: fn (color: Color) void,
     drawRect: fn (camera: Camera, rect: Rect) void,
     drawAtomDebug: fn (camera: Camera, world_point: Point) void,
+    drawAtom: fn (camera: Camera, world_point: Point, profile: AtomProfile) void,
     drawAtomPatternDebug: fn (camera: Camera, world_point: Point) void,
     drawCable: fn (camera: Camera, world_from: Vec2, world_to: Vec2, world_scale: f32, offset: f32) void,
 };
@@ -428,6 +430,8 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             try player_data.fnks.put(fnk.name, fnk.body);
             try platform.setPlayerData(player_data, &mem);
 
+            try Artist(platform, drawer).init();
+
             const result = Self{
                 .mem = mem,
                 .persistence = player_data,
@@ -451,10 +455,10 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             }
         }
 
-        pub fn draw(self: Self) void {
-            switch (self.state) {
+        pub fn draw(self: Self) OoM!void {
+            try switch (self.state) {
                 inline else => |x| x.draw(),
-            }
+            };
         }
     };
 }
@@ -506,21 +510,58 @@ const levels: []const Level = &.{
 
 /// Like Drawer, but higher level
 fn Artist(platform: Platform, drawer: Drawer) type {
-    _ = drawer;
-    return struct {
-        const AtomProfile = []Vec2;
+    const AtomProfilesCache = struct {
+        var profiles_cache: std.StringHashMap(AtomProfile) = std.StringHashMap(AtomProfile).init(platform.gpa);
 
-        var asdf: std.StringHashMap(AtomProfile) = .init(platform.gpa);
+        const hardcoded_profiles = .{
+            .identity = [_]Vec2{},
+            .nil = [_]Vec2{Vec2.new(0.75, -0.25)},
+            .input = [_]Vec2{ Vec2.new(0.2, 0.2), Vec2.new(0.8, 0.2) },
+        };
 
-        pub fn getAtomProfile(name: []const u8) AtomProfile {
-            if (asdf.get(name)) |res| {
-                return res;
-            } else {
-                // TODO: actual random profile
-                const profile = &[1].{Vec2.zero};
-                asdf.put(name, profile);
-                return profile;
+        pub fn init() !void {
+            inline for (std.meta.fields(@TypeOf(hardcoded_profiles))) |field| {
+                const magic: []const Vec2 = @as([*]const Vec2, @ptrCast(@alignCast(field.default_value)))[0..@typeInfo(field.type).array.len];
+                try profiles_cache.put(field.name, magic);
             }
+        }
+
+        pub fn getAtomProfile(name: []const u8) !AtomProfile {
+            const v = try profiles_cache.getOrPut(name);
+            if (!v.found_existing) {
+                std.log.debug("new! {s}", .{name});
+                var rnd_state = std.Random.DefaultPrng.init(name.len);
+                var rnd = Random{ .rnd = rnd_state.random() };
+
+                const profile = try platform.gpa.alloc(Vec2, rnd.rnd.intRangeLessThan(usize, 2, 15));
+                for (profile) |*p| {
+                    p.* = Vec2.new(rnd.between(0, 1), rnd.around0(0.2));
+                }
+                std.mem.sortUnstable(Vec2, profile, {}, struct {
+                    pub fn lessThanFn(context: void, lhs: Vec2, rhs: Vec2) bool {
+                        _ = context;
+                        return lhs.x < rhs.x;
+                    }
+                }.lessThanFn);
+
+                v.value_ptr.* = profile;
+            }
+            return v.value_ptr.*;
+        }
+    };
+
+    return struct {
+        pub fn init() !void {
+            return AtomProfilesCache.init();
+        }
+
+        pub fn drawAtom(camera: Camera, world_point: Point, name: []const u8) !void {
+            const profile = try AtomProfilesCache.getAtomProfile(name);
+            drawer.drawAtom(camera, world_point, profile);
+        }
+
+        pub fn getAtomProfile(name: []const u8) !AtomProfile {
+            return AtomProfilesCache.getAtomProfile(name);
         }
     };
 }
@@ -590,6 +631,7 @@ fn lerp_towards(v: *f32, goal: f32, ratio: f32, delta_seconds: f32) void {
 }
 
 pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
+    const artist = Artist(platform, drawer);
     // _ = platform;
     return struct {
         const Self = @This();
@@ -650,15 +692,19 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
             return null;
         }
 
-        pub fn draw(self: Self) void {
+        pub fn draw(self: Self) OoM!void {
             drawer.clear(Color.gray(128));
             for (self.ui_state.buttons) |button| {
                 drawer.drawRect(UI.cam, button.pos);
                 if (button.hot_t > 0 or button.active_t > 0) {
-                    drawer.drawAtomDebug(UI.cam, .{
+                    // drawer.drawAtomDebug(UI.cam, .{
+                    //     .pos = button.pos.top_left.add(.new(2 - button.active_t, 0.5)),
+                    //     .scale = button.hot_t,
+                    // });
+                    try artist.drawAtom(UI.cam, .{
                         .pos = button.pos.top_left.add(.new(2 - button.active_t, 0.5)),
                         .scale = button.hot_t,
-                    });
+                    }, if (button.pos.top_left.y < 5) "nl" else "iput");
                 }
             }
         }
