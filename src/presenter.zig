@@ -391,6 +391,7 @@ pub const Drawer = struct {
     drawAtomDebug: fn (camera: Camera, world_point: Point) void,
     drawAtom: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
     drawAtomPatternDebug: fn (camera: Camera, world_point: Point) void,
+    drawPairHolder: fn (camera: Camera, world_point: Point) void,
     drawCable: fn (camera: Camera, world_from: Vec2, world_to: Vec2, world_scale: f32, offset: f32) void,
 };
 
@@ -525,7 +526,8 @@ const Random = struct {
 const Level = struct { fnk_name: *const Sexpr };
 const levels: []const Level = &.{
     .{ .fnk_name = &Sexpr.doLit("planetFromOlympian") },
-    .{ .fnk_name = &Sexpr.doLit("testing") },
+    .{ .fnk_name = &Sexpr.doPair(&Sexpr.nil, &Sexpr.doLit("input")) },
+    .{ .fnk_name = &Sexpr.doPair(&Sexpr.doLit("foo"), &Sexpr.doPair(&Sexpr.doLit("input"), &Sexpr.nil)) },
 };
 
 /// Like Drawer, but higher level
@@ -601,6 +603,26 @@ fn Artist(platform: Platform, drawer: Drawer) type {
         pub fn drawAtom(camera: Camera, world_point: Point, name: []const u8) !void {
             const visuals = try AtomVisualCache.getAtomVisuals(name);
             drawer.drawAtom(camera, world_point, visuals);
+        }
+
+        pub fn drawSexpr(camera: Camera, world_point: Point, sexpr: *const Sexpr) !void {
+            switch (sexpr.*) {
+                .atom_lit => |lit| {
+                    try drawAtom(camera, world_point, lit.value);
+                },
+                .pair => |pair| {
+                    drawer.drawPairHolder(camera, world_point);
+                    try drawSexpr(camera, world_point.applyToLocalPoint(.{
+                        .pos = .new(0.5, -0.5),
+                        .scale = 0.5,
+                    }), pair.left);
+                    try drawSexpr(camera, world_point.applyToLocalPoint(.{
+                        .pos = .new(0.5, 0.5),
+                        .scale = 0.5,
+                    }), pair.right);
+                },
+                else => std.log.err("TODO", .{}),
+            }
         }
     };
 }
@@ -733,17 +755,13 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
 
         pub fn draw(self: Self) OoM!void {
             drawer.clear(Color.gray(128));
-            for (self.ui_state.buttons) |button| {
+            for (self.ui_state.buttons, 0..) |button, k| {
                 drawer.drawRect(UI.cam, button.pos);
                 if (button.hot_t > 0 or button.active_t > 0) {
-                    // drawer.drawAtomDebug(UI.cam, .{
-                    //     .pos = button.pos.top_left.add(.new(2 - button.active_t, 0.5)),
-                    //     .scale = button.hot_t,
-                    // });
-                    try artist.drawAtom(UI.cam, .{
+                    try artist.drawSexpr(UI.cam, .{
                         .pos = button.pos.top_left.add(.new(2 - button.active_t, 0.5)),
                         .scale = button.hot_t,
-                    }, if (button.pos.top_left.y < 5) "nl" else "input");
+                    }, levels[k].fnk_name);
                 }
             }
         }

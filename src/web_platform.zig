@@ -260,6 +260,30 @@ const WebDrawer = struct {
         js.canvas.stroke();
     }
 
+    pub fn drawPairHolder(camera: Camera, world_point: Point) void {
+        const screen_point = screenFromWorld(camera, world_point);
+        const local_positions = [_]Vec2{
+            Vec2.new(-0.5, 0),
+            Vec2.new(0, 1),
+            Vec2.new(0.5, 1),
+            Vec2.new(0.25, 0.5),
+            Vec2.new(0.5, 0),
+            Vec2.new(0.25, -0.5),
+            Vec2.new(0.5, -1),
+            Vec2.new(0, -1),
+        };
+        var screen_positions: [local_positions.len]Vec2 = undefined;
+        for (local_positions, 0..) |pos, i| {
+            screen_positions[i] = screen_point.applyToLocalPosition(pos);
+        }
+        js_better.canvas.pathLoop(&screen_positions);
+        js.canvas.setLineWidth(1);
+        js_better.canvas.setFillColor(Color.gray(96));
+        js_better.canvas.setStrokeColor(Color.black);
+        js.canvas.fill();
+        js.canvas.stroke();
+    }
+
     pub fn drawAtomPatternDebug(camera: Camera, world_point: Point) void {
         const screen_point = screenFromWorld(camera, world_point);
         const local_positions = [_]Vec2{
@@ -327,6 +351,7 @@ const web_drawer = presenter.Drawer{
     .drawRect = WebDrawer.drawRect,
     .drawAtom = WebDrawer.drawAtom,
     .drawAtomDebug = WebDrawer.drawAtomDebug,
+    .drawPairHolder = WebDrawer.drawPairHolder,
     .drawAtomPatternDebug = WebDrawer.drawAtomPatternDebug,
     .drawCable = WebDrawer.drawCable,
 };
