@@ -373,12 +373,16 @@ export fn keydown(code: KeyCode) void {
 var paused = false;
 export fn frame(delta_seconds: f32) void {
     if (paused) return;
-    game.update(delta_seconds);
+    game.update(delta_seconds) catch |err| switch (err) {
+        error.OutOfMemory => OoM(),
+    };
     mouse.prev = mouse.cur;
 }
 
 export fn draw() void {
-    game.draw() catch OoM();
+    game.draw() catch |err| switch (err) {
+        error.OutOfMemory => OoM(),
+    };
 }
 
 const MouseState = presenter.MouseState;

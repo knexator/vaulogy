@@ -247,6 +247,12 @@ pub const VeryPermamentGameStuff = struct {
         this.arena_for_cases.deinit();
         this.arena_for_bindings.deinit();
     }
+
+    pub fn storeSexpr(this: *VeryPermamentGameStuff, s: Sexpr) !*const Sexpr {
+        const res = try this.pool_for_sexprs.create();
+        res.* = s;
+        return res;
+    }
 };
 
 pub const ScoringRun = struct {

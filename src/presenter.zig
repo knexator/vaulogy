@@ -407,7 +407,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             /// not used for now
             intro: IntroSequence(platform, drawer),
             level_select: LevelSelect(platform, drawer),
-            editing_level: EditingFnk(platform, drawer),
+            editing_fnk: EditingFnk(platform, drawer),
         },
 
         fn defaultFnkBody(mem: *VeryPermamentGameStuff) FnkBody {
@@ -449,23 +449,27 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 .mem = mem,
                 .persistence = player_data,
                 .state = .{
-                    .level_select = .init(),
+                    // .level_select = .init(),
+                    .editing_fnk = .init(Fnk{
+                        .name = try mem.storeSexpr(Sexpr.doLit("default")),
+                        .body = defaultFnkBody(&mem),
+                    }),
                 },
             };
             return result;
         }
 
-        pub fn update(self: *Self, delta_seconds: f32) void {
-            switch (self.state) {
+        pub fn update(self: *Self, delta_seconds: f32) !void {
+            try switch (self.state) {
                 .level_select => |*ui| if (ui.update(delta_seconds)) |level_index| {
                     const fnk_name = levels[level_index].fnk_name;
                     const fnk_body = self.persistence.fnks.get(fnk_name) orelse defaultFnkBody(&self.mem);
-                    self.state = .{ .editing_level = .init(
+                    self.state = .{ .editing_fnk = .init(
                         Fnk{ .name = fnk_name, .body = fnk_body },
                     ) };
                 },
                 inline else => |*x| x.update(delta_seconds),
-            }
+            };
         }
 
         pub fn draw(self: Self) OoM!void {
@@ -547,6 +551,14 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             .input = AtomVisuals{
                 .color = .from01(0.1, 0.6, 0.6),
                 .profile = &.{ .new(0.2, 0.2), .new(0.8, 0.2) },
+            },
+            .true = AtomVisuals{
+                .color = .from01(0.5, 0.9, 0.5),
+                .profile = &.{ .new(0.2, 0.2), .new(0.8, 0.2) },
+                // true.profile: fromCount(10, (k) => {
+                //     const t = k / 10;
+                //     return new Vec2(t, -0.2 * Math.sin(t * Math.PI));
+                // }),
             },
         };
 
@@ -635,18 +647,29 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         fnk: Fnk,
         sample_input: *const Sexpr,
 
+        const camera = Camera{ .center = .new(6, 3), .height = 15.0 };
+
         pub fn init(fnk: Fnk) Self {
             return .{ .fnk = fnk, .sample_input = &Sexpr.true };
         }
 
-        pub fn update(self: *Self, delta_seconds: f32) void {
+        pub fn update(self: *Self, delta_seconds: f32) !void {
             _ = self;
             _ = delta_seconds;
         }
 
-        pub fn draw(self: Self) void {
-            _ = self;
+        pub fn draw(self: Self) !void {
             drawer.clear(Color.gray(128));
+            try artist.drawSexpr(
+                camera,
+                .{ .pos = .new(1, 0) },
+                self.sample_input,
+            );
+            try artist.drawSexpr(
+                camera,
+                .{ .pos = .new(0, -1.25), .turns = -0.25 },
+                self.fnk.name,
+            );
         }
     };
 }
