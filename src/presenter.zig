@@ -554,11 +554,16 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             },
             .true = AtomVisuals{
                 .color = .from01(0.5, 0.9, 0.5),
-                .profile = &.{ .new(0.2, 0.2), .new(0.8, 0.2) },
-                // true.profile: fromCount(10, (k) => {
-                //     const t = k / 10;
-                //     return new Vec2(t, -0.2 * Math.sin(t * Math.PI));
-                // }),
+                .profile = &blk: {
+                    var buffer: [10]Vec2 = undefined;
+                    for (0..10) |k| {
+                        // TODO: don't hardcode the '10' in 3 places
+                        const t = @as(f32, @floatFromInt(k)) / 10.0;
+                        buffer[k] = Vec2.new(t, -0.2 * @sin(t * std.math.pi));
+                    }
+                    const res = buffer;
+                    break :blk res;
+                },
             },
         };
 
