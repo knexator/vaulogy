@@ -160,4 +160,28 @@ pub fn build(b: *std.Build) void {
     run_dev_server_cmd.addArg(b.getInstallPath(webgame_install_dir, ""));
     const run_dev_server_cmd_step = b.step("dev", "Run the dev server");
     run_dev_server_cmd_step.dependOn(&run_dev_server_cmd.step);
+
+    // check step for ZLS
+    const exe_check = b.addExecutable(.{
+        .name = "vaulogy",
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const webgame_wasm_check = b.addExecutable(
+        .{
+            .name = "main",
+            .root_source_file = b.path("src/web_platform.zig"),
+            .target = b.resolveTargetQuery(.{
+                .cpu_arch = .wasm32,
+                .os_tag = .freestanding,
+            }),
+            .optimize = optimize,
+            .use_llvm = optimize != .Debug,
+            .use_lld = optimize != .Debug,
+        },
+    );
+    const check = b.step("check", "Check if the project compiles");
+    check.dependOn(&exe_check.step);
+    check.dependOn(&webgame_wasm_check.step);
 }
