@@ -392,6 +392,8 @@ pub const Drawer = struct {
     drawAtom: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
     drawAtomPatternDebug: fn (camera: Camera, world_point: Point) void,
     drawPairHolder: fn (camera: Camera, world_point: Point) void,
+    drawPatternPairHolder: fn (camera: Camera, world_point: Point) void,
+    drawPatternAtom: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
     drawCable: fn (camera: Camera, world_from: Vec2, world_to: Vec2, world_scale: f32, offset: f32) void,
 };
 
@@ -413,7 +415,8 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
         fn defaultFnkBody(mem: *VeryPermamentGameStuff) FnkBody {
             const default_fnk =
                 \\default {
-                \\  foo -> bar;
+                \\  (true . nil) -> (nil . true);
+                \\  (nil . true) -> false;
                 \\}
             ;
             var parser = parsing.Parser{ .remaining_text = default_fnk };
@@ -622,6 +625,11 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             drawer.drawAtom(camera, world_point, visuals);
         }
 
+        pub fn drawPatternAtom(camera: Camera, world_point: Point, name: []const u8) !void {
+            const visuals = try AtomVisualCache.getAtomVisuals(name);
+            drawer.drawPatternAtom(camera, world_point, visuals);
+        }
+
         pub fn drawSexpr(camera: Camera, world_point: Point, sexpr: *const Sexpr) !void {
             switch (sexpr.*) {
                 .atom_lit => |lit| {
@@ -635,6 +643,26 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                     }), pair.left);
                     try drawSexpr(camera, world_point.applyToLocalPoint(.{
                         .pos = .new(0.5, 0.5),
+                        .scale = 0.5,
+                    }), pair.right);
+                },
+                else => std.log.err("TODO", .{}),
+            }
+        }
+
+        pub fn drawPatternSexpr(camera: Camera, world_point: Point, sexpr: *const Sexpr) !void {
+            switch (sexpr.*) {
+                .atom_lit => |lit| {
+                    try drawPatternAtom(camera, world_point, lit.value);
+                },
+                .pair => |pair| {
+                    drawer.drawPatternPairHolder(camera, world_point);
+                    try drawPatternSexpr(camera, world_point.applyToLocalPoint(.{
+                        .pos = .new(-1, -0.5),
+                        .scale = 0.5,
+                    }), pair.left);
+                    try drawPatternSexpr(camera, world_point.applyToLocalPoint(.{
+                        .pos = .new(-1, 0.5),
                         .scale = 0.5,
                     }), pair.right);
                 },
@@ -675,6 +703,37 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .{ .pos = .new(0, -1.25), .turns = -0.25 },
                 self.fnk.name,
             );
+            drawer.drawCable(
+                camera,
+                .new(-7, 0),
+                .new(0.5, 0),
+                1,
+                0,
+            );
+            for (self.fnk.body.cases.items, 0..) |case, k| {
+                const pattern_point = Point{
+                    .pos = .new(5, 3 + tof32(k) * 3),
+                    .scale = 1,
+                };
+                const dist = 4;
+                try artist.drawPatternSexpr(
+                    camera,
+                    pattern_point,
+                    case.pattern,
+                );
+                try artist.drawSexpr(
+                    camera,
+                    pattern_point.applyToLocalPoint(.{ .pos = .new(dist, 0) }),
+                    case.template,
+                );
+                drawer.drawCable(
+                    camera,
+                    pattern_point.applyToLocalPosition(.new(0.5, 0)),
+                    pattern_point.applyToLocalPosition(.new(dist - 0.5, 0)),
+                    1,
+                    0,
+                );
+            }
         }
     };
 }
@@ -923,4 +982,13 @@ fn clamp01(value: anytype) @TypeOf(value, 0.0) {
 fn smoothstep(x: anytype, edge0: anytype, edge1: anytype) @TypeOf(x, edge0, edge1) {
     const y = std.math.clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
     return y * y * (3.0 - 2.0 * y);
+}
+
+fn tof32(value: anytype) f32 {
+    const T = @TypeOf(value);
+    return switch (@typeInfo(T)) {
+        .float, .comptime_float => value,
+        .int, .comptime_int => @floatFromInt(value),
+        else => @compileError("Expected an int, float or vector of one, found " ++ @typeName(T)),
+    };
 }

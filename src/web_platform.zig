@@ -260,6 +260,38 @@ const WebDrawer = struct {
         js.canvas.stroke();
     }
 
+    pub fn drawPatternAtom(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {
+        const profile = visuals.profile;
+        const screen_point = screenFromWorld(camera, world_point);
+        const local_positions = [_]Vec2{
+            Vec2.new(-1, -1),
+            Vec2.new(0, -1),
+            Vec2.new(0.5, 0),
+            Vec2.new(0, 1),
+            Vec2.new(-1, 1),
+        };
+        // TODO: no allocations
+        var screen_positions: []Vec2 = gpa.allocator().alloc(Vec2, local_positions.len + profile.len * 2) catch @panic("TODO");
+        defer gpa.allocator().free(screen_positions);
+        for (local_positions, 0..) |pos, i| {
+            screen_positions[i] = screen_point.applyToLocalPosition(pos);
+        }
+        for (profile, 0..) |pos, i| {
+            screen_positions[local_positions.len + i] = screen_point.applyToLocalPosition(
+                Vec2.new(-1.0 - pos.y, 1.0 - pos.x),
+            );
+            screen_positions[local_positions.len + profile.len * 2 - i - 1] = screen_point.applyToLocalPosition(
+                Vec2.new(-1.0 + pos.y, -1.0 + pos.x),
+            );
+        }
+        js_better.canvas.pathLoop(screen_positions);
+        js.canvas.setLineWidth(1);
+        js_better.canvas.setFillColor(visuals.color);
+        js_better.canvas.setStrokeColor(Color.black);
+        js.canvas.fill();
+        js.canvas.stroke();
+    }
+
     pub fn drawPairHolder(camera: Camera, world_point: Point) void {
         const screen_point = screenFromWorld(camera, world_point);
         const local_positions = [_]Vec2{
@@ -270,6 +302,30 @@ const WebDrawer = struct {
             Vec2.new(0.5, 0),
             Vec2.new(0.25, -0.5),
             Vec2.new(0.5, -1),
+            Vec2.new(0, -1),
+        };
+        var screen_positions: [local_positions.len]Vec2 = undefined;
+        for (local_positions, 0..) |pos, i| {
+            screen_positions[i] = screen_point.applyToLocalPosition(pos);
+        }
+        js_better.canvas.pathLoop(&screen_positions);
+        js.canvas.setLineWidth(1);
+        js_better.canvas.setFillColor(Color.gray(96));
+        js_better.canvas.setStrokeColor(Color.black);
+        js.canvas.fill();
+        js.canvas.stroke();
+    }
+
+    pub fn drawPatternPairHolder(camera: Camera, world_point: Point) void {
+        const screen_point = screenFromWorld(camera, world_point);
+        const local_positions = [_]Vec2{
+            Vec2.new(0.5, 0),
+            Vec2.new(0, 1),
+            Vec2.new(-1, 1),
+            Vec2.new(-0.75, 0.5),
+            Vec2.new(-1, 0),
+            Vec2.new(-0.75, -0.5),
+            Vec2.new(-1, -1),
             Vec2.new(0, -1),
         };
         var screen_positions: [local_positions.len]Vec2 = undefined;
@@ -350,8 +406,10 @@ const web_drawer = presenter.Drawer{
     .clear = js_better.canvas.clear,
     .drawRect = WebDrawer.drawRect,
     .drawAtom = WebDrawer.drawAtom,
+    .drawPatternAtom = WebDrawer.drawPatternAtom,
     .drawAtomDebug = WebDrawer.drawAtomDebug,
     .drawPairHolder = WebDrawer.drawPairHolder,
+    .drawPatternPairHolder = WebDrawer.drawPatternPairHolder,
     .drawAtomPatternDebug = WebDrawer.drawAtomPatternDebug,
     .drawCable = WebDrawer.drawCable,
 };
