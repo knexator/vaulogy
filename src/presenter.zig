@@ -455,7 +455,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 .persistence = player_data,
                 .state = .{
                     // .level_select = .init(),
-                    .editing_fnk = .init(Fnk{
+                    .editing_fnk = try .init(Fnk{
                         .name = try mem.storeSexpr(Sexpr.doLit("default")),
                         .body = defaultFnkBody(&mem),
                     }),
@@ -469,7 +469,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 .level_select => |*ui| if (ui.update(delta_seconds)) |level_index| {
                     const fnk_name = levels[level_index].fnk_name;
                     const fnk_body = self.persistence.fnks.get(fnk_name) orelse defaultFnkBody(&self.mem);
-                    self.state = .{ .editing_fnk = .init(
+                    self.state = .{ .editing_fnk = try .init(
                         Fnk{ .name = fnk_name, .body = fnk_body },
                     ) };
                 },
@@ -693,43 +693,66 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         // TODO: use actual Sexpr addresses
         const Address = usize;
+        const CaseState = struct {
+            // TODO: generic tree type to avoid duplication
+            pattern: *const Sexpr,
+            fn_name: *const Sexpr,
+            template: *const Sexpr,
+            // TODO: add 'next'
 
-        fnk: Fnk,
+            pattern_point: Point,
+            unfolded_t: f32,
+        };
+
+        fnk_name: *const Sexpr,
+        cases: std.ArrayList(CaseState),
         sample_input: *const Sexpr,
         unfolded: Address = 0,
-        unfolded_t: [4]f32 = .{0} ** 4,
 
         const camera = Camera{ .center = .new(6, 3), .height = 15.0 };
 
-        pub fn init(fnk: Fnk) Self {
-            return .{ .fnk = fnk, .sample_input = &Sexpr.true };
+        pub fn init(fnk: Fnk) !Self {
+            var cases = std.ArrayList(CaseState).init(platform.gpa);
+            for (fnk.body.cases.items) |case| {
+                try cases.append(.{
+                    .fn_name = case.fn_name,
+                    .pattern = case.pattern,
+                    .template = case.template,
+                    .pattern_point = undefined,
+                    .unfolded_t = undefined,
+                });
+            }
+            return .{
+                .fnk_name = fnk.name,
+                .cases = cases,
+                .sample_input = &Sexpr.true,
+            };
         }
 
         pub fn update(self: *Self, delta_seconds: f32) !void {
-            for (&self.unfolded_t, 0..) |*value, k| {
-                // towards(value, if (k == self.unfolded) 1 else 0, delta_seconds * 20);
-                lerp_towards(value, if (k == self.unfolded) 1 else 0, 0.6, delta_seconds);
+            for (self.cases.items, 0..) |*case, k| {
+                // towards(&case.unfolded_t, if (k == self.unfolded) 1 else 0, delta_seconds * 20);
+                lerp_towards(&case.unfolded_t, if (k == self.unfolded) 1 else 0, 0.6, delta_seconds);
             }
             { // ensure they all sum to 1
                 var sum: f32 = 0;
-                for (self.unfolded_t) |value| {
-                    sum += value;
+                for (self.cases.items) |case| {
+                    sum += case.unfolded_t;
                 }
-                for (&self.unfolded_t) |*value| {
-                    value.* = value.* / sum;
+                for (self.cases.items) |*case| {
+                    case.unfolded_t /= sum;
                 }
             }
 
-            // TODO: remove duplication
             var cur_top_line: f32 = 2;
-            for (self.fnk.body.cases.items, 0..) |case, k| {
-                _ = case;
-                const is_unfolded = self.unfolded_t[k];
+            for (self.cases.items, 0..) |*case, k| {
+                const is_unfolded = case.unfolded_t;
                 defer cur_top_line += lerp(1.5, 2.5, is_unfolded);
                 const pattern_point = Point{
                     .pos = .new(5, cur_top_line + lerp(0.5, 1, is_unfolded)),
                     .scale = lerp(0.5, 1, is_unfolded),
                 };
+                case.pattern_point = pattern_point;
                 if (artist.overlapsPatternAtom(pattern_point, platform.getMouse().cur.pos(camera))) {
                     self.unfolded = k;
                 }
@@ -747,7 +770,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 try artist.drawSexpr(
                     camera,
                     .{ .pos = .new(0, -1.25), .turns = -0.25 },
-                    self.fnk.name,
+                    self.fnk_name,
                 );
                 drawer.drawCable(
                     camera,
@@ -758,14 +781,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 );
             }
 
-            var cur_top_line: f32 = 2;
-            for (self.fnk.body.cases.items, 0..) |case, k| {
-                const is_unfolded = self.unfolded_t[k];
-                defer cur_top_line += lerp(1.5, 2.5, is_unfolded);
-                const pattern_point = Point{
-                    .pos = .new(5, cur_top_line + lerp(0.5, 1, is_unfolded)),
-                    .scale = lerp(0.5, 1, is_unfolded),
-                };
+            for (self.cases.items) |case| {
+                const is_unfolded = case.unfolded_t;
+                const pattern_point = case.pattern_point;
                 const dist = 4;
                 try artist.drawPatternSexpr(
                     camera,
