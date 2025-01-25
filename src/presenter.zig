@@ -671,6 +671,18 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                 else => std.log.err("TODO", .{}),
             }
         }
+
+        pub fn overlapsPatternAtom(atom_point: Point, pos: Vec2) bool {
+            const p = atom_point.inverseApplyGetLocal(.{ .pos = pos }).pos;
+            return inRange(p.y, -1, 1) and
+                inRange(p.x, -1, 0.5 * (1 - @abs(p.y)));
+        }
+
+        pub fn overlapsAtom(atom_point: Point, pos: Vec2) bool {
+            const p = atom_point.inverseApplyGetLocal(.{ .pos = pos }).pos;
+            return inRange(p.y, -1, 1) and
+                inRange(p.x, -0.5 * (1 - @abs(p.y)), 2);
+        }
     };
 }
 
@@ -695,8 +707,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         pub fn update(self: *Self, delta_seconds: f32) !void {
             for (&self.unfolded_t, 0..) |*value, k| {
-                towards(value, if (k == self.unfolded) 1 else 0, delta_seconds * 10);
-                // lerp_towards(value, if (k == self.unfolded) 1 else 0, 0.2, delta_seconds);
+                // towards(value, if (k == self.unfolded) 1 else 0, delta_seconds * 20);
+                lerp_towards(value, if (k == self.unfolded) 1 else 0, 0.6, delta_seconds);
             }
             { // ensure they all sum to 1
                 var sum: f32 = 0;
@@ -707,8 +719,20 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     value.* = value.* / sum;
                 }
             }
-            if (platform.getMouse().wasPressed(.left)) {
-                self.unfolded = (self.unfolded + 1) % 3;
+
+            // TODO: remove duplication
+            var cur_top_line: f32 = 2;
+            for (self.fnk.body.cases.items, 0..) |case, k| {
+                _ = case;
+                const is_unfolded = self.unfolded_t[k];
+                defer cur_top_line += lerp(1.5, 2.5, is_unfolded);
+                const pattern_point = Point{
+                    .pos = .new(5, cur_top_line + lerp(0.5, 1, is_unfolded)),
+                    .scale = lerp(0.5, 1, is_unfolded),
+                };
+                if (artist.overlapsPatternAtom(pattern_point, platform.getMouse().cur.pos(camera))) {
+                    self.unfolded = k;
+                }
             }
         }
 
@@ -748,18 +772,20 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     pattern_point,
                     case.pattern,
                 );
-                try artist.drawSexpr(
-                    camera,
-                    pattern_point.applyToLocalPoint(.{ .pos = .new(dist, 0) }),
-                    case.template,
-                );
-                drawer.drawCable(
-                    camera,
-                    pattern_point.applyToLocalPosition(.new(0.5, 0)),
-                    pattern_point.applyToLocalPosition(.new(dist - 0.5, 0)),
-                    1,
-                    0,
-                );
+                if (is_unfolded >= 0.7) {
+                    try artist.drawSexpr(
+                        camera,
+                        pattern_point.applyToLocalPoint(.{ .pos = .new(dist, 0) }),
+                        case.template,
+                    );
+                    drawer.drawCable(
+                        camera,
+                        pattern_point.applyToLocalPosition(.new(0.5, 0)),
+                        pattern_point.applyToLocalPosition(.new(dist - 0.5, 0)),
+                        pattern_point.scale,
+                        0,
+                    );
+                }
 
                 const pos = pattern_point.applyToLocalPosition(.new(0, 1));
                 drawer.drawCable(
