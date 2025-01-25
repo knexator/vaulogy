@@ -415,8 +415,10 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
         fn defaultFnkBody(mem: *VeryPermamentGameStuff) FnkBody {
             const default_fnk =
                 \\default {
-                \\  (true . nil) -> (nil . true);
+                \\  true -> (nil . true);
                 \\  (nil . true) -> false;
+                \\  (true . nil) -> true;
+                \\  (true . nil) -> true;
                 \\}
             ;
             var parser = parsing.Parser{ .remaining_text = default_fnk };
@@ -677,8 +679,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         const Self = @This();
         const artist = Artist(platform, drawer);
 
+        // TODO: use actual Sexpr addresses
+        const Address = usize;
+
         fnk: Fnk,
         sample_input: *const Sexpr,
+        unfolded: Address = 0,
+        unfolded_t: [4]f32 = .{0} ** 4,
 
         const camera = Camera{ .center = .new(6, 3), .height = 15.0 };
 
@@ -687,33 +694,53 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn update(self: *Self, delta_seconds: f32) !void {
-            _ = self;
-            _ = delta_seconds;
+            for (&self.unfolded_t, 0..) |*value, k| {
+                towards(value, if (k == self.unfolded) 1 else 0, delta_seconds * 10);
+                // lerp_towards(value, if (k == self.unfolded) 1 else 0, 0.2, delta_seconds);
+            }
+            { // ensure they all sum to 1
+                var sum: f32 = 0;
+                for (self.unfolded_t) |value| {
+                    sum += value;
+                }
+                for (&self.unfolded_t) |*value| {
+                    value.* = value.* / sum;
+                }
+            }
+            if (platform.getMouse().wasPressed(.left)) {
+                self.unfolded = (self.unfolded + 1) % 3;
+            }
         }
 
         pub fn draw(self: Self) !void {
             drawer.clear(Color.gray(128));
-            try artist.drawSexpr(
-                camera,
-                .{ .pos = .new(1, 0) },
-                self.sample_input,
-            );
-            try artist.drawSexpr(
-                camera,
-                .{ .pos = .new(0, -1.25), .turns = -0.25 },
-                self.fnk.name,
-            );
-            drawer.drawCable(
-                camera,
-                .new(-7, 0),
-                .new(0.5, 0),
-                1,
-                0,
-            );
+            {
+                try artist.drawSexpr(
+                    camera,
+                    .{ .pos = .new(1, 0) },
+                    self.sample_input,
+                );
+                try artist.drawSexpr(
+                    camera,
+                    .{ .pos = .new(0, -1.25), .turns = -0.25 },
+                    self.fnk.name,
+                );
+                drawer.drawCable(
+                    camera,
+                    .new(-7, 0),
+                    .new(0.5, 0),
+                    1,
+                    0,
+                );
+            }
+
+            var cur_top_line: f32 = 2;
             for (self.fnk.body.cases.items, 0..) |case, k| {
+                const is_unfolded = self.unfolded_t[k];
+                defer cur_top_line += lerp(1.5, 2.5, is_unfolded);
                 const pattern_point = Point{
-                    .pos = .new(5, 3 + tof32(k) * 3),
-                    .scale = 1,
+                    .pos = .new(5, cur_top_line + lerp(0.5, 1, is_unfolded)),
+                    .scale = lerp(0.5, 1, is_unfolded),
                 };
                 const dist = 4;
                 try artist.drawPatternSexpr(
@@ -730,6 +757,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     camera,
                     pattern_point.applyToLocalPosition(.new(0.5, 0)),
                     pattern_point.applyToLocalPosition(.new(dist - 0.5, 0)),
+                    1,
+                    0,
+                );
+
+                const pos = pattern_point.applyToLocalPosition(.new(0, 1));
+                drawer.drawCable(
+                    camera,
+                    pos.sub(.new(5, 0)),
+                    pos,
                     1,
                     0,
                 );
@@ -974,6 +1010,7 @@ pub fn IntroSequence(platform: Platform, drawer: Drawer) type {
 }
 
 const clamp = std.math.clamp;
+const lerp = std.math.lerp;
 
 fn clamp01(value: anytype) @TypeOf(value, 0.0) {
     return std.math.clamp(value, 0.0, 1.0);
