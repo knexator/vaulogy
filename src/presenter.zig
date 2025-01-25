@@ -395,7 +395,60 @@ pub const Drawer = struct {
     drawPatternPairHolder: fn (camera: Camera, world_point: Point) void,
     drawPatternAtom: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
     drawCable: fn (camera: Camera, world_from: Vec2, world_to: Vec2, world_scale: f32, offset: f32) void,
+
+    const dummySignatures = struct {
+        pub fn color(c: Color) void {
+            _ = c;
+            unreachable;
+        }
+        pub fn camera_point_visuals(camera: Camera, world_point: Point, visuals: AtomVisuals) void {
+            _ = camera;
+            _ = world_point;
+            _ = visuals;
+            unreachable;
+        }
+        pub fn camera_point(camera: Camera, world_point: Point) void {
+            _ = camera;
+            _ = world_point;
+            unreachable;
+        }
+    };
+    // TODO: all should be unreachable
+    pub const dummy = Drawer{
+        .clear = dummySignatures.color,
+        .drawRect = undefined,
+        .drawAtomDebug = undefined,
+        .drawAtom = dummySignatures.camera_point_visuals,
+        .drawAtomPatternDebug = undefined,
+        .drawPairHolder = dummySignatures.camera_point,
+        .drawPatternPairHolder = dummySignatures.camera_point,
+        .drawPatternAtom = dummySignatures.camera_point_visuals,
+        .drawCable = struct {
+            pub fn anon(camera: Camera, world_from: Vec2, world_to: Vec2, world_scale: f32, offset: f32) void {
+                _ = camera;
+                _ = world_from;
+                _ = world_to;
+                _ = world_scale;
+                _ = offset;
+                unreachable;
+            }
+        }.anon,
+    };
 };
+
+fn defaultFnkBody(mem: *VeryPermamentGameStuff) FnkBody {
+    const default_fnk =
+        \\default {
+        \\  true -> (nil . true);
+        \\  (nil . true) -> false;
+        \\  (true . nil) -> true;
+        \\  (true . nil) -> true;
+        \\}
+    ;
+    var parser = parsing.Parser{ .remaining_text = default_fnk };
+    const fnk = parser.parseFnkNew(&mem.pool_for_sexprs, mem.arena_for_cases.allocator()) catch unreachable;
+    return fnk.body;
+}
 
 /// The full game, from loading screen to end credits
 pub fn Presenter(platform: Platform, drawer: Drawer) type {
@@ -411,20 +464,6 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             level_select: LevelSelect(platform, drawer),
             editing_fnk: EditingFnk(platform, drawer),
         },
-
-        fn defaultFnkBody(mem: *VeryPermamentGameStuff) FnkBody {
-            const default_fnk =
-                \\default {
-                \\  true -> (nil . true);
-                \\  (nil . true) -> false;
-                \\  (true . nil) -> true;
-                \\  (true . nil) -> true;
-                \\}
-            ;
-            var parser = parsing.Parser{ .remaining_text = default_fnk };
-            const fnk = parser.parseFnkNew(&mem.pool_for_sexprs, mem.arena_for_cases.allocator()) catch unreachable;
-            return fnk.body;
-        }
 
         pub fn init() !Self {
             const platform_alloc = platform.gpa;
@@ -702,24 +741,28 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             pattern_point: Point,
             unfolded_t: f32,
+
+            debug_k: usize,
         };
 
         fnk_name: *const Sexpr,
         cases: std.ArrayList(CaseState),
         sample_input: *const Sexpr,
         unfolded: Address = 0,
+        grabbing: ?CaseState = null,
 
         const camera = Camera{ .center = .new(6, 3), .height = 15.0 };
 
         pub fn init(fnk: Fnk) !Self {
             var cases = std.ArrayList(CaseState).init(platform.gpa);
-            for (fnk.body.cases.items) |case| {
+            for (fnk.body.cases.items, 0..) |case, k| {
                 try cases.append(.{
                     .fn_name = case.fn_name,
                     .pattern = case.pattern,
                     .template = case.template,
-                    .pattern_point = undefined,
-                    .unfolded_t = undefined,
+                    .pattern_point = .{},
+                    .unfolded_t = 0,
+                    .debug_k = k,
                 });
             }
             return .{
@@ -727,6 +770,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .cases = cases,
                 .sample_input = &Sexpr.true,
             };
+        }
+
+        pub fn deinit(self: *Self) void {
+            self.cases.deinit();
         }
 
         pub fn update(self: *Self, delta_seconds: f32) !void {
@@ -757,6 +804,38 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     self.unfolded = k;
                 }
             }
+
+            if (platform.getMouse().wasPressed(.left)) {
+                std.log.debug("about to grab: {any}", .{self.cases.items[self.unfolded].debug_k});
+                // const asdf = self.cases.orderedRemove(self.unfolded);
+
+                const i = self.unfolded;
+                const old_item = self.cases.items[i];
+                std.log.debug("grabbed1: {any}", .{old_item.debug_k});
+                self.cases.replaceRangeAssumeCapacity(i, 1, &.{});
+                std.log.debug("grabbed2: {any}", .{old_item.debug_k});
+
+                const asdf = old_item;
+
+                // const asdf = self.cases.orderedRemove(self.unfolded);
+                std.log.debug("grabbed: {any}", .{asdf.debug_k});
+                self.grabbing = asdf;
+                for (self.cases.items) |case| {
+                    std.log.debug("other: {any}", .{case.debug_k});
+                }
+            }
+        }
+
+        test {
+            var mem = VeryPermamentGameStuff.init(std.testing.allocator);
+            defer mem.deinit();
+            var sut = try Self.init(Fnk{ .name = &Sexpr.false, .body = defaultFnkBody(&mem) });
+            defer sut.deinit();
+
+            sut.unfolded = 0;
+            try std.testing.expectEqual(0, sut.cases.items[sut.unfolded].debug_k);
+            const asdf = sut.cases.orderedRemove(sut.unfolded);
+            try std.testing.expectEqual(0, asdf.debug_k);
         }
 
         pub fn draw(self: Self) !void {
@@ -814,8 +893,30 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     0,
                 );
             }
+
+            if (self.grabbing) |case| {
+                std.log.debug("grabbing: {any}", .{case.pattern});
+                try artist.drawPatternSexpr(
+                    camera,
+                    case.pattern_point,
+                    case.pattern,
+                );
+            }
         }
     };
+}
+
+test {
+    std.testing.refAllDecls(EditingFnk(.{
+        .gpa = std.testing.allocator,
+        .getMouse = struct {
+            pub fn anon() Mouse {
+                unreachable;
+            }
+        }.anon,
+        .getPlayerData = undefined,
+        .setPlayerData = undefined,
+    }, Drawer.dummy));
 }
 
 const UI = struct {
