@@ -1,5 +1,7 @@
 //! This should be unchanged regardless of platform
 
+// TODO: remove unfolded_t
+
 const std = @import("std");
 
 const core = @import("main.zig");
@@ -803,7 +805,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         .pos = .new(5, cur_top_line + lerp(0.5, 1, is_unfolded)),
                         .scale = lerp(0.5, 1, is_unfolded),
                     };
-                    case.pattern_point = pattern_point;
+                    case.pattern_point = Point.lerp(case.pattern_point, pattern_point, 0.6);
                     if (artist.overlapsPatternAtom(pattern_point, platform.getMouse().cur.pos(camera))) {
                         self.unfolded = k;
                     }
@@ -821,11 +823,18 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     self.grabbing = null;
                 }
             } else {
+                // if (platform.getMouse().cur.isDown(.right)) {
+                //     // if (platform.getMouse().wasPressed(.right)) {
+                //     self.unfolded += 2;
+                //     self.unfolded %= 3;
+                // }
+
                 for (self.cases.items, 0..) |*case, k| {
                     // towards(&case.unfolded_t, if (k == self.unfolded) 1 else 0, delta_seconds * 20);
-                    lerp_towards(&case.unfolded_t, if (k == self.unfolded) 1 else 0, 0.6, delta_seconds);
+                    // lerp_towards(&case.unfolded_t, if (k == self.unfolded) 1 else 0, 0.6, delta_seconds);
+                    lerp_towards(&case.unfolded_t, if (k == self.unfolded) 1 else 0, 1, delta_seconds);
                 }
-                { // ensure they all sum to 1
+                if (false) { // ensure they all sum to 1
                     var sum: f32 = 0;
                     for (self.cases.items) |case| {
                         sum += case.unfolded_t;
@@ -835,14 +844,17 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     }
                 }
 
+                const unfolded = self.unfolded;
                 for (self.cases.items, 0..) |*case, k| {
-                    const is_unfolded = case.unfolded_t;
+                    const is_unfolded: f32 = if (k == unfolded) 1 else 0;
+                    // const is_unfolded = case.unfolded_t;
                     defer cur_top_line += lerp(1.5, 2.5, is_unfolded);
                     const pattern_point = Point{
                         .pos = .new(5, cur_top_line + lerp(0.5, 1, is_unfolded)),
                         .scale = lerp(0.5, 1, is_unfolded),
                     };
-                    case.pattern_point = pattern_point;
+                    case.pattern_point = Point.lerp(case.pattern_point, pattern_point, 0.6);
+                    // case.pattern_point = pattern_point;
                     if (artist.overlapsPatternAtom(pattern_point, platform.getMouse().cur.pos(camera))) {
                         self.unfolded = k;
                     }
