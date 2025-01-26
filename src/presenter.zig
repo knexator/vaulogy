@@ -295,6 +295,13 @@ pub const Point = struct {
         };
     }
 
+    pub fn lerp_towards(self: *Point, goal: Point, ratio: f32, delta_seconds: f32) void {
+        lerp_towards_float(&self.pos.x, goal.pos.x, ratio, delta_seconds);
+        lerp_towards_float(&self.pos.y, goal.pos.y, ratio, delta_seconds);
+        lerp_towards_float(&self.turns, goal.turns, ratio, delta_seconds);
+        lerp_towards_float(&self.scale, goal.scale, ratio, delta_seconds);
+    }
+
     pub fn applyToLocalPosition(parent: Point, local: Vec2) Vec2 {
         return local.scale(parent.scale).rotate(parent.turns).add(parent.pos);
     }
@@ -745,11 +752,22 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         fnk_name: *const Sexpr,
         cases: std.ArrayList(CaseState),
         sample_input: *const Sexpr,
-        unfolded: Address = 0,
-        grabbing: ?struct {
-            case: CaseState,
-            address_if_released: ?Address,
-        } = null,
+
+        focus: union(enum) {
+            hovering_case: Address,
+            grabbing: struct {
+                case: CaseState,
+                address_if_released: ?Address,
+            },
+
+            const Focus = @This();
+            pub fn getGrabbed(self: Focus) ?@FieldType(Focus, "grabbing") {
+                return switch (self) {
+                    .grabbing => |g| g,
+                    .hovering_case => null,
+                };
+            }
+        } = .{ .hovering_case = 0 },
 
         const camera = Camera{ .center = .new(6, 3), .height = 15.0 };
 
@@ -777,63 +795,60 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn update(self: *Self, delta_seconds: f32) !void {
-            // TODO: take delta_seconds into account
-            _ = delta_seconds;
             var cur_top_line: f32 = 2;
-            if (self.grabbing) |*grabbing| {
-                grabbing.case.pattern_point = Point{
-                    .pos = platform.getMouse().cur.pos(camera),
-                    .scale = 1,
-                };
-                grabbing.address_if_released = null;
-                for (self.cases.items, 0..) |*case, k| {
+            switch (self.focus) {
+                .grabbing => |*grabbing| {
+                    grabbing.case.pattern_point.lerp_towards(.{
+                        .pos = platform.getMouse().cur.pos(camera),
+                        .scale = if (grabbing.address_if_released == null) 0.5 else 1,
+                    }, 0.6, delta_seconds);
+                    grabbing.address_if_released = null;
+                    for (self.cases.items, 0..) |*case, k| {
+                        if (inRange(grabbing.case.pattern_point.pos.y - cur_top_line, -1, 1.5)) {
+                            grabbing.address_if_released = k;
+                            cur_top_line += 2.5;
+                        }
+                        defer cur_top_line += 1.5;
+                        const pattern_point = Point{
+                            .pos = .new(5, cur_top_line + 0.5),
+                            .scale = 0.5,
+                        };
+                        case.pattern_point.lerp_towards(pattern_point, 0.6, delta_seconds);
+                    }
                     if (inRange(grabbing.case.pattern_point.pos.y - cur_top_line, -1, 1.5)) {
-                        std.log.debug("address if released: {d}", .{k});
-                        grabbing.address_if_released = k;
-                        cur_top_line += lerp(1.5, 2.5, 1);
+                        grabbing.address_if_released = self.cases.items.len;
                     }
-                    const is_unfolded = 0.0;
-                    defer cur_top_line += lerp(1.5, 2.5, is_unfolded);
-                    const pattern_point = Point{
-                        .pos = .new(5, cur_top_line + lerp(0.5, 1, is_unfolded)),
-                        .scale = lerp(0.5, 1, is_unfolded),
-                    };
-                    case.pattern_point = Point.lerp(case.pattern_point, pattern_point, 0.6);
-                    if (artist.overlapsPatternAtom(pattern_point, platform.getMouse().cur.pos(camera))) {
-                        self.unfolded = k;
+                    if (platform.getMouse().wasPressed(.left)) {
+                        if (grabbing.address_if_released) |address| {
+                            try self.cases.insert(address, grabbing.case);
+                            self.focus = .{ .hovering_case = address };
+                        } else {
+                            self.focus = .{ .hovering_case = 0 };
+                        }
                     }
-                }
-                if (inRange(grabbing.case.pattern_point.pos.y - cur_top_line, -1, 1.5)) {
-                    std.log.debug("address if released: {d}", .{self.cases.items.len});
-                    grabbing.address_if_released = self.cases.items.len;
-                }
-                // if (platform.getMouse().wasReleased(.left)) {
-                if (platform.getMouse().wasPressed(.left)) {
-                    if (grabbing.address_if_released) |address| {
-                        try self.cases.insert(address, grabbing.case);
-                        self.unfolded = address;
+                },
+                .hovering_case => |unfolded| {
+                    for (self.cases.items, 0..) |*case, k| {
+                        const is_folded: bool = k != unfolded;
+                        defer cur_top_line += if (is_folded) 1.5 else 2.5;
+                        const pattern_point = Point{
+                            .pos = .new(5, cur_top_line + if (is_folded) tof32(0.5) else 1.0),
+                            .scale = if (is_folded) 0.5 else 1,
+                        };
+                        case.pattern_point.lerp_towards(pattern_point, 0.6, delta_seconds);
+                        if (artist.overlapsPatternAtom(pattern_point, platform.getMouse().cur.pos(camera))) {
+                            self.focus = .{ .hovering_case = k };
+                        }
                     }
-                    self.grabbing = null;
-                }
-            } else {
-                const unfolded = self.unfolded;
-                for (self.cases.items, 0..) |*case, k| {
-                    const is_unfolded: f32 = if (k == unfolded) 1 else 0;
-                    defer cur_top_line += lerp(1.5, 2.5, is_unfolded);
-                    const pattern_point = Point{
-                        .pos = .new(5, cur_top_line + lerp(0.5, 1, is_unfolded)),
-                        .scale = lerp(0.5, 1, is_unfolded),
-                    };
-                    case.pattern_point = Point.lerp(case.pattern_point, pattern_point, 0.6);
-                    if (artist.overlapsPatternAtom(pattern_point, platform.getMouse().cur.pos(camera))) {
-                        self.unfolded = k;
-                    }
-                }
 
-                if (platform.getMouse().wasPressed(.left)) {
-                    const asdf = self.cases.orderedRemove(self.unfolded);
-                    self.grabbing = .{ .case = asdf, .address_if_released = self.unfolded };
-                }
+                    if (platform.getMouse().wasPressed(.left)) {
+                        const asdf = self.cases.orderedRemove(unfolded);
+                        self.focus = .{ .grabbing = .{
+                            .case = asdf,
+                            .address_if_released = unfolded,
+                        } };
+                    }
+                },
             }
         }
 
@@ -892,7 +907,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 );
             }
 
-            if (self.grabbing) |grabbing| {
+            if (self.focus.getGrabbed()) |grabbing| {
                 const pattern_point = grabbing.case.pattern_point;
                 try artist.drawPatternSexpr(
                     camera,
@@ -963,6 +978,7 @@ fn towards(v: *f32, goal: f32, max_delta: f32) void {
     }
 }
 
+const lerp_towards_float = lerp_towards;
 fn lerp_towards(v: *f32, goal: f32, ratio: f32, delta_seconds: f32) void {
     // TODO: make this framerate independent
     _ = delta_seconds;
