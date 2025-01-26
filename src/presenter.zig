@@ -718,14 +718,57 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             }
         }
 
-        pub fn overlapsPatternAtom(atom_point: Point, pos: Vec2) bool {
-            const p = atom_point.inverseApplyGetLocal(.{ .pos = pos }).pos;
+        pub fn overlapsPatternAtom(atom_point: Point, needle_pos: Vec2) bool {
+            const p = atom_point.inverseApplyGetLocal(.{ .pos = needle_pos }).pos;
             return inRange(p.y, -1, 1) and
                 inRange(p.x, -1, 0.5 * (1 - @abs(p.y)));
         }
 
-        pub fn overlapsAtom(atom_point: Point, pos: Vec2) bool {
-            const p = atom_point.inverseApplyGetLocal(.{ .pos = pos }).pos;
+        pub fn overlapsPatternSexpr(alloc: std.mem.Allocator, sexpr: *const Sexpr, sexpr_pos: Point, needle_pos: Vec2) !?core.SexprAddress {
+            var result = std.ArrayList(core.SexprAddressItem).init(alloc);
+            defer result.deinit();
+            // TODO (low priority): probably can be made more efficient by using less changes of coordinates
+
+            var cur_sexpr_pos = sexpr_pos;
+            var cur_sexpr = sexpr;
+            while (true) {
+                switch (cur_sexpr.*) {
+                    .atom_lit, .atom_var => {
+                        if (overlapsPatternAtom(cur_sexpr_pos, needle_pos)) {
+                            return try result.toOwnedSlice();
+                        } else {
+                            return null;
+                        }
+                    },
+                    .pair => |pair| {
+                        const p = cur_sexpr_pos.inverseApplyGetLocal(.{ .pos = needle_pos }).pos;
+
+                        if (overlapsPatternAtom(cur_sexpr_pos, needle_pos)) {
+                            return try result.toOwnedSlice();
+                        } else if (inRange(p.y, -1, 0)) {
+                            try result.append(.left);
+                            cur_sexpr = pair.left;
+                            cur_sexpr_pos = cur_sexpr_pos.applyToLocalPoint(.{
+                                .pos = .new(-1, -0.5),
+                                .scale = 0.5,
+                            });
+                        } else if (inRange(p.y, 0, 1)) {
+                            try result.append(.right);
+                            cur_sexpr = pair.right;
+                            cur_sexpr_pos = cur_sexpr_pos.applyToLocalPoint(.{
+                                .pos = .new(-1, 0.5),
+                                .scale = 0.5,
+                            });
+                        } else {
+                            return null;
+                        }
+                    },
+                }
+            }
+        }
+
+        pub fn overlapsAtom(atom_point: Point, needle_pos: Vec2) bool {
+            const p = atom_point.inverseApplyGetLocal(.{ .pos = needle_pos }).pos;
             return inRange(p.y, -1, 1) and
                 inRange(p.x, -0.5 * (1 - @abs(p.y)), 2);
         }
@@ -737,7 +780,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         const Self = @This();
         const artist = Artist(platform, drawer);
 
-        // TODO: use actual Sexpr addresses
+        // TODO: use actual Case addresses
         const Address = usize;
         const CaseState = struct {
             // TODO: generic tree type to avoid duplication
@@ -854,6 +897,18 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         pub fn draw(self: Self) !void {
             drawer.clear(Color.gray(128));
+            if (false) {
+                const debug_sexpr = &Sexpr.doPair(&Sexpr.nil, &Sexpr.doPair(&Sexpr.nil, &Sexpr.nil));
+                const pos = Point{ .pos = .new(10, 0) };
+                const res = try artist.overlapsPatternSexpr(platform.gpa, debug_sexpr, pos, platform.getMouse().cur.pos(camera));
+                defer if (res) |x| platform.gpa.free(x);
+                std.log.debug("overlap: {any}", .{res});
+                try artist.drawPatternSexpr(
+                    camera,
+                    pos,
+                    debug_sexpr,
+                );
+            }
             {
                 try artist.drawSexpr(
                     camera,

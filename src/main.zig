@@ -117,6 +117,8 @@ pub const Sexpr = union(enum) {
         }
     }
 };
+pub const SexprAddressItem = enum { left, right };
+pub const SexprAddress = []SexprAddressItem;
 
 pub const Fnk = struct {
     name: *const Sexpr,
