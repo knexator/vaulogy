@@ -1,7 +1,5 @@
 //! This should be unchanged regardless of platform
 
-// TODO: remove unfolded_t
-
 const std = @import("std");
 
 const core = @import("main.zig");
@@ -742,9 +740,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             // TODO: add 'next'
 
             pattern_point: Point,
-            unfolded_t: f32,
-
-            debug_k: usize,
         };
 
         fnk_name: *const Sexpr,
@@ -761,13 +756,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         pub fn init(fnk: Fnk) !Self {
             var cases = std.ArrayList(CaseState).init(platform.gpa);
             for (fnk.body.cases.items, 0..) |case, k| {
+                _ = k;
                 try cases.append(.{
                     .fn_name = case.fn_name,
                     .pattern = case.pattern,
                     .template = case.template,
+                    // TODO: this, to avoid the initial jump
                     .pattern_point = .{},
-                    .unfolded_t = 0,
-                    .debug_k = k,
                 });
             }
             return .{
@@ -782,12 +777,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn update(self: *Self, delta_seconds: f32) !void {
+            // TODO: take delta_seconds into account
+            _ = delta_seconds;
             var cur_top_line: f32 = 2;
             if (self.grabbing) |*grabbing| {
-                for (self.cases.items) |*case| {
-                    // towards(&case.unfolded_t, if (k == self.unfolded) 1 else 0, delta_seconds * 20);
-                    lerp_towards(&case.unfolded_t, 0, 0.6, delta_seconds);
-                }
                 grabbing.case.pattern_point = Point{
                     .pos = platform.getMouse().cur.pos(camera),
                     .scale = 1,
@@ -823,75 +816,25 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     self.grabbing = null;
                 }
             } else {
-                // if (platform.getMouse().cur.isDown(.right)) {
-                //     // if (platform.getMouse().wasPressed(.right)) {
-                //     self.unfolded += 2;
-                //     self.unfolded %= 3;
-                // }
-
-                for (self.cases.items, 0..) |*case, k| {
-                    // towards(&case.unfolded_t, if (k == self.unfolded) 1 else 0, delta_seconds * 20);
-                    // lerp_towards(&case.unfolded_t, if (k == self.unfolded) 1 else 0, 0.6, delta_seconds);
-                    lerp_towards(&case.unfolded_t, if (k == self.unfolded) 1 else 0, 1, delta_seconds);
-                }
-                if (false) { // ensure they all sum to 1
-                    var sum: f32 = 0;
-                    for (self.cases.items) |case| {
-                        sum += case.unfolded_t;
-                    }
-                    for (self.cases.items) |*case| {
-                        case.unfolded_t /= sum;
-                    }
-                }
-
                 const unfolded = self.unfolded;
                 for (self.cases.items, 0..) |*case, k| {
                     const is_unfolded: f32 = if (k == unfolded) 1 else 0;
-                    // const is_unfolded = case.unfolded_t;
                     defer cur_top_line += lerp(1.5, 2.5, is_unfolded);
                     const pattern_point = Point{
                         .pos = .new(5, cur_top_line + lerp(0.5, 1, is_unfolded)),
                         .scale = lerp(0.5, 1, is_unfolded),
                     };
                     case.pattern_point = Point.lerp(case.pattern_point, pattern_point, 0.6);
-                    // case.pattern_point = pattern_point;
                     if (artist.overlapsPatternAtom(pattern_point, platform.getMouse().cur.pos(camera))) {
                         self.unfolded = k;
                     }
                 }
 
                 if (platform.getMouse().wasPressed(.left)) {
-                    std.log.debug("about to grab: {any}", .{self.cases.items[self.unfolded].debug_k});
-                    // const asdf = self.cases.orderedRemove(self.unfolded);
-
-                    const i = self.unfolded;
-                    const old_item = self.cases.items[i];
-                    std.log.debug("grabbed1: {any}", .{old_item.debug_k});
-                    self.cases.replaceRangeAssumeCapacity(i, 1, &.{});
-                    std.log.debug("grabbed2: {any}", .{old_item.debug_k});
-
-                    const asdf = old_item;
-
-                    // const asdf = self.cases.orderedRemove(self.unfolded);
-                    std.log.debug("grabbed: {any}", .{asdf.debug_k});
-                    self.grabbing = .{ .case = asdf, .address_if_released = i };
-                    for (self.cases.items) |case| {
-                        std.log.debug("other: {any}", .{case.debug_k});
-                    }
+                    const asdf = self.cases.orderedRemove(self.unfolded);
+                    self.grabbing = .{ .case = asdf, .address_if_released = self.unfolded };
                 }
             }
-        }
-
-        test {
-            var mem = VeryPermamentGameStuff.init(std.testing.allocator);
-            defer mem.deinit();
-            var sut = try Self.init(Fnk{ .name = &Sexpr.false, .body = defaultFnkBody(&mem) });
-            defer sut.deinit();
-
-            sut.unfolded = 0;
-            try std.testing.expectEqual(0, sut.cases.items[sut.unfolded].debug_k);
-            const asdf = sut.cases.orderedRemove(sut.unfolded);
-            try std.testing.expectEqual(0, asdf.debug_k);
         }
 
         pub fn draw(self: Self) !void {
@@ -916,25 +859,24 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 );
             }
 
+            const DIST_TO_TEMPLATE = 4;
             for (self.cases.items) |case| {
-                const is_unfolded = case.unfolded_t;
                 const pattern_point = case.pattern_point;
-                const dist = 4;
                 try artist.drawPatternSexpr(
                     camera,
                     pattern_point,
                     case.pattern,
                 );
-                if (is_unfolded >= 0.7) {
+                if (case.pattern_point.scale >= 0.9) {
                     try artist.drawSexpr(
                         camera,
-                        pattern_point.applyToLocalPoint(.{ .pos = .new(dist, 0) }),
+                        pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
                         case.template,
                     );
                     drawer.drawCable(
                         camera,
                         pattern_point.applyToLocalPosition(.new(0.5, 0)),
-                        pattern_point.applyToLocalPosition(.new(dist - 0.5, 0)),
+                        pattern_point.applyToLocalPosition(.new(DIST_TO_TEMPLATE - 0.5, 0)),
                         pattern_point.scale,
                         0,
                     );
@@ -951,10 +893,23 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             if (self.grabbing) |grabbing| {
+                const pattern_point = grabbing.case.pattern_point;
                 try artist.drawPatternSexpr(
                     camera,
-                    grabbing.case.pattern_point,
+                    pattern_point,
                     grabbing.case.pattern,
+                );
+                try artist.drawSexpr(
+                    camera,
+                    pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
+                    grabbing.case.template,
+                );
+                drawer.drawCable(
+                    camera,
+                    pattern_point.applyToLocalPosition(.new(0.5, 0)),
+                    pattern_point.applyToLocalPosition(.new(DIST_TO_TEMPLATE - 0.5, 0)),
+                    pattern_point.scale,
+                    0,
                 );
             }
         }

@@ -93,8 +93,9 @@ pub fn build(b: *std.Build) void {
                 .os_tag = .freestanding,
             }),
             .optimize = optimize,
-            .use_llvm = optimize != .Debug,
-            .use_lld = optimize != .Debug,
+            // FUTURE TODO: put these back once https://github.com/ziglang/zig/issues/22617 is fixed
+            // .use_llvm = optimize != .Debug,
+            // .use_lld = optimize != .Debug,
         },
     );
 
@@ -177,8 +178,9 @@ pub fn build(b: *std.Build) void {
                 .os_tag = .freestanding,
             }),
             .optimize = optimize,
-            .use_llvm = optimize != .Debug,
-            .use_lld = optimize != .Debug,
+            // FUTURE TODO: put these back once https://github.com/ziglang/zig/issues/22617 is fixed
+            // .use_llvm = optimize != .Debug,
+            // .use_lld = optimize != .Debug,
         },
     );
     const check = b.step("check", "Check if the project compiles");
