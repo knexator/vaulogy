@@ -81,9 +81,7 @@ pub const PlayerData = struct {
     pub fn fromAscii2(data: []const u8, mem: *VeryPermamentGameStuff) !usize {
         const ascii_data = try mem.gpa.dupe(u8, data);
         var parser = parsing.Parser{ .remaining_text = ascii_data };
-        _ = &parser;
         var fnks = FnkCollection.init(mem.gpa);
-        _ = &fnks;
         errdefer fnks.deinit();
         try parser.parseFnkCollection(&fnks, &mem.pool_for_sexprs, mem.arena_for_cases.allocator());
         return fnks.capacity();
@@ -351,6 +349,10 @@ pub const Point = struct {
         try expectApproxEqAbs(.{ .pos = .new(0, 2), .scale = 2, .turns = 0.25 }, applied, 0.0001);
         try expectApproxEqAbs(parent, applied.inverseApplyToLocalPoint(local), 0.0001);
         try expectApproxEqAbs(local, parent.inverseApplyGetLocal(applied), 0.0001);
+    }
+
+    pub fn inverseApplyGetLocalPosition(parent: Point, applied: Vec2) Vec2 {
+        return inverseApplyGetLocal(parent, .{ .pos = applied }).pos;
     }
 };
 
@@ -879,7 +881,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             .scale = if (is_folded) 0.5 else 1,
                         };
                         case.pattern_point.lerp_towards(pattern_point, 0.6, delta_seconds);
-                        if (artist.overlapsPatternAtom(pattern_point, platform.getMouse().cur.pos(camera))) {
+                        const mouse_pos = platform.getMouse().cur.pos(camera);
+                        const local_pos = pattern_point.inverseApplyGetLocalPosition(mouse_pos);
+                        if (try artist.overlapsPatternSexpr(platform.gpa, case.pattern, pattern_point, mouse_pos)) |local_address| {
+                            self.focus = .{ .hovering_case = k };
+                            // TODO
+                            _ = local_address;
+                        } else if (inRange(local_pos.y, -1, 1) and inRange(mouse_pos.x, 0, 5)) {
                             self.focus = .{ .hovering_case = k };
                         }
                     }
@@ -1042,7 +1050,6 @@ fn lerp_towards(v: *f32, goal: f32, ratio: f32, delta_seconds: f32) void {
 
 pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
     const artist = Artist(platform, drawer);
-    // _ = platform;
     return struct {
         const Self = @This();
 
