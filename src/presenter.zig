@@ -749,7 +749,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         cases: std.ArrayList(CaseState),
         sample_input: *const Sexpr,
         unfolded: Address = 0,
-        grabbing: ?CaseState = null,
+        grabbing: ?struct {
+            case: CaseState,
+            address_if_released: ?Address,
+        } = null,
 
         const camera = Camera{ .center = .new(6, 3), .height = 15.0 };
 
@@ -777,51 +780,92 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn update(self: *Self, delta_seconds: f32) !void {
-            for (self.cases.items, 0..) |*case, k| {
-                // towards(&case.unfolded_t, if (k == self.unfolded) 1 else 0, delta_seconds * 20);
-                lerp_towards(&case.unfolded_t, if (k == self.unfolded) 1 else 0, 0.6, delta_seconds);
-            }
-            { // ensure they all sum to 1
-                var sum: f32 = 0;
-                for (self.cases.items) |case| {
-                    sum += case.unfolded_t;
-                }
-                for (self.cases.items) |*case| {
-                    case.unfolded_t /= sum;
-                }
-            }
-
             var cur_top_line: f32 = 2;
-            for (self.cases.items, 0..) |*case, k| {
-                const is_unfolded = case.unfolded_t;
-                defer cur_top_line += lerp(1.5, 2.5, is_unfolded);
-                const pattern_point = Point{
-                    .pos = .new(5, cur_top_line + lerp(0.5, 1, is_unfolded)),
-                    .scale = lerp(0.5, 1, is_unfolded),
-                };
-                case.pattern_point = pattern_point;
-                if (artist.overlapsPatternAtom(pattern_point, platform.getMouse().cur.pos(camera))) {
-                    self.unfolded = k;
+            if (self.grabbing) |*grabbing| {
+                for (self.cases.items) |*case| {
+                    // towards(&case.unfolded_t, if (k == self.unfolded) 1 else 0, delta_seconds * 20);
+                    lerp_towards(&case.unfolded_t, 0, 0.6, delta_seconds);
                 }
-            }
+                grabbing.case.pattern_point = Point{
+                    .pos = platform.getMouse().cur.pos(camera),
+                    .scale = 1,
+                };
+                grabbing.address_if_released = null;
+                for (self.cases.items, 0..) |*case, k| {
+                    if (inRange(grabbing.case.pattern_point.pos.y - cur_top_line, -1, 1.5)) {
+                        std.log.debug("address if released: {d}", .{k});
+                        grabbing.address_if_released = k;
+                        cur_top_line += lerp(1.5, 2.5, 1);
+                    }
+                    const is_unfolded = 0.0;
+                    defer cur_top_line += lerp(1.5, 2.5, is_unfolded);
+                    const pattern_point = Point{
+                        .pos = .new(5, cur_top_line + lerp(0.5, 1, is_unfolded)),
+                        .scale = lerp(0.5, 1, is_unfolded),
+                    };
+                    case.pattern_point = pattern_point;
+                    if (artist.overlapsPatternAtom(pattern_point, platform.getMouse().cur.pos(camera))) {
+                        self.unfolded = k;
+                    }
+                }
+                if (inRange(grabbing.case.pattern_point.pos.y - cur_top_line, -1, 1.5)) {
+                    std.log.debug("address if released: {d}", .{self.cases.items.len});
+                    grabbing.address_if_released = self.cases.items.len;
+                }
+                // if (platform.getMouse().wasReleased(.left)) {
+                if (platform.getMouse().wasPressed(.left)) {
+                    if (grabbing.address_if_released) |address| {
+                        try self.cases.insert(address, grabbing.case);
+                        self.unfolded = address;
+                    }
+                    self.grabbing = null;
+                }
+            } else {
+                for (self.cases.items, 0..) |*case, k| {
+                    // towards(&case.unfolded_t, if (k == self.unfolded) 1 else 0, delta_seconds * 20);
+                    lerp_towards(&case.unfolded_t, if (k == self.unfolded) 1 else 0, 0.6, delta_seconds);
+                }
+                { // ensure they all sum to 1
+                    var sum: f32 = 0;
+                    for (self.cases.items) |case| {
+                        sum += case.unfolded_t;
+                    }
+                    for (self.cases.items) |*case| {
+                        case.unfolded_t /= sum;
+                    }
+                }
 
-            if (platform.getMouse().wasPressed(.left)) {
-                std.log.debug("about to grab: {any}", .{self.cases.items[self.unfolded].debug_k});
-                // const asdf = self.cases.orderedRemove(self.unfolded);
+                for (self.cases.items, 0..) |*case, k| {
+                    const is_unfolded = case.unfolded_t;
+                    defer cur_top_line += lerp(1.5, 2.5, is_unfolded);
+                    const pattern_point = Point{
+                        .pos = .new(5, cur_top_line + lerp(0.5, 1, is_unfolded)),
+                        .scale = lerp(0.5, 1, is_unfolded),
+                    };
+                    case.pattern_point = pattern_point;
+                    if (artist.overlapsPatternAtom(pattern_point, platform.getMouse().cur.pos(camera))) {
+                        self.unfolded = k;
+                    }
+                }
 
-                const i = self.unfolded;
-                const old_item = self.cases.items[i];
-                std.log.debug("grabbed1: {any}", .{old_item.debug_k});
-                self.cases.replaceRangeAssumeCapacity(i, 1, &.{});
-                std.log.debug("grabbed2: {any}", .{old_item.debug_k});
+                if (platform.getMouse().wasPressed(.left)) {
+                    std.log.debug("about to grab: {any}", .{self.cases.items[self.unfolded].debug_k});
+                    // const asdf = self.cases.orderedRemove(self.unfolded);
 
-                const asdf = old_item;
+                    const i = self.unfolded;
+                    const old_item = self.cases.items[i];
+                    std.log.debug("grabbed1: {any}", .{old_item.debug_k});
+                    self.cases.replaceRangeAssumeCapacity(i, 1, &.{});
+                    std.log.debug("grabbed2: {any}", .{old_item.debug_k});
 
-                // const asdf = self.cases.orderedRemove(self.unfolded);
-                std.log.debug("grabbed: {any}", .{asdf.debug_k});
-                self.grabbing = asdf;
-                for (self.cases.items) |case| {
-                    std.log.debug("other: {any}", .{case.debug_k});
+                    const asdf = old_item;
+
+                    // const asdf = self.cases.orderedRemove(self.unfolded);
+                    std.log.debug("grabbed: {any}", .{asdf.debug_k});
+                    self.grabbing = .{ .case = asdf, .address_if_released = i };
+                    for (self.cases.items) |case| {
+                        std.log.debug("other: {any}", .{case.debug_k});
+                    }
                 }
             }
         }
@@ -894,12 +938,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 );
             }
 
-            if (self.grabbing) |case| {
-                std.log.debug("grabbing: {any}", .{case.pattern});
+            if (self.grabbing) |grabbing| {
                 try artist.drawPatternSexpr(
                     camera,
-                    case.pattern_point,
-                    case.pattern,
+                    grabbing.case.pattern_point,
+                    grabbing.case.pattern,
                 );
             }
         }
