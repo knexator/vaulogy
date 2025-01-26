@@ -33,6 +33,7 @@ pub const Sexpr = union(enum) {
     pub const @"eqAtoms?" = Sexpr.doLit("eqAtoms?");
     pub const @"true" = Sexpr.doLit("true");
     pub const @"false" = Sexpr.doLit("false");
+    pub const input = Sexpr.doLit("input");
 
     pub fn doPair(a: *const Sexpr, b: *const Sexpr) Sexpr {
         return .{ .pair = .{ .left = a, .right = b } };
@@ -119,6 +120,14 @@ pub const Sexpr = union(enum) {
 };
 pub const SexprAddressItem = enum { left, right };
 pub const SexprAddress = []SexprAddressItem;
+
+// TODO: change to []usize
+pub const CaseAddress = usize;
+pub const FullAddress = struct {
+    case_address: CaseAddress,
+    sexpr_address: SexprAddress,
+    which: enum { pattern, template, fnk_name },
+};
 
 pub const Fnk = struct {
     name: *const Sexpr,

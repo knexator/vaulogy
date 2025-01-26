@@ -440,6 +440,7 @@ export fn frame(delta_seconds: f32) void {
 export fn draw() void {
     game.draw() catch |err| switch (err) {
         error.OutOfMemory => OoM(),
+        error.TODO => programmerError(),
     };
 }
 
