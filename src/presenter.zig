@@ -261,6 +261,7 @@ pub const Color = struct {
 
     pub const white = new(255, 255, 255);
     pub const black = new(0, 0, 0);
+    pub const cyan = new(0, 255, 255);
 
     pub fn new(r: u8, g: u8, b: u8) Color {
         return .{ .r = r, .g = g, .b = b };
@@ -399,7 +400,8 @@ pub const Drawer = struct {
     drawRect: fn (camera: Camera, rect: Rect) void,
     drawAtomDebug: fn (camera: Camera, world_point: Point) void,
     drawAtom: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
-    drawAtomPatternDebug: fn (camera: Camera, world_point: Point) void,
+    drawPatternAtomOutline: fn (camera: Camera, world_point: Point) void,
+    drawPatternAtomDebug: fn (camera: Camera, world_point: Point) void,
     drawPairHolder: fn (camera: Camera, world_point: Point) void,
     drawPatternPairHolder: fn (camera: Camera, world_point: Point) void,
     drawPatternAtom: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
@@ -428,7 +430,7 @@ pub const Drawer = struct {
         .drawRect = undefined,
         .drawAtomDebug = undefined,
         .drawAtom = dummySignatures.camera_point_visuals,
-        .drawAtomPatternDebug = undefined,
+        .drawPatternAtomDebug = undefined,
         .drawPairHolder = dummySignatures.camera_point,
         .drawPatternPairHolder = dummySignatures.camera_point,
         .drawPatternAtom = dummySignatures.camera_point_visuals,
@@ -506,7 +508,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                     .editing_fnk = try .init(Fnk{
                         .name = try mem.storeSexpr(Sexpr.doLit("default")),
                         .body = defaultFnkBody(&mem),
-                    }),
+                    }, &mem),
                 },
             };
             return result;
@@ -519,6 +521,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                     const fnk_body = self.persistence.fnks.get(fnk_name) orelse defaultFnkBody(&self.mem);
                     self.state = .{ .editing_fnk = try .init(
                         Fnk{ .name = fnk_name, .body = fnk_body },
+                        &self.mem,
                     ) };
                 },
                 inline else => |*x| x.update(delta_seconds),
@@ -671,8 +674,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn drawPatternOutline(camera: Camera, world_point: Point) !void {
-            // TODO: this
-            try drawPatternAtom(camera, world_point, "input");
+            drawer.drawPatternAtomOutline(camera, world_point);
         }
 
         pub fn drawAtom(camera: Camera, world_point: Point, name: []const u8) !void {
@@ -814,6 +816,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             pattern_point: Point,
         };
 
+        mem: *VeryPermamentGameStuff,
+
         fnk_name: *const Sexpr,
         cases: std.ArrayList(CaseState),
         sample_input: *const Sexpr,
@@ -835,7 +839,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         const camera = Camera{ .center = .new(6, 3), .height = 15.0 };
 
-        pub fn init(fnk: Fnk) !Self {
+        pub fn init(fnk: Fnk, mem: *VeryPermamentGameStuff) !Self {
             var cases = std.ArrayList(CaseState).init(platform.gpa);
             for (fnk.body.cases.items, 0..) |case, k| {
                 _ = k;
@@ -848,6 +852,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 });
             }
             return .{
+                .mem = mem,
                 .fnk_name = fnk.name,
                 .cases = cases,
                 .sample_input = &Sexpr.true,
@@ -884,11 +889,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     }
                 },
                 .grabbing_sexpr => |*grabbing| {
-                    grabbing.point.lerp_towards(.{
-                        .pos = platform.getMouse().cur.pos(camera),
-                        // TODO
-                        .scale = 1,
-                    }, 0.6, delta_seconds);
+                    grabbing.point.lerp_towards(if (grabbing.address_if_released) |goal|
+                        artist.sexprPatternChildView(self.cases.items[goal.case_address].pattern_point, goal.sexpr_address)
+                        // TODO: this 'anim' should be smoothly undone when the sexpr is released
+                            .applyToLocalPoint(.{ .turns = 0.02, .pos = .new(-0.5, 0) })
+                    else
+                        Point{
+                            .pos = platform.getMouse().cur.pos(camera),
+                            .scale = 1,
+                        }, 0.6, delta_seconds);
 
                     const unfolded = grabbing.unfolded;
                     // TODO: remove duplication
@@ -972,8 +981,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .grabbing_sexpr => |grabbing| {
                         if (grabbing.address_if_released) |address| {
                             // TODO: correctly modify the case
-                            self.cases.items[address.case_address].pattern = grabbing.sexpr;
+                            self.cases.items[address.case_address].pattern = try self.cases.items[address.case_address].pattern.setAt(self.mem, address.sexpr_address, grabbing.sexpr);
                             self.focus = .{ .hovering_case = address.case_address };
+                        } else {
+                            // TODO
                         }
                     },
                     .hovering_case => |unfolded| {
@@ -984,14 +995,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         } };
                     },
                     .hovering_sexpr => |hovering| {
+                        const case = self.cases.items[hovering.case_address];
                         self.focus = .{
                             .grabbing_sexpr = .{
-                                .address_if_released = null,
-                                // TODO
-                                .sexpr = &Sexpr.false,
+                                .address_if_released = hovering,
+                                .sexpr = case.pattern.getAt(hovering.sexpr_address).?,
                                 .unfolded = hovering.case_address,
                                 .point = artist.sexprPatternChildView(
-                                    self.cases.items[hovering.case_address].pattern_point,
+                                    case.pattern_point,
                                     hovering.sexpr_address,
                                 ),
                             },
@@ -1071,7 +1082,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             switch (self.focus) {
                 .hovering_case => {},
                 .grabbing_sexpr => |grabbing| {
-                    // TODO
                     try artist.drawPatternSexpr(
                         camera,
                         grabbing.point,
@@ -1099,9 +1109,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     );
                 },
                 .hovering_sexpr => |full_address| {
+                    // TODO: maybe 'rotate' the hovered sexpr to make it more clear
                     const case = self.cases.items[full_address.case_address];
                     if (full_address.which != .pattern) return error.TODO;
-                    // TODO: draw outline
                     try artist.drawPatternOutline(camera, artist.sexprPatternChildView(
                         case.pattern_point,
                         full_address.sexpr_address,
@@ -1331,7 +1341,7 @@ pub fn IntroSequence(platform: Platform, drawer: Drawer) type {
                     snap.pos,
                     clamp(self.t / 8, 0, 1),
                 );
-                drawer.drawAtomPatternDebug(camera, cur);
+                drawer.drawPatternAtomDebug(camera, cur);
                 drawer.drawAtomDebug(camera, cur.applyToLocalPoint(.{ .pos = .new(3.8, 0) }));
                 drawer.drawCable(
                     camera,
@@ -1354,7 +1364,7 @@ pub fn IntroSequence(platform: Platform, drawer: Drawer) type {
                     clamp((self.t - 8) / 8, 0, 1),
                 );
                 drawer.drawAtomDebug(camera, cur.applyToLocalPoint(.{ .pos = .new(-3, 0) }));
-                drawer.drawAtomPatternDebug(camera, cur);
+                drawer.drawPatternAtomDebug(camera, cur);
             }
         }
     };

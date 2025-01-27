@@ -91,6 +91,44 @@ pub const Sexpr = union(enum) {
         return if (b) &Sexpr.true else &Sexpr.false;
     }
 
+    pub fn getAt(this: *const Sexpr, address: SexprAddress) ?*const Sexpr {
+        var res = this;
+        for (address) |item| {
+            res = switch (res.*) {
+                .pair => |p| switch (item) {
+                    .left => p.left,
+                    .right => p.right,
+                },
+                else => return null,
+            };
+        }
+        return res;
+    }
+
+    pub fn setAt(this: *const Sexpr, mem: *VeryPermamentGameStuff, address: SexprAddress, value: *const Sexpr) !*const Sexpr {
+        if (address.len == 0) {
+            return value;
+        } else {
+            const first = address[0];
+            const rest = address[1..];
+            switch (this.*) {
+                .pair => |p| {
+                    switch (first) {
+                        .left => {
+                            const new_left = try p.left.setAt(mem, rest, value);
+                            return mem.storeSexpr(Sexpr.doPair(new_left, p.right));
+                        },
+                        .right => {
+                            const new_right = try p.right.setAt(mem, rest, value);
+                            return mem.storeSexpr(Sexpr.doPair(p.left, new_right));
+                        },
+                    }
+                },
+                else => return error.BAD_INPUT,
+            }
+        }
+    }
+
     pub fn format(value: *const Sexpr, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: std.io.AnyWriter) !void {
         std.debug.assert(std.mem.eql(u8, fmt, ""));
         std.debug.assert(std.meta.eql(options, .{}));

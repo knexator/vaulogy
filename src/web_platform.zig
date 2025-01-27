@@ -340,7 +340,7 @@ const WebDrawer = struct {
         js.canvas.stroke();
     }
 
-    pub fn drawAtomPatternDebug(camera: Camera, world_point: Point) void {
+    pub fn drawPatternAtomDebug(camera: Camera, world_point: Point) void {
         const screen_point = screenFromWorld(camera, world_point);
         const local_positions = [_]Vec2{
             Vec2.new(0.5, 0),
@@ -360,6 +360,25 @@ const WebDrawer = struct {
         js_better.canvas.setFillColor(Color.white);
         js_better.canvas.setStrokeColor(Color.black);
         js.canvas.fill();
+        js.canvas.stroke();
+    }
+
+    pub fn drawPatternAtomOutline(camera: Camera, world_point: Point) void {
+        const screen_point = screenFromWorld(camera, world_point);
+        const local_positions = [_]Vec2{
+            Vec2.new(0.5, 0),
+            Vec2.new(0, 1),
+            Vec2.new(-1, 1),
+            Vec2.new(-1, -1),
+            Vec2.new(0, -1),
+        };
+        var screen_positions: [local_positions.len]Vec2 = undefined;
+        for (local_positions, 0..) |pos, i| {
+            screen_positions[i] = screen_point.applyToLocalPosition(pos);
+        }
+        js_better.canvas.pathLoop(&screen_positions);
+        js.canvas.setLineWidth(2);
+        js_better.canvas.setStrokeColor(Color.cyan);
         js.canvas.stroke();
     }
 
@@ -408,9 +427,10 @@ const web_drawer = presenter.Drawer{
     .drawAtom = WebDrawer.drawAtom,
     .drawPatternAtom = WebDrawer.drawPatternAtom,
     .drawAtomDebug = WebDrawer.drawAtomDebug,
+    .drawPatternAtomOutline = WebDrawer.drawPatternAtomOutline,
     .drawPairHolder = WebDrawer.drawPairHolder,
     .drawPatternPairHolder = WebDrawer.drawPatternPairHolder,
-    .drawAtomPatternDebug = WebDrawer.drawAtomPatternDebug,
+    .drawPatternAtomDebug = WebDrawer.drawPatternAtomDebug,
     .drawCable = WebDrawer.drawCable,
 };
 
@@ -433,6 +453,8 @@ export fn frame(delta_seconds: f32) void {
     if (paused) return;
     game.update(delta_seconds) catch |err| switch (err) {
         error.OutOfMemory => OoM(),
+        // TODO: remove this
+        error.BAD_INPUT => programmerError(),
     };
     mouse.prev = mouse.cur;
 }
