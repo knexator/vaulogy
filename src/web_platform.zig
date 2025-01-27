@@ -231,6 +231,7 @@ const WebDrawer = struct {
     pub fn drawAtom(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {
         const profile = visuals.profile;
         const screen_point = screenFromWorld(camera, world_point);
+        if (screen_point.scale < 0.1) return;
         const local_positions = [_]Vec2{
             Vec2.new(2, -1),
             Vec2.new(0, -1),
@@ -263,6 +264,7 @@ const WebDrawer = struct {
     pub fn drawPatternAtom(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {
         const profile = visuals.profile;
         const screen_point = screenFromWorld(camera, world_point);
+        if (screen_point.scale < 0.1) return;
         const local_positions = [_]Vec2{
             Vec2.new(-1, -1),
             Vec2.new(0, -1),
@@ -294,6 +296,7 @@ const WebDrawer = struct {
 
     pub fn drawPairHolder(camera: Camera, world_point: Point) void {
         const screen_point = screenFromWorld(camera, world_point);
+        if (screen_point.scale < 0.1) return;
         const local_positions = [_]Vec2{
             Vec2.new(-0.5, 0),
             Vec2.new(0, 1),
@@ -318,6 +321,7 @@ const WebDrawer = struct {
 
     pub fn drawPatternPairHolder(camera: Camera, world_point: Point) void {
         const screen_point = screenFromWorld(camera, world_point);
+        if (screen_point.scale < 0.1) return;
         const local_positions = [_]Vec2{
             Vec2.new(0.5, 0),
             Vec2.new(0, 1),
@@ -407,6 +411,45 @@ const WebDrawer = struct {
         js.canvas.stroke();
     }
 
+    pub fn drawCaseHolder(camera: Camera, world_point: Point) void {
+        const screen_point = screenFromWorld(camera, world_point);
+
+        js_better.canvas.setStrokeColor(Color.white);
+        js.canvas.beginPath();
+        js_better.canvas.circle(screen_point.pos, screen_point.scale * 0.5);
+        js.canvas.stroke();
+    }
+
+    pub fn drawAsdfDevice(camera: Camera, world_point: Point) void {
+        const screen_point = screenFromWorld(camera, world_point);
+
+        js_better.canvas.setStrokeColor(Color.white);
+        js.canvas.beginPath();
+        js.canvas.ellipse(screen_point.pos.x - screen_point.scale * 0.2 + 1, screen_point.pos.y, screen_point.scale * 0.05, screen_point.scale * 0.25, 0, std.math.pi * 1.5, std.math.pi * 0.5, true);
+        js.canvas.stroke();
+
+        // Back face
+        // layer1.setFillColor(Color.gray(128 - 32));
+        // js.canvas.beginPath();
+        // js.canvas.ellipse(screen_point.pos.x - screen_point.scale * 0.2, screen_point.pos.y, screen_point.scale * 0.05, screen_point.scale * 0.25, 0, std.math.pi * 1.5, std.math.pi * 0.5, true);
+        // js.canvas.lineTo(screen_point.pos.x + screen_point.scale * 0.2, screen_point.pos.y + screen_point.scale * 0.25);
+        // js.canvas.ellipse(screen_point.pos.x + screen_point.scale * 0.2, screen_point.pos.y, screen_point.scale * 0.05, screen_point.scale * 0.25, 0, std.math.pi * 0.5, std.math.pi * 1.5, false);
+        // js.canvas.closePath();
+        // js.canvas.fill();
+
+        js_better.canvas.setFillColor(Color.white);
+        js.canvas.beginPath();
+        js.canvas.ellipse(screen_point.pos.x - screen_point.scale * 0.2, screen_point.pos.y, screen_point.scale * 0.05, screen_point.scale * 0.25, 0, std.math.pi * 1.5, std.math.pi * 0.5, false);
+        js.canvas.lineTo(screen_point.pos.x - screen_point.scale * 0.1, screen_point.pos.y + screen_point.scale * 0.25);
+        js.canvas.lineTo(screen_point.pos.x - screen_point.scale * 0.05, screen_point.pos.y + screen_point.scale * 0.2);
+        js.canvas.lineTo(screen_point.pos.x + screen_point.scale * 0.075, screen_point.pos.y + screen_point.scale * 0.15);
+        js.canvas.lineTo(screen_point.pos.x + screen_point.scale * 0.15, screen_point.pos.y + screen_point.scale * 0.2);
+        js.canvas.lineTo(screen_point.pos.x + screen_point.scale * 0.1, screen_point.pos.y + screen_point.scale * 0.25);
+        js.canvas.ellipse(screen_point.pos.x + screen_point.scale * 0.2, screen_point.pos.y, screen_point.scale * 0.05, screen_point.scale * 0.25, 0, std.math.pi * 0.5, std.math.pi * 1.5, true);
+        js.canvas.closePath();
+        js.canvas.fill();
+    }
+
     fn cableOffset(x: f32, scale: f32) f32 {
         const z = x * 20 / scale;
         const y = @sin(z) + 0.2 * @sin(z * 1.3) + 0.3 * @sin(z * 3.1);
@@ -432,6 +475,7 @@ const web_drawer = presenter.Drawer{
     .drawPatternPairHolder = WebDrawer.drawPatternPairHolder,
     .drawPatternAtomDebug = WebDrawer.drawPatternAtomDebug,
     .drawCable = WebDrawer.drawCable,
+    .drawCaseHolder = WebDrawer.drawCaseHolder,
 };
 
 var game: presenter.Presenter(web_platform, web_drawer) = undefined;
