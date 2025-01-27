@@ -451,7 +451,7 @@ pub const Drawer = struct {
 fn defaultFnkBody(mem: *VeryPermamentGameStuff) FnkBody {
     const default_fnk =
         \\default {
-        \\  true -> (nil . true);
+        \\  true -> default: (nil . true);
         \\  (nil . true) -> false;
         \\  (true . nil) -> true;
         \\  (true . nil) -> true;
@@ -845,6 +845,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         } = .{ .hovering_case = 0 },
 
         const camera = Camera{ .center = .new(6, 3), .height = 15.0 };
+        const DIST_TO_TEMPLATE = 4;
 
         pub fn init(fnk: Fnk, mem: *VeryPermamentGameStuff) !Self {
             var cases = std.ArrayList(CaseState).init(platform.gpa);
@@ -1130,7 +1131,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 );
             }
 
-            const DIST_TO_TEMPLATE = 4;
             for (self.cases.items) |case| {
                 const pattern_point = case.pattern_point;
                 try artist.drawPatternSexpr(
@@ -1139,18 +1139,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     case.pattern,
                 );
                 if (case.pattern_point.scale >= 0.9) {
-                    try artist.drawSexpr(
-                        camera,
-                        pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
-                        case.template,
-                    );
-                    drawer.drawCable(
-                        camera,
-                        pattern_point.applyToLocalPosition(.new(0.5, 0)),
-                        pattern_point.applyToLocalPosition(.new(DIST_TO_TEMPLATE - 0.5, 0)),
-                        pattern_point.scale,
-                        0,
-                    );
+                    try drawCaseExtra(case);
                 }
 
                 const pos = pattern_point.applyToLocalPosition(.new(0, 1));
@@ -1186,18 +1175,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         pattern_point,
                         grabbing.case.pattern,
                     );
-                    try artist.drawSexpr(
-                        camera,
-                        pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
-                        grabbing.case.template,
-                    );
-                    drawer.drawCable(
-                        camera,
-                        pattern_point.applyToLocalPosition(.new(0.5, 0)),
-                        pattern_point.applyToLocalPosition(.new(DIST_TO_TEMPLATE - 0.5, 0)),
-                        pattern_point.scale,
-                        0,
-                    );
+                    try drawCaseExtra(grabbing.case);
                 },
                 .hovering_sexpr => |hovering| {
                     const full_address = hovering.full_address;
@@ -1214,6 +1192,33 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     // ));
                 },
             }
+        }
+
+        fn drawCaseExtra(case: CaseState) !void {
+            const pattern_point = case.pattern_point;
+            try artist.drawSexpr(
+                camera,
+                pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
+                case.template,
+            );
+            if (!case.fn_name.equals(&Sexpr.identity)) {
+                try artist.drawSexpr(
+                    camera,
+                    pattern_point.applyToLocalPoint(.{
+                        .pos = .new(DIST_TO_TEMPLATE - 1, -0.75),
+                        .turns = -0.25,
+                        .scale = 0.5,
+                    }),
+                    case.fn_name,
+                );
+            }
+            drawer.drawCable(
+                camera,
+                pattern_point.applyToLocalPosition(.new(0.5, 0)),
+                pattern_point.applyToLocalPosition(.new(DIST_TO_TEMPLATE - 0.5, 0)),
+                pattern_point.scale,
+                0,
+            );
         }
     };
 }
