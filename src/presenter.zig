@@ -828,7 +828,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 case: CaseState,
                 address_if_released: ?Address,
             },
-            hovering_sexpr: core.FullAddress,
+            hovering_sexpr: struct {
+                full_address: core.FullAddress,
+                point: Point,
+            },
             grabbing_sexpr: struct {
                 sexpr: *const Sexpr,
                 unfolded: Address,
@@ -920,9 +923,19 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         }
                     }
                 },
-                .hovering_sexpr => |full_address| {
-                    const unfolded = full_address.case_address;
+                .hovering_sexpr => |*hovering| {
+                    const unfolded = hovering.full_address.case_address;
+                    const hovered_case = self.cases.items[hovering.full_address.case_address];
+                    hovering.point.lerp_towards(
+                        artist.sexprPatternChildView(
+                            hovered_case.pattern_point,
+                            hovering.full_address.sexpr_address,
+                        ).applyToLocalPoint(.{ .pos = .new(-0.0, 0), .scale = 1.1 }),
+                        0.6,
+                        delta_seconds,
+                    );
                     // TODO: remove duplication
+                    // TODO: 'hover nothing' state
                     for (self.cases.items, 0..) |*case, k| {
                         const is_folded: bool = k != unfolded;
                         defer cur_top_line += if (is_folded) 1.5 else 2.5;
@@ -933,12 +946,28 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         case.pattern_point.lerp_towards(pattern_point, 0.6, delta_seconds);
                         const mouse_pos = platform.getMouse().cur.pos(camera);
                         const local_pos = pattern_point.inverseApplyGetLocalPosition(mouse_pos);
-                        if (try artist.overlapsPatternSexpr(platform.gpa, case.pattern, pattern_point, mouse_pos)) |local_address| {
-                            self.focus = .{ .hovering_sexpr = .{
+                        if (try artist.overlapsPatternSexpr(
+                            platform.gpa,
+                            case.pattern,
+                            pattern_point,
+                            mouse_pos,
+                        )) |local_address| {
+                            const new_address = core.FullAddress{
                                 .case_address = k,
                                 .which = .pattern,
                                 .sexpr_address = local_address,
-                            } };
+                            };
+                            if (!hovering.full_address.equals(new_address)) {
+                                self.focus = .{
+                                    .hovering_sexpr = .{
+                                        .point = artist.sexprPatternChildView(
+                                            case.pattern_point,
+                                            local_address,
+                                        ),
+                                        .full_address = new_address,
+                                    },
+                                };
+                            }
                         } else if (inRange(local_pos.y, -1, 1) and inRange(mouse_pos.x, 0, 5)) {
                             self.focus = .{ .hovering_case = k };
                         }
@@ -957,9 +986,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         const local_pos = pattern_point.inverseApplyGetLocalPosition(mouse_pos);
                         if (try artist.overlapsPatternSexpr(platform.gpa, case.pattern, pattern_point, mouse_pos)) |local_address| {
                             self.focus = .{ .hovering_sexpr = .{
-                                .case_address = k,
-                                .which = .pattern,
-                                .sexpr_address = local_address,
+                                .point = artist.sexprPatternChildView(
+                                    case.pattern_point,
+                                    local_address,
+                                ),
+                                .full_address = .{
+                                    .case_address = k,
+                                    .which = .pattern,
+                                    .sexpr_address = local_address,
+                                },
                             } };
                         } else if (inRange(local_pos.y, -1, 1) and inRange(mouse_pos.x, 0, 5)) {
                             self.focus = .{ .hovering_case = k };
@@ -982,9 +1017,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         if (grabbing.address_if_released) |address| {
                             // TODO: correctly modify the case
                             self.cases.items[address.case_address].pattern = try self.cases.items[address.case_address].pattern.setAt(self.mem, address.sexpr_address, grabbing.sexpr);
-                            self.focus = .{ .hovering_case = address.case_address };
+                            self.focus = .{ .hovering_sexpr = .{
+                                .full_address = address,
+                                .point = grabbing.point,
+                            } };
                         } else {
-                            // TODO
+                            self.focus = .{ .hovering_case = grabbing.unfolded };
                         }
                     },
                     .hovering_case => |unfolded| {
@@ -995,16 +1033,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         } };
                     },
                     .hovering_sexpr => |hovering| {
-                        const case = self.cases.items[hovering.case_address];
+                        const case = self.cases.items[hovering.full_address.case_address];
                         self.focus = .{
                             .grabbing_sexpr = .{
-                                .address_if_released = hovering,
-                                .sexpr = case.pattern.getAt(hovering.sexpr_address).?,
-                                .unfolded = hovering.case_address,
-                                .point = artist.sexprPatternChildView(
-                                    case.pattern_point,
-                                    hovering.sexpr_address,
-                                ),
+                                .address_if_released = hovering.full_address,
+                                .sexpr = case.pattern.getAt(hovering.full_address.sexpr_address).?,
+                                .unfolded = hovering.full_address.case_address,
+                                .point = hovering.point,
                             },
                         };
                     },
@@ -1108,14 +1143,19 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         0,
                     );
                 },
-                .hovering_sexpr => |full_address| {
-                    // TODO: maybe 'rotate' the hovered sexpr to make it more clear
+                .hovering_sexpr => |hovering| {
+                    const full_address = hovering.full_address;
                     const case = self.cases.items[full_address.case_address];
                     if (full_address.which != .pattern) return error.TODO;
-                    try artist.drawPatternOutline(camera, artist.sexprPatternChildView(
-                        case.pattern_point,
-                        full_address.sexpr_address,
-                    ));
+                    try artist.drawPatternSexpr(
+                        camera,
+                        hovering.point,
+                        case.pattern.getAt(full_address.sexpr_address).?,
+                    );
+                    // try artist.drawPatternOutline(camera, artist.sexprPatternChildView(
+                    //     case.pattern_point,
+                    //     full_address.sexpr_address,
+                    // ));
                 },
             }
         }

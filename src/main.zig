@@ -165,6 +165,12 @@ pub const FullAddress = struct {
     case_address: CaseAddress,
     sexpr_address: SexprAddress,
     which: enum { pattern, template, fnk_name },
+
+    pub fn equals(this: FullAddress, other: FullAddress) bool {
+        return this.which == other.which and
+            this.case_address == other.case_address and
+            std.mem.eql(SexprAddressItem, this.sexpr_address, other.sexpr_address);
+    }
 };
 
 pub const Fnk = struct {
