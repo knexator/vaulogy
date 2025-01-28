@@ -498,7 +498,7 @@ export fn frame(delta_seconds: f32) void {
     game.update(delta_seconds) catch |err| switch (err) {
         error.OutOfMemory => OoM(),
         // TODO: remove this
-        error.BAD_INPUT => programmerError(),
+        else => programmerError(),
     };
     mouse.prev = mouse.cur;
 }
@@ -506,7 +506,8 @@ export fn frame(delta_seconds: f32) void {
 export fn draw() void {
     game.draw() catch |err| switch (err) {
         error.OutOfMemory => OoM(),
-        error.TODO => programmerError(),
+        // TODO: remove this
+        else => programmerError(),
     };
 }
 
