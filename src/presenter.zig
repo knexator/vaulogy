@@ -453,7 +453,7 @@ fn defaultFnkBody(mem: *VeryPermamentGameStuff) FnkBody {
         \\default {
         \\  true -> default: (nil . true) {
         \\      false -> true;
-        \\      true -> false;
+        \\      (true . false) -> false;
         \\  }
         \\  (nil . true) -> false;
         \\  (true . nil) -> true;
@@ -825,6 +825,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 return (try caseRefAt(self, address)).*;
             }
 
+            // TODO: could this triplication be removed?
             pub fn caseRefAt(self: CaseGroup, address: core.CaseAddress) !*CaseState {
                 if (address.len == 0) {
                     return error.BAD_INPUT;
@@ -860,6 +861,34 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     return error.BAD_INPUT;
                 }
             }
+
+            pub fn setUnfolded(self: *CaseGroup, address: core.CaseAddress) !void {
+                if (address.len == 0) {
+                    return error.BAD_INPUT;
+                } else if (address.len == 1) {
+                    self.unfolded = address[0];
+                } else if (self.cases.items[address[0]].next) |*next| {
+                    try next.setUnfolded(address[1..]);
+                } else {
+                    return error.BAD_INPUT;
+                }
+            }
+
+            pub fn getPatternGlobalPoint(self: CaseGroup, parent_point: Point, address: core.CaseAddress) !Point {
+                if (address.len == 0) {
+                    return parent_point;
+                } else if (address.len == 1) {
+                    return parent_point.applyToLocalPoint(
+                        self.cases.items[address[0]].pattern_point_relative_to_parent,
+                    );
+                } else if (self.cases.items[address[0]].next) |*next| {
+                    return next.getPatternGlobalPoint(parent_point.applyToLocalPoint(
+                        self.cases.items[address[0]].pattern_point_relative_to_parent,
+                    ), address[1..]);
+                } else {
+                    return error.BAD_INPUT;
+                }
+            }
         };
 
         mem: *VeryPermamentGameStuff,
@@ -877,7 +906,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             },
             hovering_sexpr: struct {
                 full_address: core.FullAddress,
-                point: Point,
+                global_point: Point,
             },
             grabbing_sexpr: struct {
                 sexpr: *const Sexpr,
@@ -958,8 +987,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .grabbing_sexpr => |*grabbing| {
                     grabbing.point.lerp_towards(if (grabbing.address_if_released) |goal|
-                        artist.sexprPatternChildView((try self.cases.caseAt(goal.case_address)).pattern_point_relative_to_parent, goal.sexpr_address)
-                        // TODO: this 'anim' should be smoothly undone when the sexpr is released
+                        artist.sexprPatternChildView(
+                            try self.cases.getPatternGlobalPoint(.{}, goal.case_address),
+                            goal.sexpr_address,
+                        )
                             .applyToLocalPoint(.{ .turns = 0.02, .pos = .new(-0.5, 0) })
                     else
                         Point{
@@ -967,24 +998,20 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             .scale = 1,
                         }, 0.6, delta_seconds);
 
-                    const unfolded = self.cases.unfolded;
-                    // TODO: remove duplication
                     grabbing.address_if_released = null;
-                    for (self.cases.cases.items, 0..) |*case, k| {
-                        const is_folded: bool = k != unfolded;
-                        defer cur_top_line += if (is_folded) 1.5 else 2.5;
-                        const pattern_point = Point{
-                            .pos = .new(5, cur_top_line + if (is_folded) tof32(0.5) else 1.0),
-                            .scale = if (is_folded) 0.5 else 1,
-                        };
-                        case.pattern_point_relative_to_parent.lerp_towards(pattern_point, 0.6, delta_seconds);
-                        const mouse_pos = platform.getMouse().cur.pos(camera);
-                        const local_pos = pattern_point.inverseApplyGetLocalPosition(mouse_pos);
-                        if (try artist.overlapsPatternSexpr(platform.gpa, case.pattern, pattern_point, mouse_pos)) |local_address| {
-                            self.cases.unfolded = k;
-                            grabbing.address_if_released = .{ .case_address = try self.debugMakeAddress(k), .sexpr_address = local_address, .which = .pattern };
-                        } else if (inRange(local_pos.y, -1, 1) and inRange(mouse_pos.x, 0, 5)) {
-                            self.cases.unfolded = k;
+                    if (try doNothing(
+                        self.mem,
+                        &.{},
+                        platform.getMouse().cur.pos(camera),
+                        self.cases,
+                        delta_seconds,
+                    )) |overlap| {
+                        switch (overlap) {
+                            .case => |case| try self.cases.setUnfolded(case),
+                            .sexpr => |sexpr| {
+                                try self.cases.setUnfolded(sexpr.full_address.case_address);
+                                grabbing.address_if_released = sexpr.full_address;
+                            },
                         }
                     }
                 },
@@ -992,74 +1019,57 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     if (try doNothing(self.mem, &.{}, platform.getMouse().cur.pos(camera), self.cases, delta_seconds)) |overlap| {
                         switch (overlap) {
                             .case => |case| self.focus = .{ .hovering_case = case },
-                            .sexpr => |sexpr| self.focus = .{ .hovering_sexpr = .{ .full_address = sexpr.full_address, .point = sexpr.point } },
+                            .sexpr => |sexpr| self.focus = .{ .hovering_sexpr = .{
+                                .full_address = sexpr.full_address,
+                                .global_point = artist.sexprPatternChildView(
+                                    try self.cases.getPatternGlobalPoint(.{}, sexpr.full_address.case_address),
+                                    sexpr.full_address.sexpr_address,
+                                ),
+                            } },
                         }
                     }
                 },
                 .hovering_sexpr => |*hovering| {
                     const unfolded = hovering.full_address.case_address;
-                    // TODO: remove [0]
-                    self.cases.unfolded = unfolded[0];
-                    const hovered_case = try self.cases.caseAt(hovering.full_address.case_address);
-                    hovering.point.lerp_towards(
+                    try self.cases.setUnfolded(unfolded);
+                    hovering.global_point.lerp_towards(
                         artist.sexprPatternChildView(
-                            hovered_case.pattern_point_relative_to_parent,
+                            try self.cases.getPatternGlobalPoint(Point{}, hovering.full_address.case_address),
                             hovering.full_address.sexpr_address,
-                        ).applyToLocalPoint(.{ .pos = .new(-0.0, 0), .scale = 1.1 }),
+                        ).applyToLocalPoint(.{ .scale = 1.1 }),
                         0.6,
                         delta_seconds,
                     );
-                    // TODO: remove duplication
-                    var hovered_something = false;
-                    for (self.cases.cases.items, 0..) |*case, k| {
-                        // TODO: this, better
-                        const is_folded: bool = k != unfolded[0];
-                        defer cur_top_line += if (is_folded) 1.5 else 2.5;
-                        const pattern_point = Point{
-                            .pos = .new(5, cur_top_line + if (is_folded) tof32(0.5) else 1.0),
-                            .scale = if (is_folded) 0.5 else 1,
-                        };
-                        case.pattern_point_relative_to_parent.lerp_towards(pattern_point, 0.6, delta_seconds);
-                        const mouse_pos = platform.getMouse().cur.pos(camera);
-                        const local_pos = pattern_point.inverseApplyGetLocalPosition(mouse_pos);
-                        if (try artist.overlapsPatternSexpr(
-                            platform.gpa,
-                            case.pattern,
-                            pattern_point,
-                            mouse_pos,
-                        )) |local_address| {
-                            hovered_something = true;
-                            const new_address = core.FullAddress{
-                                .case_address = try self.debugMakeAddress(k),
-                                .which = .pattern,
-                                .sexpr_address = local_address,
-                            };
-                            if (!hovering.full_address.equals(new_address)) {
-                                self.focus = .{
-                                    .hovering_sexpr = .{
-                                        .point = artist.sexprPatternChildView(
-                                            case.pattern_point_relative_to_parent,
-                                            local_address,
-                                        ),
-                                        .full_address = new_address,
-                                    },
-                                };
-                            }
-                        } else if (inRange(local_pos.y, -1, 1) and inRange(mouse_pos.x, 0, 5)) {
-                            self.focus = .{ .hovering_case = try debugMakeAddress(self, k) };
-                            hovered_something = true;
+
+                    if (try doNothing(
+                        self.mem,
+                        &.{},
+                        platform.getMouse().cur.pos(camera),
+                        self.cases,
+                        delta_seconds,
+                    )) |overlap| {
+                        switch (overlap) {
+                            .case => |case| self.focus = .{ .hovering_case = case },
+                            .sexpr => |sexpr| {
+                                if (!sexpr.full_address.equals(hovering.full_address)) {
+                                    self.focus = .{
+                                        .hovering_sexpr = .{
+                                            .full_address = sexpr.full_address,
+                                            .global_point = artist.sexprPatternChildView(
+                                                try self.cases.getPatternGlobalPoint(.{}, sexpr.full_address.case_address),
+                                                sexpr.full_address.sexpr_address,
+                                            ),
+                                        },
+                                    };
+                                }
+                            },
                         }
-                    }
-                    if (!hovered_something) {
-                        // TODO: this [0]
-                        self.cases.unfolded = hovering.full_address.case_address[0];
-                        self.focus = .{ .nothing = {} };
+                    } else {
+                        self.focus = .nothing;
                     }
                 },
                 .hovering_case => |unfolded| {
-                    std.log.debug("unfolded: {any}", .{unfolded});
-                    // TODO: remove [0]
-                    self.cases.unfolded = unfolded[0];
+                    try self.cases.setUnfolded(unfolded);
                     self.focus = .{ .nothing = {} };
                     for (self.cases.cases.items, 0..) |*case, k| {
                         // TODO: remove [0]
@@ -1074,7 +1084,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         const local_pos = pattern_point.inverseApplyGetLocalPosition(mouse_pos);
                         if (try artist.overlapsPatternSexpr(platform.gpa, case.pattern, pattern_point, mouse_pos)) |local_address| {
                             self.focus = .{ .hovering_sexpr = .{
-                                .point = artist.sexprPatternChildView(
+                                .global_point = artist.sexprPatternChildView(
                                     case.pattern_point_relative_to_parent,
                                     local_address,
                                 ),
@@ -1109,7 +1119,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             case_ref.pattern = try case_ref.pattern.setAt(self.mem, address.sexpr_address, grabbing.sexpr);
                             self.focus = .{ .hovering_sexpr = .{
                                 .full_address = address,
-                                .point = grabbing.point,
+                                .global_point = grabbing.point,
                             } };
                         } else {
                             self.focus = .{ .nothing = {} };
@@ -1124,11 +1134,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     },
                     .hovering_sexpr => |hovering| {
                         const case = try self.cases.caseAt(hovering.full_address.case_address);
+                        std.log.debug("global point.pos at click: {any}", .{hovering.global_point.pos});
+                        std.log.debug("hovering.full_address: {any}", .{hovering.full_address});
                         self.focus = .{
                             .grabbing_sexpr = .{
                                 .address_if_released = hovering.full_address,
                                 .sexpr = case.pattern.getAt(hovering.full_address.sexpr_address).?,
-                                .point = hovering.point,
+                                .point = hovering.global_point,
                             },
                         };
                     },
@@ -1143,7 +1155,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 const pos = Point{ .pos = .new(10, 0) };
                 const res = try artist.overlapsPatternSexpr(platform.gpa, debug_sexpr, pos, platform.getMouse().cur.pos(camera));
                 defer if (res) |x| platform.gpa.free(x);
-                std.log.debug("overlap: {any}", .{res});
                 try artist.drawPatternSexpr(
                     camera,
                     pos,
@@ -1222,7 +1233,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     if (full_address.which != .pattern) return error.TODO;
                     try artist.drawPatternSexpr(
                         camera,
-                        hovering.point,
+                        hovering.global_point,
                         case.pattern.getAt(full_address.sexpr_address).?,
                     );
                     // try artist.drawPatternOutline(camera, artist.sexprPatternChildView(
@@ -1283,10 +1294,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             case: core.CaseAddress,
             sexpr: struct {
                 full_address: core.FullAddress,
-                point: Point,
             },
         };
-        // TODO: Address as param
+
         fn doNothing(mem: *VeryPermamentGameStuff, parent_address: core.CaseAddress, relative_mouse_pos: Vec2, group: CaseGroup, delta_seconds: f32) !?OverlapResult {
             const is_gen0 = parent_address.len == 0;
             var cur_top_line: f32 = 2;
@@ -1296,27 +1306,27 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             for (group.cases.items, 0..) |*case, k| {
                 const is_folded: bool = k != unfolded;
                 defer cur_top_line += if (is_folded) 1.5 else 2.5;
-                const pattern_point = Point{
+                const relative_pattern_point = Point{
                     .pos = .new(if (is_gen0) 5 else 3, cur_top_line + if (is_folded) tof32(0.5) else 1.0),
                     .scale = if (is_folded) 0.5 else 1,
                 };
-                case.pattern_point_relative_to_parent.lerp_towards(pattern_point, 0.6, delta_seconds);
+                case.pattern_point_relative_to_parent.lerp_towards(relative_pattern_point, 0.6, delta_seconds);
 
-                const local_mouse_pos = pattern_point.inverseApplyGetLocalPosition(relative_mouse_pos);
+                const local_mouse_pos = relative_pattern_point.inverseApplyGetLocalPosition(relative_mouse_pos);
 
                 const cur_address = try childAddress(mem, parent_address, k);
 
                 if (try artist.overlapsPatternSexpr(
                     platform.gpa,
                     case.pattern,
-                    pattern_point,
+                    relative_pattern_point,
                     relative_mouse_pos,
                 )) |local_address| {
                     overlapped = .{ .sexpr = .{ .full_address = .{
                         .case_address = cur_address,
                         .sexpr_address = local_address,
                         .which = .pattern,
-                    }, .point = pattern_point } };
+                    } } };
                 } else if (inRange(local_mouse_pos.y, -1, 1) and
                     inRange(local_mouse_pos.x, -5 / case.pattern_point_relative_to_parent.scale, 0))
                 {
