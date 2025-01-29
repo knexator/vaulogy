@@ -453,7 +453,10 @@ fn defaultFnkBody(mem: *VeryPermamentGameStuff) FnkBody {
         \\default {
         \\  true -> default: (nil . true) {
         \\      false -> true;
-        \\      (true . false) -> false;
+        \\      (true . false) -> default: false {
+        \\          false -> true;
+        \\          true -> true;
+        \\      }
         \\  }
         \\  (nil . true) -> false;
         \\  (true . nil) -> true;
@@ -727,7 +730,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                         .scale = 0.5,
                     }), pair.right);
                 },
-                else => std.log.err("TODO", .{}),
+                else => return error.TODO,
             }
         }
 
@@ -916,7 +919,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         } = .{ .nothing = {} },
 
         const camera = Camera{ .center = .new(6, 3), .height = 15.0 };
-        const DIST_TO_TEMPLATE = 4;
+        const DIST_TO_TEMPLATE = 5;
 
         // TODO: make these Unmanaged
         fn makeCasesPhysical(cases: core.MatchCases) !CaseGroup {
@@ -998,7 +1001,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             .scale = 1,
                         }, 0.6, delta_seconds);
 
-                    grabbing.address_if_released = null;
                     if (try doNothing(
                         self.mem,
                         &.{},
@@ -1013,6 +1015,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 grabbing.address_if_released = sexpr.full_address;
                             },
                         }
+                    } else {
+                        grabbing.address_if_released = null;
                     }
                 },
                 .nothing => {
@@ -1071,32 +1075,30 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .hovering_case => |unfolded| {
                     try self.cases.setUnfolded(unfolded);
                     self.focus = .{ .nothing = {} };
-                    for (self.cases.cases.items, 0..) |*case, k| {
-                        // TODO: remove [0]
-                        const is_folded: bool = k != unfolded[0];
-                        defer cur_top_line += if (is_folded) 1.5 else 2.5;
-                        const pattern_point = Point{
-                            .pos = .new(5, cur_top_line + if (is_folded) tof32(0.5) else 1.0),
-                            .scale = if (is_folded) 0.5 else 1,
-                        };
-                        case.pattern_point_relative_to_parent.lerp_towards(pattern_point, 0.6, delta_seconds);
-                        const mouse_pos = platform.getMouse().cur.pos(camera);
-                        const local_pos = pattern_point.inverseApplyGetLocalPosition(mouse_pos);
-                        if (try artist.overlapsPatternSexpr(platform.gpa, case.pattern, pattern_point, mouse_pos)) |local_address| {
-                            self.focus = .{ .hovering_sexpr = .{
-                                .global_point = artist.sexprPatternChildView(
-                                    case.pattern_point_relative_to_parent,
-                                    local_address,
-                                ),
-                                .full_address = .{
-                                    .case_address = try self.debugMakeAddress(k),
-                                    .which = .pattern,
-                                    .sexpr_address = local_address,
-                                },
-                            } };
-                        } else if (inRange(local_pos.y, -1, 1) and inRange(mouse_pos.x, 0, 5)) {
-                            self.focus = .{ .hovering_case = try self.debugMakeAddress(k) };
+
+                    if (try doNothing(
+                        self.mem,
+                        &.{},
+                        platform.getMouse().cur.pos(camera),
+                        self.cases,
+                        delta_seconds,
+                    )) |overlap| {
+                        switch (overlap) {
+                            .case => |case| self.focus = .{ .hovering_case = case },
+                            .sexpr => |sexpr| {
+                                self.focus = .{
+                                    .hovering_sexpr = .{
+                                        .full_address = sexpr.full_address,
+                                        .global_point = artist.sexprPatternChildView(
+                                            try self.cases.getPatternGlobalPoint(.{}, sexpr.full_address.case_address),
+                                            sexpr.full_address.sexpr_address,
+                                        ),
+                                    },
+                                };
+                            },
                         }
+                    } else {
+                        self.focus = .nothing;
                     }
                 },
             }
@@ -1181,34 +1183,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 );
             }
 
-            for (self.cases.cases.items) |case| {
-                const pattern_point = case.pattern_point_relative_to_parent;
-                try artist.drawPatternSexpr(
-                    camera,
-                    pattern_point,
-                    case.pattern,
-                );
-                if (case.pattern_point_relative_to_parent.scale >= 0.9) {
-                    try drawCaseExtra(case);
-                }
-
-                const pos = pattern_point.applyToLocalPosition(.new(0, 1));
-                drawer.drawCable(
-                    camera,
-                    pos.sub(.new(5, 0)),
-                    pos,
-                    1,
-                    0,
-                );
-            }
+            try drawCases(true, .{}, self.cases);
 
             switch (self.focus) {
                 .nothing => {},
                 .hovering_case => |unfolded| {
-                    const case = try self.cases.caseAt(unfolded);
+                    const pattern_point = try self.cases.getPatternGlobalPoint(.{}, unfolded);
                     drawer.drawCaseHolder(camera, .{
-                        .pos = case.pattern_point_relative_to_parent.pos.sub(.new(3, 0)),
-                        .scale = case.pattern_point_relative_to_parent.scale,
+                        .pos = pattern_point.pos.sub(.new(3, 0)),
+                        .scale = pattern_point.scale,
                     });
                 },
                 .grabbing_sexpr => |grabbing| {
@@ -1225,7 +1208,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         pattern_point,
                         grabbing.case.pattern,
                     );
-                    try drawCaseExtra(grabbing.case);
+                    try drawCaseExtra(pattern_point, grabbing.case);
                 },
                 .hovering_sexpr => |hovering| {
                     const full_address = hovering.full_address;
@@ -1244,8 +1227,30 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         }
 
-        fn drawCaseExtra(case: CaseState) !void {
-            const pattern_point = case.pattern_point_relative_to_parent;
+        fn drawCases(is_first: bool, parent_point: Point, group: CaseGroup) OoM!void {
+            for (group.cases.items) |case| {
+                const pattern_point = parent_point.applyToLocalPoint(case.pattern_point_relative_to_parent);
+                try artist.drawPatternSexpr(
+                    camera,
+                    pattern_point,
+                    case.pattern,
+                );
+                if (case.pattern_point_relative_to_parent.scale >= 0.9) {
+                    try drawCaseExtra(pattern_point, case);
+                }
+
+                const pos = pattern_point.applyToLocalPosition(.new(0, 1));
+                drawer.drawCable(
+                    camera,
+                    pos.sub(.new(if (is_first) 5 else 3, 0)),
+                    pos,
+                    1,
+                    0,
+                );
+            }
+        }
+
+        fn drawCaseExtra(pattern_point: Point, case: CaseState) !void {
             try artist.drawSexpr(
                 camera,
                 pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
@@ -1270,23 +1275,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 0,
             );
             if (case.next) |next| {
-                for (next.cases.items) |child| {
-                    const child_pattern_pos = pattern_point.applyToLocalPoint(child.pattern_point_relative_to_parent);
-                    try artist.drawPatternSexpr(
-                        camera,
-                        child_pattern_pos,
-                        child.pattern,
-                    );
-                    // TODO: remove duplication by adding a drawCase()
-                    const pos = child_pattern_pos.applyToLocalPosition(.new(0, 1));
-                    drawer.drawCable(
-                        camera,
-                        pos.sub(.new(2, 0)),
-                        pos,
-                        1,
-                        0,
-                    );
-                }
+                try drawCases(false, pattern_point, next);
             }
         }
 
@@ -1307,7 +1296,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 const is_folded: bool = k != unfolded;
                 defer cur_top_line += if (is_folded) 1.5 else 2.5;
                 const relative_pattern_point = Point{
-                    .pos = .new(if (is_gen0) 5 else 3, cur_top_line + if (is_folded) tof32(0.5) else 1.0),
+                    .pos = .new(if (is_gen0) 5 else 4, cur_top_line + if (is_folded) tof32(0.5) else 1.0),
                     .scale = if (is_folded) 0.5 else 1,
                 };
                 case.pattern_point_relative_to_parent.lerp_towards(relative_pattern_point, 0.6, delta_seconds);
@@ -1345,33 +1334,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         overlapped = child;
                     }
                 };
-
-                // TODO: interaction
-                // const mouse_pos = platform.getMouse().cur.pos(camera);
-                // const local_pos = pattern_point.inverseApplyGetLocalPosition(mouse_pos);
-                // if (try artist.overlapsPatternSexpr(
-                //     platform.gpa,
-                //     case.pattern,
-                //     pattern_point,
-                //     mouse_pos,
-                // )) |local_address| {
-                //     const new_address = core.FullAddress{
-                //         .case_address = k,
-                //         .which = .pattern,
-                //         .sexpr_address = local_address,
-                //     };
-                //     self.focus = .{
-                //         .hovering_sexpr = .{
-                //             .point = artist.sexprPatternChildView(
-                //                 case.pattern_point_relative_to_parent,
-                //                 local_address,
-                //             ),
-                //             .full_address = new_address,
-                //         },
-                //     };
-                // } else if (inRange(local_pos.y, -1, 1) and inRange(mouse_pos.x, 0, 5)) {
-                //     self.focus = .{ .hovering_case = k };
-                // }
             }
             return overlapped;
         }
