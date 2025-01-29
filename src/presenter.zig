@@ -460,7 +460,7 @@ fn defaultFnkBody(mem: *VeryPermamentGameStuff) FnkBody {
         \\  }
         \\  (nil . true) -> false;
         \\  (true . nil) -> true;
-        \\  (true . nil) -> true;
+        \\  (true . (true . nil)) -> true;
         \\}
     ;
     var parser = parsing.Parser{ .remaining_text = default_fnk };
@@ -964,28 +964,89 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn update(self: *Self, delta_seconds: f32) !void {
-            var cur_top_line: f32 = 2;
             switch (self.focus) {
                 .grabbing_case => |*grabbing| {
                     grabbing.case.pattern_point_relative_to_parent.lerp_towards((Point{
                         .pos = platform.getMouse().cur.pos(camera),
                         .scale = if (grabbing.address_if_released == null) 0.5 else 1,
                     }).applyToLocalPoint(.{ .pos = .new(3, 0) }), 0.6, delta_seconds);
-                    grabbing.address_if_released = null;
+
+                    // first pass just to update positions almost as usual
+                    const is_gen0 = true;
+                    var cur_top_line: f32 = 2;
+                    const unfolded: union(enum) {
+                        normal: usize,
+                        above: usize,
+                    } = if (grabbing.address_if_released) |k| .{ .above = k[0] } else .{ .normal = self.cases.unfolded };
                     for (self.cases.cases.items, 0..) |*case, k| {
-                        if (inRange(grabbing.case.pattern_point_relative_to_parent.pos.y - cur_top_line, -1, 1.5)) {
-                            grabbing.address_if_released = try self.debugMakeAddress(k);
-                            cur_top_line += 2.5;
+                        if (std.meta.eql(unfolded, .{ .above = k })) {
+                            cur_top_line += 1.5;
                         }
-                        defer cur_top_line += 1.5;
-                        const pattern_point = Point{
-                            .pos = .new(5, cur_top_line + 0.5),
-                            .scale = 0.5,
+                        const is_folded = !std.meta.eql(unfolded, .{ .normal = k });
+                        const relative_pattern_point = Point{
+                            .pos = .new(if (is_gen0) 5 else 4, cur_top_line + if (is_folded) tof32(0.5) else 1.0),
+                            .scale = if (is_folded) 0.5 else 1,
                         };
-                        case.pattern_point_relative_to_parent.lerp_towards(pattern_point, 0.6, delta_seconds);
+                        case.pattern_point_relative_to_parent.lerp_towards(
+                            relative_pattern_point,
+                            0.6,
+                            delta_seconds,
+                        );
+                        cur_top_line += if (is_folded) 1.5 else 2.5;
                     }
-                    if (inRange(grabbing.case.pattern_point_relative_to_parent.pos.y - cur_top_line, -1, 1.5)) {
-                        grabbing.address_if_released = try self.debugMakeAddress(self.cases.cases.items.len);
+
+                    // second pass to update the grabbing state
+                    for (self.cases.cases.items, 0..) |*case, k| {
+                        const grabbing_pos_relative_to_cur = Point.inverseApplyGetLocal(
+                            case.pattern_point_relative_to_parent,
+                            grabbing.case.pattern_point_relative_to_parent
+                                .applyToLocalPoint(.{ .pos = .new(-3, 0) }),
+                        );
+                        if (inRange(
+                            grabbing_pos_relative_to_cur.pos.y,
+                            -1,
+                            1,
+                        ) and inRange(
+                            grabbing_pos_relative_to_cur.pos.x,
+                            -5.0 / case.pattern_point_relative_to_parent.scale,
+                            0,
+                        )) {
+                            grabbing.address_if_released = null;
+                            self.cases.unfolded = k;
+                            break;
+                        }
+                    } else {
+                        for (self.cases.cases.items, 0..) |*case, k| {
+                            const grabbing_pos_relative_to_cur = Point.inverseApplyGetLocal(
+                                case.pattern_point_relative_to_parent,
+                                grabbing.case.pattern_point_relative_to_parent
+                                    .applyToLocalPoint(.{ .pos = .new(-3, 0) }),
+                            );
+                            if (grabbing_pos_relative_to_cur.pos.y < 0 and inRange(
+                                grabbing_pos_relative_to_cur.pos.x,
+                                -5.0 / case.pattern_point_relative_to_parent.scale,
+                                0,
+                            )) {
+                                grabbing.address_if_released = try self.debugMakeAddress(k);
+                                break;
+                            }
+                        } else {
+                            const last_case = self.cases.cases.items[self.cases.cases.items.len - 1];
+                            const grabbing_pos_relative_to_last = Point.inverseApplyGetLocal(
+                                last_case.pattern_point_relative_to_parent,
+                                grabbing.case.pattern_point_relative_to_parent
+                                    .applyToLocalPoint(.{ .pos = .new(-3, 0) }),
+                            );
+                            if (grabbing_pos_relative_to_last.pos.y > 0 and inRange(
+                                grabbing_pos_relative_to_last.pos.x,
+                                -5.0 / last_case.pattern_point_relative_to_parent.scale,
+                                0,
+                            )) {
+                                grabbing.address_if_released = try self.debugMakeAddress(self.cases.cases.items.len);
+                            } else {
+                                grabbing.address_if_released = null;
+                            }
+                        }
                     }
                 },
                 .grabbing_sexpr => |*grabbing| {
@@ -1136,8 +1197,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     },
                     .hovering_sexpr => |hovering| {
                         const case = try self.cases.caseAt(hovering.full_address.case_address);
-                        std.log.debug("global point.pos at click: {any}", .{hovering.global_point.pos});
-                        std.log.debug("hovering.full_address: {any}", .{hovering.full_address});
                         self.focus = .{
                             .grabbing_sexpr = .{
                                 .address_if_released = hovering.full_address,
