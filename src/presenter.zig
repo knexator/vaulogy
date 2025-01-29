@@ -971,83 +971,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         .scale = if (grabbing.address_if_released == null) 0.5 else 1,
                     }).applyToLocalPoint(.{ .pos = .new(3, 0) }), 0.6, delta_seconds);
 
-                    // first pass just to update positions almost as usual
-                    const is_gen0 = true;
-                    var cur_top_line: f32 = 2;
-                    const unfolded: union(enum) {
-                        normal: usize,
-                        above: usize,
-                    } = if (grabbing.address_if_released) |k| .{ .above = k[0] } else .{ .normal = self.cases.unfolded };
-                    for (self.cases.cases.items, 0..) |*case, k| {
-                        if (std.meta.eql(unfolded, .{ .above = k })) {
-                            cur_top_line += 1.5;
-                        }
-                        const is_folded = !std.meta.eql(unfolded, .{ .normal = k });
-                        const relative_pattern_point = Point{
-                            .pos = .new(if (is_gen0) 5 else 4, cur_top_line + if (is_folded) tof32(0.5) else 1.0),
-                            .scale = if (is_folded) 0.5 else 1,
-                        };
-                        case.pattern_point_relative_to_parent.lerp_towards(
-                            relative_pattern_point,
-                            0.6,
-                            delta_seconds,
-                        );
-                        cur_top_line += if (is_folded) 1.5 else 2.5;
-                    }
-
-                    // second pass to update the grabbing state
-                    for (self.cases.cases.items, 0..) |*case, k| {
-                        const grabbing_pos_relative_to_cur = Point.inverseApplyGetLocal(
-                            case.pattern_point_relative_to_parent,
-                            grabbing.case.pattern_point_relative_to_parent
-                                .applyToLocalPoint(.{ .pos = .new(-3, 0) }),
-                        );
-                        if (inRange(
-                            grabbing_pos_relative_to_cur.pos.y,
-                            -1,
-                            1,
-                        ) and inRange(
-                            grabbing_pos_relative_to_cur.pos.x,
-                            -5.0 / case.pattern_point_relative_to_parent.scale,
-                            0,
-                        )) {
-                            grabbing.address_if_released = null;
-                            self.cases.unfolded = k;
-                            break;
-                        }
-                    } else {
-                        for (self.cases.cases.items, 0..) |*case, k| {
-                            const grabbing_pos_relative_to_cur = Point.inverseApplyGetLocal(
-                                case.pattern_point_relative_to_parent,
-                                grabbing.case.pattern_point_relative_to_parent
-                                    .applyToLocalPoint(.{ .pos = .new(-3, 0) }),
-                            );
-                            if (grabbing_pos_relative_to_cur.pos.y < 0 and inRange(
-                                grabbing_pos_relative_to_cur.pos.x,
-                                -5.0 / case.pattern_point_relative_to_parent.scale,
-                                0,
-                            )) {
-                                grabbing.address_if_released = try self.debugMakeAddress(k);
-                                break;
-                            }
-                        } else {
-                            const last_case = self.cases.cases.items[self.cases.cases.items.len - 1];
-                            const grabbing_pos_relative_to_last = Point.inverseApplyGetLocal(
-                                last_case.pattern_point_relative_to_parent,
-                                grabbing.case.pattern_point_relative_to_parent
-                                    .applyToLocalPoint(.{ .pos = .new(-3, 0) }),
-                            );
-                            if (grabbing_pos_relative_to_last.pos.y > 0 and inRange(
-                                grabbing_pos_relative_to_last.pos.x,
-                                -5.0 / last_case.pattern_point_relative_to_parent.scale,
-                                0,
-                            )) {
-                                grabbing.address_if_released = try self.debugMakeAddress(self.cases.cases.items.len);
-                            } else {
-                                grabbing.address_if_released = null;
-                            }
-                        }
-                    }
+                    try doGrabbingCaseFirstPass(self.mem, grabbing.address_if_released, &.{}, self.cases, delta_seconds);
+                    grabbing.address_if_released = try doGrabbingCaseSecondPass(
+                        platform.getMouse().cur.pos(camera),
+                        self.mem,
+                        &.{},
+                        &self.cases,
+                    );
                 },
                 .grabbing_sexpr => |*grabbing| {
                     grabbing.point.lerp_towards(if (grabbing.address_if_released) |goal|
@@ -1345,6 +1275,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             },
         };
 
+        // TODO: rename this fn
         fn doNothing(mem: *VeryPermamentGameStuff, parent_address: core.CaseAddress, relative_mouse_pos: Vec2, group: CaseGroup, delta_seconds: f32) !?OverlapResult {
             const is_gen0 = parent_address.len == 0;
             var cur_top_line: f32 = 2;
@@ -1395,6 +1326,108 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 };
             }
             return overlapped;
+        }
+
+        fn doGrabbingCaseFirstPass(mem: *VeryPermamentGameStuff, address_if_released: ?core.CaseAddress, parent_address: core.CaseAddress, group: CaseGroup, delta_seconds: f32) !void {
+            // first pass just to update positions almost as usual
+            const is_gen0 = parent_address.len == 0;
+            var cur_top_line: f32 = 2;
+            const unfolded: union(enum) {
+                normal: usize,
+                above: usize,
+                // TODO: check the [0] in the next line
+            } = if (address_if_released) |k| .{ .above = k[0] } else .{ .normal = group.unfolded };
+            for (group.cases.items, 0..) |*case, k| {
+                if (std.meta.eql(unfolded, .{ .above = k })) {
+                    cur_top_line += 1.5;
+                }
+                const is_folded = !std.meta.eql(unfolded, .{ .normal = k });
+                defer cur_top_line += if (is_folded) 1.5 else 2.5;
+                const relative_pattern_point = Point{
+                    .pos = .new(if (is_gen0) 5 else 4, cur_top_line + if (is_folded) tof32(0.5) else 1.0),
+                    .scale = if (is_folded) 0.5 else 1,
+                };
+                case.pattern_point_relative_to_parent.lerp_towards(
+                    relative_pattern_point,
+                    0.6,
+                    delta_seconds,
+                );
+
+                const cur_address = try childAddress(mem, parent_address, k);
+                if (!is_folded) if (case.next) |next| {
+                    try doGrabbingCaseFirstPass(
+                        mem,
+                        address_if_released,
+                        cur_address,
+                        next,
+                        delta_seconds,
+                    );
+                };
+            }
+        }
+
+        fn doGrabbingCaseSecondPass(mouse_pos_relative_to_parent: Vec2, mem: *VeryPermamentGameStuff, parent_address: core.CaseAddress, group: *CaseGroup) !?core.CaseAddress {
+            // second pass to update the grabbing state
+            for (group.cases.items, 0..) |*case, k| {
+                const grabbing_pos_relative_to_cur = Point.inverseApplyGetLocalPosition(
+                    case.pattern_point_relative_to_parent,
+                    mouse_pos_relative_to_parent,
+                );
+                if (inRange(
+                    grabbing_pos_relative_to_cur.y,
+                    -1,
+                    1,
+                ) and inRange(
+                    grabbing_pos_relative_to_cur.x,
+                    -5.0 / case.pattern_point_relative_to_parent.scale,
+                    0,
+                )) {
+                    group.unfolded = k;
+                    return null;
+                }
+            } else {
+                for (group.cases.items, 0..) |*case, k| {
+                    const grabbing_pos_relative_to_cur = Point.inverseApplyGetLocalPosition(
+                        case.pattern_point_relative_to_parent,
+                        mouse_pos_relative_to_parent,
+                    );
+                    if (grabbing_pos_relative_to_cur.y < 0 and inRange(
+                        grabbing_pos_relative_to_cur.x,
+                        -5.0 / case.pattern_point_relative_to_parent.scale,
+                        0,
+                    )) {
+                        return try childAddress(mem, parent_address, k);
+                    }
+                } else {
+                    const last_case = group.cases.items[group.cases.items.len - 1];
+                    const grabbing_pos_relative_to_last = Point.inverseApplyGetLocalPosition(
+                        last_case.pattern_point_relative_to_parent,
+                        mouse_pos_relative_to_parent,
+                    );
+                    if (grabbing_pos_relative_to_last.y > 0 and inRange(
+                        grabbing_pos_relative_to_last.x,
+                        -5.0 / last_case.pattern_point_relative_to_parent.scale,
+                        0,
+                    )) {
+                        return try childAddress(mem, parent_address, group.cases.items.len);
+                    } else {
+                        for (group.cases.items, 0..) |*case, k| {
+                            const cur_address = try childAddress(mem, parent_address, k);
+                            // TODO: only for unfolded cases
+                            const cur_relative_mouse = Point.inverseApplyGetLocalPosition(
+                                case.pattern_point_relative_to_parent,
+                                mouse_pos_relative_to_parent,
+                            );
+                            if (case.next) |*next| {
+                                const child_thing = try doGrabbingCaseSecondPass(cur_relative_mouse, mem, cur_address, next);
+                                if (child_thing) |x| return x;
+                            }
+                        } else {
+                            return null;
+                        }
+                    }
+                }
+            }
         }
     };
 }
