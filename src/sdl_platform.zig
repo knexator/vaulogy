@@ -78,7 +78,7 @@ const SdlDrawer = struct {
         panickify(c.SDL_RenderRect(sdl_renderer, &sdl_rect));
     }
 
-    fn polygon(screen_positions: []Vec2, fill: Color) void {
+    fn polygon(screen_positions: []const Vec2, triangles: []const [3]usize, outline_points: []const usize, fill: Color, stroke: Color) void {
         const vertices = gpa.allocator().alloc(c.SDL_Vertex, screen_positions.len) catch @panic("OoM");
         defer gpa.allocator().free(vertices);
 
@@ -86,23 +86,24 @@ const SdlDrawer = struct {
             vertex.* = c.SDL_Vertex{
                 .position = c.SDL_FPoint{ .x = pos.x, .y = pos.y },
                 .color = c.SDL_FColor{
-                    .r = @floatFromInt(fill.r),
-                    .g = @floatFromInt(fill.g),
-                    .b = @floatFromInt(fill.b),
+                    .r = @as(f32, @floatFromInt(fill.r)) / 255.0,
+                    .g = @as(f32, @floatFromInt(fill.g)) / 255.0,
+                    .b = @as(f32, @floatFromInt(fill.b)) / 255.0,
                     .a = 1.0,
                 },
                 .tex_coord = c.SDL_FPoint{ .x = 0, .y = 0 },
             };
         }
 
-        // TODO: proper triangulation
-        const indices = gpa.allocator().alloc(c_int, 3) catch @panic("OoM");
-        // const indices = gpa.allocator().alloc(c_int, screen_positions.len * 3) catch @panic("OoM");
-        indices[0] = 0;
-        indices[1] = 1;
-        indices[2] = 2;
+        const indices = gpa.allocator().alloc(c_int, 3 * triangles.len) catch @panic("OoM");
+        for (triangles, 0..) |triangle, k| {
+            indices[k * 3 + 0] = @intCast(triangle[0]);
+            indices[k * 3 + 1] = @intCast(triangle[1]);
+            indices[k * 3 + 2] = @intCast(triangle[2]);
+        }
         defer gpa.allocator().free(indices);
 
+        setRenderDrawColor(fill);
         panickify(c.SDL_RenderGeometry(
             sdl_renderer,
             null,
@@ -111,11 +112,16 @@ const SdlDrawer = struct {
             indices.ptr,
             @intCast(indices.len),
         ));
+
+        setRenderDrawColor(stroke);
+        for (0..outline_points.len) |i| {
+            const from = screen_positions[outline_points[i]];
+            const to = screen_positions[outline_points[(i + 1) % outline_points.len]];
+            panickify(c.SDL_RenderLine(sdl_renderer, from.x, from.y, to.x, to.y));
+        }
     }
 
     pub fn drawPatternAtomDebug(camera: Camera, world_point: Point) void {
-        drawRect(camera, Rect{ .top_left = world_point.pos.sub(.new(1, 1)), .size = .new(world_point.scale, world_point.scale * 2) });
-
         const screen_point = screenFromWorld(camera, world_point);
         const local_positions = [_]Vec2{
             Vec2.new(0.5, 0),
@@ -126,35 +132,150 @@ const SdlDrawer = struct {
             Vec2.new(-1, -1),
             Vec2.new(0, -1),
         };
+        const indices = [_][3]usize{
+            .{ 1, 2, 3 },
+            .{ 0, 1, 3 },
+            .{ 0, 3, 4 },
+            .{ 0, 4, 6 },
+            .{ 4, 5, 6 },
+        };
+        const outline = [_]usize{ 0, 1, 2, 3, 4, 5, 6 };
         var screen_positions: [local_positions.len]Vec2 = undefined;
         for (local_positions, 0..) |pos, i| {
             screen_positions[i] = screen_point.applyToLocalPosition(pos);
         }
-        polygon(&screen_positions, Color.white);
+        polygon(&screen_positions, &indices, &outline, Color.white, Color.black);
     }
 
     pub fn drawPatternAtom(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {
-        _ = visuals;
-        drawPatternAtomDebug(camera, world_point);
+        const profile = visuals.profile;
+        const screen_point = screenFromWorld(camera, world_point);
+        if (screen_point.scale < 0.1) return;
+        const local_positions = [_]Vec2{
+            Vec2.new(-1, -1),
+            Vec2.new(0, -1),
+            Vec2.new(0.5, 0),
+            Vec2.new(0, 1),
+            Vec2.new(-1, 1),
+        };
+        // TODO: no allocations
+        var screen_positions: []Vec2 = gpa.allocator().alloc(Vec2, local_positions.len + profile.len * 2) catch @panic("TODO");
+        defer gpa.allocator().free(screen_positions);
+        for (local_positions, 0..) |pos, i| {
+            screen_positions[i] = screen_point.applyToLocalPosition(pos);
+        }
+        for (profile, 0..) |pos, i| {
+            screen_positions[local_positions.len + i] = screen_point.applyToLocalPosition(
+                Vec2.new(-1.0 - pos.y, 1.0 - pos.x),
+            );
+            screen_positions[local_positions.len + profile.len * 2 - i - 1] = screen_point.applyToLocalPosition(
+                Vec2.new(-1.0 + pos.y, -1.0 + pos.x),
+            );
+        }
+
+        const indices = gpa.allocator().alloc([3]usize, profile.len * 2 + 3) catch @panic("TODO");
+        defer gpa.allocator().free(indices);
+        @memset(indices, .{ 0, 0, 0 });
+        for (0..indices.len) |i| {
+            indices[i] = .{ 2, (3 + i) % screen_positions.len, (4 + i) % screen_positions.len };
+        }
+
+        const outline = gpa.allocator().alloc(usize, screen_positions.len) catch @panic("TODO");
+        defer gpa.allocator().free(outline);
+        for (outline, 0..) |*x, k| {
+            x.* = k;
+        }
+        polygon(screen_positions, indices, outline, visuals.color, Color.black);
     }
 
     pub fn drawPairHolder(camera: Camera, world_point: Point) void {
-        _ = camera;
-        _ = world_point;
+        const screen_point = screenFromWorld(camera, world_point);
+        if (screen_point.scale < 0.1) return;
+        const local_positions = [_]Vec2{
+            Vec2.new(-0.5, 0),
+            Vec2.new(0, 1),
+            Vec2.new(0.5, 1),
+            Vec2.new(0.25, 0.5),
+            Vec2.new(0.5, 0),
+            Vec2.new(0.25, -0.5),
+            Vec2.new(0.5, -1),
+            Vec2.new(0, -1),
+        };
+        const indices = [_][3]usize{
+            .{ 1, 2, 3 },
+            .{ 0, 1, 3 },
+            .{ 0, 3, 4 },
+            .{ 0, 4, 5 },
+            .{ 0, 5, 7 },
+            .{ 5, 6, 7 },
+        };
+        const outline = [_]usize{ 0, 1, 2, 3, 4, 5, 6, 7 };
+        var screen_positions: [local_positions.len]Vec2 = undefined;
+        for (local_positions, 0..) |pos, i| {
+            screen_positions[i] = screen_point.applyToLocalPosition(pos);
+        }
+        polygon(&screen_positions, &indices, &outline, Color.gray(96), Color.black);
     }
 
     pub fn drawPatternPairHolder(camera: Camera, world_point: Point) void {
-        _ = camera;
-        _ = world_point;
+        const screen_point = screenFromWorld(camera, world_point);
+        if (screen_point.scale < 0.1) return;
+        const local_positions = [_]Vec2{
+            Vec2.new(0.5, 0),
+            Vec2.new(0, 1),
+            Vec2.new(-1, 1),
+            Vec2.new(-0.75, 0.5),
+            Vec2.new(-1, 0),
+            Vec2.new(-0.75, -0.5),
+            Vec2.new(-1, -1),
+            Vec2.new(0, -1),
+        };
+        const indices = [_][3]usize{
+            .{ 1, 2, 3 },
+            .{ 0, 1, 3 },
+            .{ 0, 3, 4 },
+            .{ 0, 4, 5 },
+            .{ 0, 5, 7 },
+            .{ 5, 6, 7 },
+        };
+        const outline = [_]usize{ 0, 1, 2, 3, 4, 5, 6, 7 };
+        var screen_positions: [local_positions.len]Vec2 = undefined;
+        for (local_positions, 0..) |pos, i| {
+            screen_positions[i] = screen_point.applyToLocalPosition(pos);
+        }
+        polygon(&screen_positions, &indices, &outline, Color.gray(96), Color.black);
     }
 
     pub fn drawAtomDebug(camera: Camera, world_point: Point) void {
-        drawRect(camera, Rect{ .top_left = world_point.pos.sub(.new(0, 1)), .size = .new(world_point.scale * 2, world_point.scale * 2) });
+        const screen_point = screenFromWorld(camera, world_point);
+        const local_positions = [_]Vec2{
+            Vec2.new(-0.5, 0),
+            Vec2.new(0, 1),
+            Vec2.new(2, 1),
+            Vec2.new(2.2, 1.0 / 3.0),
+            Vec2.new(1.8, -1.0 / 3.0),
+            Vec2.new(2, -1),
+            Vec2.new(0, -1),
+        };
+        const indices = [_][3]usize{
+            .{ 1, 2, 3 },
+            .{ 0, 1, 3 },
+            .{ 0, 3, 4 },
+            .{ 0, 4, 6 },
+            .{ 4, 5, 6 },
+        };
+        const outline = [_]usize{ 0, 1, 2, 3, 4, 5, 6 };
+        var screen_positions: [local_positions.len]Vec2 = undefined;
+        for (local_positions, 0..) |pos, i| {
+            screen_positions[i] = screen_point.applyToLocalPosition(pos);
+        }
+        polygon(&screen_positions, &indices, &outline, Color.white, Color.black);
     }
 
     pub fn drawPatternAtomOutline(camera: Camera, world_point: Point) void {
         _ = camera;
         _ = world_point;
+        @panic("not implemented");
     }
 
     pub fn drawCable(camera: Camera, world_from: Vec2, world_to: Vec2, world_scale: f32, offset: f32) void {
@@ -168,13 +289,59 @@ const SdlDrawer = struct {
     }
 
     pub fn drawCaseHolder(camera: Camera, world_point: Point) void {
-        _ = camera;
-        _ = world_point;
+        const screen_point = screenFromWorld(camera, world_point);
+
+        const N = 32;
+        var screen_positions: [N + 1]c.SDL_FPoint = undefined;
+        for (0..N) |k| {
+            const radians = std.math.tau * @as(f32, @floatFromInt(k)) / @as(f32, @floatFromInt(N));
+            const point = screen_point.applyToLocalPosition(Vec2.new(std.math.cos(radians), std.math.sin(radians)).scale(0.5));
+            screen_positions[k] = c.SDL_FPoint{ .x = point.x, .y = point.y };
+        }
+        screen_positions[N] = screen_positions[0];
+        setRenderDrawColor(Color.white);
+        panickify(c.SDL_RenderLines(sdl_renderer, &screen_positions, screen_positions.len));
     }
 
     pub fn drawAtom(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {
-        _ = visuals;
-        drawAtomDebug(camera, world_point);
+        const profile = visuals.profile;
+        const screen_point = screenFromWorld(camera, world_point);
+        if (screen_point.scale < 0.1) return;
+        const local_positions = [_]Vec2{
+            Vec2.new(2, -1),
+            Vec2.new(0, -1),
+            Vec2.new(-0.5, 0),
+            Vec2.new(0, 1),
+            Vec2.new(2, 1),
+        };
+        // TODO: no allocations
+        var screen_positions: []Vec2 = gpa.allocator().alloc(Vec2, local_positions.len + profile.len * 2) catch @panic("TODO");
+        defer gpa.allocator().free(screen_positions);
+        for (local_positions, 0..) |pos, i| {
+            screen_positions[i] = screen_point.applyToLocalPosition(pos);
+        }
+        for (profile, 0..) |pos, i| {
+            screen_positions[local_positions.len + i] = screen_point.applyToLocalPosition(
+                Vec2.new(2.0 - pos.y, 1.0 - pos.x),
+            );
+            screen_positions[local_positions.len + profile.len * 2 - i - 1] = screen_point.applyToLocalPosition(
+                Vec2.new(2.0 + pos.y, -1.0 + pos.x),
+            );
+        }
+
+        const indices = gpa.allocator().alloc([3]usize, profile.len * 2 + 3) catch @panic("TODO");
+        defer gpa.allocator().free(indices);
+        @memset(indices, .{ 0, 0, 0 });
+        for (0..indices.len) |i| {
+            indices[i] = .{ 2, (3 + i) % screen_positions.len, (4 + i) % screen_positions.len };
+        }
+
+        const outline = gpa.allocator().alloc(usize, screen_positions.len) catch @panic("TODO");
+        defer gpa.allocator().free(outline);
+        for (outline, 0..) |*x, k| {
+            x.* = k;
+        }
+        polygon(screen_positions, indices, outline, visuals.color, Color.black);
     }
 };
 
