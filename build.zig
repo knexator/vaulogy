@@ -81,6 +81,27 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_exe_unit_tests.step);
 
+    // Build the sdlgame
+    const sdlgame_exe = b.addExecutable(.{
+        .name = "sdlgame",
+        .root_source_file = b.path("src/sdl_platform.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const sdl_dep = b.dependency("sdl", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const sdl_lib = sdl_dep.artifact("SDL3");
+    sdlgame_exe.linkLibrary(sdl_lib);
+    b.installArtifact(sdlgame_exe);
+
+    const run_sdlgame_cmd = b.addRunArtifact(sdlgame_exe);
+    run_sdlgame_cmd.step.dependOn(b.getInstallStep());
+
+    const run_sdlgame = b.step("run_sdl", "Run the sdl game");
+    run_sdlgame.dependOn(&run_sdlgame_cmd.step);
+
     // Building the webgame
     const webgame_install_dir = std.Build.InstallDir{ .custom = "dist" };
     const webgame_wasm = b.addExecutable(
@@ -183,7 +204,15 @@ pub fn build(b: *std.Build) void {
             // .use_lld = optimize != .Debug,
         },
     );
+    const sdlgame_exe_check = b.addExecutable(.{
+        .name = "sdlgame",
+        .root_source_file = b.path("src/sdl_platform.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    sdlgame_exe_check.linkLibrary(sdl_lib);
     const check = b.step("check", "Check if the project compiles");
     check.dependOn(&exe_check.step);
     check.dependOn(&webgame_wasm_check.step);
+    check.dependOn(&sdlgame_exe_check.step);
 }

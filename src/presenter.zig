@@ -507,17 +507,19 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             try player_data.fnks.put(fnk.name, fnk.body);
             try platform.setPlayerData(player_data, &mem);
 
+            try player_data.fnks.put(&Sexpr.doLit("default"), defaultFnkBody(&mem));
+
             try Artist(platform, drawer).init();
 
             const result = Self{
                 .mem = mem,
                 .persistence = player_data,
                 .state = .{
-                    // .level_select = .init(),
-                    .editing_fnk = try .init(Fnk{
-                        .name = try mem.storeSexpr(Sexpr.doLit("default")),
-                        .body = defaultFnkBody(&mem),
-                    }, &mem),
+                    .level_select = .init(),
+                    // .editing_fnk = try .init(Fnk{
+                    //     .name = try mem.storeSexpr(Sexpr.doLit("default")),
+                    //     .body = defaultFnkBody(&mem),
+                    // }, &mem),
                 },
             };
             return result;
@@ -594,6 +596,7 @@ const Random = struct {
 
 const Level = struct { fnk_name: *const Sexpr };
 const levels: []const Level = &.{
+    .{ .fnk_name = &Sexpr.doLit("default") },
     .{ .fnk_name = &Sexpr.doLit("planetFromOlympian") },
     .{ .fnk_name = &Sexpr.doPair(&Sexpr.nil, &Sexpr.doLit("input")) },
     .{ .fnk_name = &Sexpr.doPair(&Sexpr.doLit("foo"), &Sexpr.doPair(&Sexpr.doLit("input"), &Sexpr.nil)) },
@@ -861,7 +864,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 } else if (address.len == 1) {
                     return self.cases.orderedRemove(address[0]);
                 } else if (self.cases.items[address[0]].next) |*next| {
-                    return next.removeAt(address[1..]);
+                    const result = next.removeAt(address[1..]);
+                    if (next.cases.items.len == 0) {
+                        self.cases.items[address[0]].next = null;
+                    }
+                    return result;
                 } else {
                     return error.BAD_INPUT;
                 }
@@ -1427,41 +1434,43 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         return try childAddress(mem, parent_address, k);
                     }
                 } else {
-                    const last_case = group.cases.items[group.cases.items.len - 1];
-                    const grabbing_pos_relative_to_last = Point.inverseApplyGetLocalPosition(
-                        last_case.pattern_point_relative_to_parent,
-                        mouse_pos_relative_to_parent,
-                    );
-                    if (grabbing_pos_relative_to_last.y > 0 and inRange(
-                        grabbing_pos_relative_to_last.x,
-                        -5.0 / last_case.pattern_point_relative_to_parent.scale,
-                        0,
-                    )) {
-                        return try childAddress(mem, parent_address, group.cases.items.len);
-                    } else {
-                        const unfolded = getUnfoldedChild(address_if_released, parent_address, group.unfolded);
-                        for (group.cases.items, 0..) |*case, k| {
-                            const is_unfolded = std.meta.eql(unfolded, .{ .normal = k });
-                            if (is_unfolded) if (case.next) |*next| {
-                                const cur_address = try childAddress(mem, parent_address, k);
-                                const cur_relative_mouse = Point.inverseApplyGetLocalPosition(
-                                    case.pattern_point_relative_to_parent,
-                                    mouse_pos_relative_to_parent,
-                                );
-                                const child_thing = try doGrabbingCaseSecondPass(
-                                    cur_relative_mouse,
-                                    address_if_released,
-                                    mem,
-                                    cur_address,
-                                    next,
-                                );
-                                if (child_thing) |x| {
-                                    return x;
-                                }
-                            };
-                        } else {
-                            return null;
+                    if (group.cases.items.len > 0) {
+                        const last_case = group.cases.items[group.cases.items.len - 1];
+                        const grabbing_pos_relative_to_last = Point.inverseApplyGetLocalPosition(
+                            last_case.pattern_point_relative_to_parent,
+                            mouse_pos_relative_to_parent,
+                        );
+                        if (grabbing_pos_relative_to_last.y > 0 and inRange(
+                            grabbing_pos_relative_to_last.x,
+                            -5.0 / last_case.pattern_point_relative_to_parent.scale,
+                            0,
+                        )) {
+                            return try childAddress(mem, parent_address, group.cases.items.len);
                         }
+                    }
+
+                    const unfolded = getUnfoldedChild(address_if_released, parent_address, group.unfolded);
+                    for (group.cases.items, 0..) |*case, k| {
+                        const is_unfolded = std.meta.eql(unfolded, .{ .normal = k });
+                        if (is_unfolded) if (case.next) |*next| {
+                            const cur_address = try childAddress(mem, parent_address, k);
+                            const cur_relative_mouse = Point.inverseApplyGetLocalPosition(
+                                case.pattern_point_relative_to_parent,
+                                mouse_pos_relative_to_parent,
+                            );
+                            const child_thing = try doGrabbingCaseSecondPass(
+                                cur_relative_mouse,
+                                address_if_released,
+                                mem,
+                                cur_address,
+                                next,
+                            );
+                            if (child_thing) |x| {
+                                return x;
+                            }
+                        };
+                    } else {
+                        return null;
                     }
                 }
             }
