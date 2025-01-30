@@ -1,7 +1,5 @@
 //! This should be unchanged regardless of platform
 
-// TODO: error when removing the last child of a case
-
 const std = @import("std");
 
 const core = @import("main.zig");
@@ -515,11 +513,11 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 .mem = mem,
                 .persistence = player_data,
                 .state = .{
-                    .level_select = .init(),
-                    // .editing_fnk = try .init(Fnk{
-                    //     .name = try mem.storeSexpr(Sexpr.doLit("default")),
-                    //     .body = defaultFnkBody(&mem),
-                    // }, &mem),
+                    // .level_select = .init(),
+                    .editing_fnk = try .init(Fnk{
+                        .name = try mem.storeSexpr(Sexpr.doLit("default")),
+                        .body = defaultFnkBody(&mem),
+                    }, &mem),
                 },
             };
             return result;
@@ -847,12 +845,20 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             pub fn insertAt(self: *CaseGroup, address: core.CaseAddress, case: CaseState) !void {
+                std.log.debug("insert at: {any}", .{address});
                 if (address.len == 0) {
                     return error.BAD_INPUT;
                 } else if (address.len == 1) {
                     try self.cases.insert(address[0], case);
                 } else if (self.cases.items[address[0]].next) |*next| {
                     try next.insertAt(address[1..], case);
+                } else if (address.len == 2 and address[1] == 0) {
+                    var new_next: CaseGroup = .{
+                        .unfolded = 0,
+                        .cases = std.ArrayList(CaseState).init(platform.gpa),
+                    };
+                    try new_next.cases.append(case);
+                    self.cases.items[address[0]].next = new_next;
                 } else {
                     return error.BAD_INPUT;
                 }
@@ -927,7 +933,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             },
         } = .{ .nothing = {} },
 
-        const camera = Camera{ .center = .new(6, 3), .height = 15.0 };
+        const camera = Camera{ .center = .new(10, 3), .height = 15.0 };
         const DIST_TO_TEMPLATE = 5;
 
         // TODO: make these Unmanaged
@@ -1011,7 +1017,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         delta_seconds,
                     )) |overlap| {
                         switch (overlap) {
-                            .case => |case| try self.cases.setUnfolded(case),
+                            .case => |case| {
+                                try self.cases.setUnfolded(case);
+                                grabbing.address_if_released = null;
+                            },
                             .sexpr => |sexpr| {
                                 try self.cases.setUnfolded(sexpr.full_address.case_address);
                                 grabbing.address_if_released = sexpr.full_address;
@@ -1394,7 +1403,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         }
 
-        // TODO: allow adding a first child to a childless case
         fn doGrabbingCaseSecondPass(
             mouse_pos_relative_to_parent: Vec2,
             address_if_released: ?core.CaseAddress,
@@ -1452,23 +1460,28 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     const unfolded = getUnfoldedChild(address_if_released, parent_address, group.unfolded);
                     for (group.cases.items, 0..) |*case, k| {
                         const is_unfolded = std.meta.eql(unfolded, .{ .normal = k });
-                        if (is_unfolded) if (case.next) |*next| {
+                        if (is_unfolded) {
                             const cur_address = try childAddress(mem, parent_address, k);
-                            const cur_relative_mouse = Point.inverseApplyGetLocalPosition(
-                                case.pattern_point_relative_to_parent,
-                                mouse_pos_relative_to_parent,
-                            );
-                            const child_thing = try doGrabbingCaseSecondPass(
-                                cur_relative_mouse,
-                                address_if_released,
-                                mem,
-                                cur_address,
-                                next,
-                            );
-                            if (child_thing) |x| {
-                                return x;
+                            if (case.next) |*next| {
+                                const cur_relative_mouse = Point.inverseApplyGetLocalPosition(
+                                    case.pattern_point_relative_to_parent,
+                                    mouse_pos_relative_to_parent,
+                                );
+                                const child_thing = try doGrabbingCaseSecondPass(
+                                    cur_relative_mouse,
+                                    address_if_released,
+                                    mem,
+                                    cur_address,
+                                    next,
+                                );
+                                if (child_thing) |x| {
+                                    return x;
+                                }
+                            } else {
+                                // asdfsf
+                                return try childAddress(mem, cur_address, 0);
                             }
-                        };
+                        }
                     } else {
                         return null;
                     }
