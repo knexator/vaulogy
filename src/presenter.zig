@@ -1,5 +1,7 @@
 //! This should be unchanged regardless of platform
 
+// TODO: error when removing the last child of a case
+
 const std = @import("std");
 
 const core = @import("main.zig");
@@ -966,6 +968,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         pub fn update(self: *Self, delta_seconds: f32) !void {
             switch (self.focus) {
                 .grabbing_case => |*grabbing| {
+                    // grabbing case parent is the nothing!
                     grabbing.case.pattern_point_relative_to_parent.lerp_towards((Point{
                         .pos = platform.getMouse().cur.pos(camera),
                         .scale = if (grabbing.address_if_released == null) 0.5 else 1,
@@ -974,6 +977,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     try doGrabbingCaseFirstPass(self.mem, grabbing.address_if_released, &.{}, self.cases, delta_seconds);
                     grabbing.address_if_released = try doGrabbingCaseSecondPass(
                         platform.getMouse().cur.pos(camera),
+                        grabbing.address_if_released,
                         self.mem,
                         &.{},
                         &self.cases,
@@ -1097,8 +1101,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             if (platform.getMouse().wasPressed(.left)) {
                 switch (self.focus) {
                     .nothing => {},
-                    .grabbing_case => |grabbing| {
+                    .grabbing_case => |*grabbing| {
                         if (grabbing.address_if_released) |address| {
+                            const global_point = grabbing.case.pattern_point_relative_to_parent;
+                            const parent_point = try self.cases.getPatternGlobalPoint(.{}, address[0 .. address.len - 1]);
+                            grabbing.case.pattern_point_relative_to_parent = parent_point.inverseApplyGetLocal(global_point);
                             try self.cases.insertAt(address, grabbing.case);
                             self.focus = .{ .hovering_case = address };
                         } else {
@@ -1119,7 +1126,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         }
                     },
                     .hovering_case => |unfolded| {
-                        const asdf = try self.cases.removeAt(unfolded);
+                        const global_point = try self.cases.getPatternGlobalPoint(.{}, unfolded);
+                        var asdf = try self.cases.removeAt(unfolded);
+                        asdf.pattern_point_relative_to_parent = global_point;
                         self.focus = .{ .grabbing_case = .{
                             .case = asdf,
                             .address_if_released = unfolded,
@@ -1191,6 +1200,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     );
                 },
                 .grabbing_case => |grabbing| {
+                    // grabbing case parent is the nothing!
                     const pattern_point = grabbing.case.pattern_point_relative_to_parent;
                     try artist.drawPatternSexpr(
                         camera,
@@ -1328,15 +1338,26 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             return overlapped;
         }
 
+        fn getUnfoldedChild(address_if_released: ?core.CaseAddress, parent_address: core.CaseAddress, group_unfolded: usize) union(enum) {
+            normal: usize,
+            above: usize,
+        } {
+            if (address_if_released) |k| {
+                if (k.len == parent_address.len + 1) {
+                    return .{ .above = k[parent_address.len] };
+                } else {
+                    return .{ .normal = group_unfolded };
+                }
+            } else {
+                return .{ .normal = group_unfolded };
+            }
+        }
+
         fn doGrabbingCaseFirstPass(mem: *VeryPermamentGameStuff, address_if_released: ?core.CaseAddress, parent_address: core.CaseAddress, group: CaseGroup, delta_seconds: f32) !void {
             // first pass just to update positions almost as usual
             const is_gen0 = parent_address.len == 0;
             var cur_top_line: f32 = 2;
-            const unfolded: union(enum) {
-                normal: usize,
-                above: usize,
-                // TODO: check the [0] in the next line
-            } = if (address_if_released) |k| .{ .above = k[0] } else .{ .normal = group.unfolded };
+            const unfolded = getUnfoldedChild(address_if_released, parent_address, group.unfolded);
             for (group.cases.items, 0..) |*case, k| {
                 if (std.meta.eql(unfolded, .{ .above = k })) {
                     cur_top_line += 1.5;
@@ -1366,7 +1387,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         }
 
-        fn doGrabbingCaseSecondPass(mouse_pos_relative_to_parent: Vec2, mem: *VeryPermamentGameStuff, parent_address: core.CaseAddress, group: *CaseGroup) !?core.CaseAddress {
+        // TODO: allow adding a first child to a childless case
+        fn doGrabbingCaseSecondPass(
+            mouse_pos_relative_to_parent: Vec2,
+            address_if_released: ?core.CaseAddress,
+            mem: *VeryPermamentGameStuff,
+            parent_address: core.CaseAddress,
+            group: *CaseGroup,
+        ) !?core.CaseAddress {
             // second pass to update the grabbing state
             for (group.cases.items, 0..) |*case, k| {
                 const grabbing_pos_relative_to_cur = Point.inverseApplyGetLocalPosition(
@@ -1411,17 +1439,26 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     )) {
                         return try childAddress(mem, parent_address, group.cases.items.len);
                     } else {
+                        const unfolded = getUnfoldedChild(address_if_released, parent_address, group.unfolded);
                         for (group.cases.items, 0..) |*case, k| {
-                            const cur_address = try childAddress(mem, parent_address, k);
-                            // TODO: only for unfolded cases
-                            const cur_relative_mouse = Point.inverseApplyGetLocalPosition(
-                                case.pattern_point_relative_to_parent,
-                                mouse_pos_relative_to_parent,
-                            );
-                            if (case.next) |*next| {
-                                const child_thing = try doGrabbingCaseSecondPass(cur_relative_mouse, mem, cur_address, next);
-                                if (child_thing) |x| return x;
-                            }
+                            const is_unfolded = std.meta.eql(unfolded, .{ .normal = k });
+                            if (is_unfolded) if (case.next) |*next| {
+                                const cur_address = try childAddress(mem, parent_address, k);
+                                const cur_relative_mouse = Point.inverseApplyGetLocalPosition(
+                                    case.pattern_point_relative_to_parent,
+                                    mouse_pos_relative_to_parent,
+                                );
+                                const child_thing = try doGrabbingCaseSecondPass(
+                                    cur_relative_mouse,
+                                    address_if_released,
+                                    mem,
+                                    cur_address,
+                                    next,
+                                );
+                                if (child_thing) |x| {
+                                    return x;
+                                }
+                            };
                         } else {
                             return null;
                         }
