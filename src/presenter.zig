@@ -845,7 +845,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             pub fn insertAt(self: *CaseGroup, address: core.CaseAddress, case: CaseState) !void {
-                std.log.debug("insert at: {any}", .{address});
                 if (address.len == 0) {
                     return error.BAD_INPUT;
                 } else if (address.len == 1) {
@@ -1462,11 +1461,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         const is_unfolded = std.meta.eql(unfolded, .{ .normal = k });
                         if (is_unfolded) {
                             const cur_address = try childAddress(mem, parent_address, k);
+                            const cur_relative_mouse = Point.inverseApplyGetLocalPosition(
+                                case.pattern_point_relative_to_parent,
+                                mouse_pos_relative_to_parent,
+                            );
                             if (case.next) |*next| {
-                                const cur_relative_mouse = Point.inverseApplyGetLocalPosition(
-                                    case.pattern_point_relative_to_parent,
-                                    mouse_pos_relative_to_parent,
-                                );
                                 const child_thing = try doGrabbingCaseSecondPass(
                                     cur_relative_mouse,
                                     address_if_released,
@@ -1477,9 +1476,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 if (child_thing) |x| {
                                     return x;
                                 }
-                            } else {
-                                // asdfsf
+                            } else if (inRange(cur_relative_mouse.x, 0, 5) and cur_relative_mouse.y > 0) {
                                 return try childAddress(mem, cur_address, 0);
+                            } else {
+                                return null;
                             }
                         }
                     } else {
