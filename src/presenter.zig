@@ -987,7 +987,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     }).applyToLocalPoint(.{ .pos = .new(3, 0) }), 0.6, delta_seconds);
 
                     try doGrabbingCaseFirstPass(self.mem, grabbing.address_if_released, &.{}, self.cases, delta_seconds);
-                    grabbing.address_if_released = try doGrabbingCaseSecondPass(
+                    grabbing.address_if_released = if (self.cases.cases.items.len == 0) try self.debugMakeAddress(0) else try doGrabbingCaseSecondPass(
                         platform.getMouse().cur.pos(camera),
                         grabbing.address_if_released,
                         self.mem,
