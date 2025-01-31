@@ -744,6 +744,49 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                 inRange(p.x, -1, 0.5 * (1 - @abs(p.y)));
         }
 
+        pub fn overlapsSexpr(alloc: std.mem.Allocator, sexpr: *const Sexpr, sexpr_pos: Point, needle_pos: Vec2) !?core.SexprAddress {
+            var result = std.ArrayList(core.SexprAddressItem).init(alloc);
+            defer result.deinit();
+            // TODO (low priority): probably can be made more efficient by using less changes of coordinates
+
+            var cur_sexpr_pos = sexpr_pos;
+            var cur_sexpr = sexpr;
+            while (true) {
+                switch (cur_sexpr.*) {
+                    .atom_lit, .atom_var => {
+                        if (overlapsAtom(cur_sexpr_pos, needle_pos, .atom)) {
+                            return try result.toOwnedSlice();
+                        } else {
+                            return null;
+                        }
+                    },
+                    .pair => |pair| {
+                        const p = cur_sexpr_pos.inverseApplyGetLocal(.{ .pos = needle_pos }).pos;
+
+                        if (overlapsAtom(cur_sexpr_pos, needle_pos, .pair)) {
+                            return try result.toOwnedSlice();
+                        } else if (inRange(p.y, -1, 0)) {
+                            try result.append(.left);
+                            cur_sexpr = pair.left;
+                            cur_sexpr_pos = cur_sexpr_pos.applyToLocalPoint(.{
+                                .pos = .new(0.5, -0.5),
+                                .scale = 0.5,
+                            });
+                        } else if (inRange(p.y, 0, 1)) {
+                            try result.append(.right);
+                            cur_sexpr = pair.right;
+                            cur_sexpr_pos = cur_sexpr_pos.applyToLocalPoint(.{
+                                .pos = .new(0.5, 0.5),
+                                .scale = 0.5,
+                            });
+                        } else {
+                            return null;
+                        }
+                    },
+                }
+            }
+        }
+
         pub fn overlapsPatternSexpr(alloc: std.mem.Allocator, sexpr: *const Sexpr, sexpr_pos: Point, needle_pos: Vec2) !?core.SexprAddress {
             var result = std.ArrayList(core.SexprAddressItem).init(alloc);
             defer result.deinit();
@@ -787,9 +830,12 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             }
         }
 
-        pub fn overlapsAtom(atom_point: Point, needle_pos: Vec2) bool {
+        pub fn overlapsAtom(atom_point: Point, needle_pos: Vec2, kind: enum { atom, pair }) bool {
             const p = atom_point.inverseApplyGetLocal(.{ .pos = needle_pos }).pos;
             return inRange(p.y, -1, 1) and
+                if (kind == .pair)
+                inRange(p.x, -0.5 * (1 - @abs(p.y)), 0.5 - 0.25 * (1 - @abs(@abs(p.y) - 0.5) / 0.5))
+            else
                 inRange(p.x, -0.5 * (1 - @abs(p.y)), 2);
         }
 
@@ -800,6 +846,20 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                     .pos = switch (cur) {
                         .left => .new(-1, -0.5),
                         .right => .new(-1, 0.5),
+                    },
+                    .scale = 0.5,
+                });
+            }
+            return result;
+        }
+
+        pub fn sexprChildView(parent: Point, address: core.SexprAddress) Point {
+            var result = parent;
+            for (address) |cur| {
+                result = result.applyToLocalPoint(.{
+                    .pos = switch (cur) {
+                        .left => .new(0.5, -0.5),
+                        .right => .new(0.5, 0.5),
                     },
                     .scale = 0.5,
                 });
@@ -888,6 +948,23 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     try next.setUnfolded(address[1..]);
                 } else {
                     return error.BAD_INPUT;
+                }
+            }
+
+            pub fn getGlobalPointOf(self: CaseGroup, parent_point: Point, full_address: core.FullAddress) !Point {
+                switch (full_address.which) {
+                    .pattern => return artist.sexprPatternChildView(
+                        try self.getPatternGlobalPoint(parent_point, full_address.case_address),
+                        full_address.sexpr_address,
+                    ),
+                    .template => return artist.sexprChildView(
+                        (try self.getPatternGlobalPoint(
+                            parent_point,
+                            full_address.case_address,
+                        )).applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
+                        full_address.sexpr_address,
+                    ),
+                    else => return error.TODO,
                 }
             }
 
@@ -1035,10 +1112,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             .case => |case| self.focus = .{ .hovering_case = case },
                             .sexpr => |sexpr| self.focus = .{ .hovering_sexpr = .{
                                 .full_address = sexpr.full_address,
-                                .global_point = artist.sexprPatternChildView(
-                                    try self.cases.getPatternGlobalPoint(.{}, sexpr.full_address.case_address),
-                                    sexpr.full_address.sexpr_address,
-                                ),
+                                .global_point = try self.cases.getGlobalPointOf(.{}, sexpr.full_address),
                             } },
                         }
                     }
@@ -1047,10 +1121,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     const unfolded = hovering.full_address.case_address;
                     try self.cases.setUnfolded(unfolded);
                     hovering.global_point.lerp_towards(
-                        artist.sexprPatternChildView(
-                            try self.cases.getPatternGlobalPoint(Point{}, hovering.full_address.case_address),
-                            hovering.full_address.sexpr_address,
-                        ).applyToLocalPoint(.{ .scale = 1.1 }),
+                        (try self.cases.getGlobalPointOf(
+                            Point{},
+                            hovering.full_address,
+                        )).applyToLocalPoint(.{ .scale = 1.1 }),
                         0.6,
                         delta_seconds,
                     );
@@ -1069,10 +1143,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     self.focus = .{
                                         .hovering_sexpr = .{
                                             .full_address = sexpr.full_address,
-                                            .global_point = artist.sexprPatternChildView(
-                                                try self.cases.getPatternGlobalPoint(.{}, sexpr.full_address.case_address),
-                                                sexpr.full_address.sexpr_address,
-                                            ),
+                                            .global_point = try self.cases.getGlobalPointOf(.{}, sexpr.full_address),
                                         },
                                     };
                                 }
@@ -1099,10 +1170,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 self.focus = .{
                                     .hovering_sexpr = .{
                                         .full_address = sexpr.full_address,
-                                        .global_point = artist.sexprPatternChildView(
-                                            try self.cases.getPatternGlobalPoint(.{}, sexpr.full_address.case_address),
-                                            sexpr.full_address.sexpr_address,
-                                        ),
+                                        .global_point = try self.cases.getGlobalPointOf(.{}, sexpr.full_address),
                                     },
                                 };
                             },
@@ -1165,17 +1233,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         pub fn draw(self: Self) !void {
             drawer.clear(Color.gray(128));
-            if (false) {
-                const debug_sexpr = &Sexpr.doPair(&Sexpr.nil, &Sexpr.doPair(&Sexpr.nil, &Sexpr.nil));
-                const pos = Point{ .pos = .new(10, 0) };
-                const res = try artist.overlapsPatternSexpr(platform.gpa, debug_sexpr, pos, platform.getMouse().cur.pos(camera));
-                defer if (res) |x| platform.gpa.free(x);
-                try artist.drawPatternSexpr(
-                    camera,
-                    pos,
-                    debug_sexpr,
-                );
-            }
             {
                 try artist.drawSexpr(
                     camera,
@@ -1227,12 +1284,19 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .hovering_sexpr => |hovering| {
                     const full_address = hovering.full_address;
                     const case = try self.cases.caseAt(full_address.case_address);
-                    if (full_address.which != .pattern) return error.TODO;
-                    try artist.drawPatternSexpr(
-                        camera,
-                        hovering.global_point,
-                        case.pattern.getAt(full_address.sexpr_address).?,
-                    );
+                    switch (full_address.which) {
+                        .pattern => try artist.drawPatternSexpr(
+                            camera,
+                            hovering.global_point,
+                            case.pattern.getAt(full_address.sexpr_address).?,
+                        ),
+                        .template => try artist.drawSexpr(
+                            camera,
+                            hovering.global_point,
+                            case.template.getAt(full_address.sexpr_address).?,
+                        ),
+                        else => return error.TODO,
+                    }
                     // try artist.drawPatternOutline(camera, artist.sexprPatternChildView(
                     //     case.pattern_point,
                     //     full_address.sexpr_address,
@@ -1330,6 +1394,20 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         .case_address = cur_address,
                         .sexpr_address = local_address,
                         .which = .pattern,
+                    } } };
+                } else if (blk: {
+                    if (is_folded) break :blk null;
+                    break :blk try artist.overlapsSexpr(
+                        platform.gpa,
+                        case.template,
+                        relative_pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
+                        relative_mouse_pos,
+                    );
+                }) |local_address| {
+                    overlapped = .{ .sexpr = .{ .full_address = .{
+                        .case_address = cur_address,
+                        .sexpr_address = local_address,
+                        .which = .template,
                     } } };
                 } else if (inRange(local_mouse_pos.y, -1, 1) and
                     inRange(local_mouse_pos.x, -5 / case.pattern_point_relative_to_parent.scale, 0))
