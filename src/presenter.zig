@@ -983,6 +983,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     return error.BAD_INPUT;
                 }
             }
+
+            pub fn getSexprAt(self: CaseGroup, full_address: core.FullAddress) !*const core.Sexpr {
+                const case = try self.caseAt(full_address.case_address);
+                return switch (full_address.which) {
+                    .pattern => case.pattern.getAt(full_address.sexpr_address) orelse error.BAD_INPUT,
+                    .template => case.template.getAt(full_address.sexpr_address) orelse error.BAD_INPUT,
+                    else => error.TODO,
+                };
+            }
         };
 
         mem: *VeryPermamentGameStuff,
@@ -1218,11 +1227,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         } };
                     },
                     .hovering_sexpr => |hovering| {
-                        const case = try self.cases.caseAt(hovering.full_address.case_address);
+                        // const case = try self.cases.caseAt(hovering.full_address.case_address);
                         self.focus = .{
                             .grabbing_sexpr = .{
                                 .address_if_released = hovering.full_address,
-                                .sexpr = case.pattern.getAt(hovering.full_address.sexpr_address).?,
+                                .sexpr = try self.cases.getSexprAt(hovering.full_address),
                                 .point = hovering.global_point,
                             },
                         };
