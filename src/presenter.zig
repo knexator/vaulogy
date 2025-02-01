@@ -535,10 +535,10 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             editing_fnk: EditingFnk(platform, drawer),
         },
 
-        pub fn init() !Self {
+        pub fn init(result: *Self) !void {
             const platform_alloc = platform.gpa;
-            var mem = VeryPermamentGameStuff.init(platform_alloc);
-            var player_data = (try platform.getPlayerData(&mem)) orelse PlayerData.empty(&mem);
+            result.mem = VeryPermamentGameStuff.init(platform_alloc);
+            var player_data = (try platform.getPlayerData(&result.mem)) orelse PlayerData.empty(&result.mem);
 
             if (!player_data.first_time) return error.TODO;
             const tutorial_fnk =
@@ -553,31 +553,19 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 \\}
             ;
             var parser = parsing.Parser{ .remaining_text = tutorial_fnk };
-            const fnk = try parser.parseFnkNew(&mem.pool_for_sexprs, mem.arena_for_cases.allocator());
+            const fnk = try parser.parseFnkNew(&result.mem.pool_for_sexprs, result.mem.arena_for_cases.allocator());
             try player_data.fnks.put(fnk.name, fnk.body);
-            try platform.setPlayerData(player_data, &mem);
+            try platform.setPlayerData(player_data, &result.mem);
 
-            try player_data.fnks.put(&Sexpr.doLit("default"), defaultFnkBody(&mem));
+            try player_data.fnks.put(&Sexpr.doLit("default"), defaultFnkBody(&result.mem));
+            result.persistence = player_data;
 
-            try Artist(platform, drawer).init();
-
-            var result = Self{
-                .mem = mem,
-                .persistence = player_data,
-                .state = .{
-                    .level_select = .init(),
-                    // .editing_fnk = try .init(Fnk{
-                    //     .name = try mem.storeSexpr(Sexpr.doLit("default")),
-                    //     .body = defaultFnkBody(&mem),
-                    // }, &mem),
-                },
-            };
             result.state = .{ .editing_fnk = try .init(Fnk{
                 .name = try result.mem.storeSexpr(Sexpr.doLit("default")),
                 .body = defaultFnkBody(&result.mem),
             }, &result.mem) };
 
-            return result;
+            try Artist(platform, drawer).init();
         }
 
         pub fn update(self: *Self, delta_seconds: f32) !void {

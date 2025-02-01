@@ -481,7 +481,7 @@ const web_drawer = presenter.Drawer{
 var game: presenter.Presenter(web_platform, web_drawer) = undefined;
 
 export fn init() void {
-    game = @TypeOf(game).init() catch {
+    @TypeOf(game).init(&game) catch {
         std.log.err("bad start", .{});
         programmerError();
     };

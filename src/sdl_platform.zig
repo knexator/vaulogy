@@ -436,7 +436,7 @@ pub fn main() !void {
         c.SDL_GetRenderDriver,
     )});
 
-    game = try @TypeOf(game).init();
+    try @TypeOf(game).init(&game);
 
     var timekeeper: Timekeeper = .{ .tocks_per_s = c.SDL_GetPerformanceFrequency() };
 
