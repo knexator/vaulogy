@@ -673,15 +673,19 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             .true = AtomVisuals{
                 .color = .from01(0.5, 0.9, 0.5),
                 .profile = &blk: {
-                    var buffer: [10]Vec2 = undefined;
-                    for (0..10) |k| {
-                        // TODO: don't hardcode the '10' in 3 places
-                        const t = @as(f32, @floatFromInt(k)) / 10.0;
+                    const N = 10;
+                    var buffer: [N]Vec2 = undefined;
+                    for (0..N) |k| {
+                        const t = tof32(k) / N;
                         buffer[k] = Vec2.new(t, -0.2 * @sin(t * std.math.pi));
                     }
                     const res = buffer;
                     break :blk res;
                 },
+            },
+            .false = AtomVisuals{
+                .color = .from01(0.9, 0.5, 0.5),
+                .profile = &.{ .new(1.0 / 6.0, 0.2), .new(0.5, -0.2), .new(5.0 / 6.0, 0.2) },
             },
         };
 
@@ -765,7 +769,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                         .scale = 0.5,
                     }), pair.right);
                 },
-                else => std.log.err("TODO", .{}),
+                else => return error.TODO,
             }
         }
 
@@ -817,138 +821,139 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                 else => return error.TODO,
             }
         }
-
-        // TODO: move these into a static class
-        pub fn overlapsPatternAtom(atom_point: Point, needle_pos: Vec2) bool {
-            const p = atom_point.inverseApplyGetLocal(.{ .pos = needle_pos }).pos;
-            return inRange(p.y, -1, 1) and
-                inRange(p.x, -1, 0.5 * (1 - @abs(p.y)));
-        }
-
-        pub fn overlapsSexpr(alloc: std.mem.Allocator, sexpr: *const Sexpr, sexpr_pos: Point, needle_pos: Vec2) !?core.SexprAddress {
-            var result = std.ArrayList(core.SexprAddressItem).init(alloc);
-            defer result.deinit();
-            // TODO (low priority): probably can be made more efficient by using less changes of coordinates
-
-            var cur_sexpr_pos = sexpr_pos;
-            var cur_sexpr = sexpr;
-            while (true) {
-                switch (cur_sexpr.*) {
-                    .atom_lit, .atom_var => {
-                        if (overlapsAtom(cur_sexpr_pos, needle_pos, .atom)) {
-                            return try result.toOwnedSlice();
-                        } else {
-                            return null;
-                        }
-                    },
-                    .pair => |pair| {
-                        const p = cur_sexpr_pos.inverseApplyGetLocal(.{ .pos = needle_pos }).pos;
-
-                        if (overlapsAtom(cur_sexpr_pos, needle_pos, .pair)) {
-                            return try result.toOwnedSlice();
-                        } else if (inRange(p.y, -1, 0)) {
-                            try result.append(.left);
-                            cur_sexpr = pair.left;
-                            cur_sexpr_pos = cur_sexpr_pos.applyToLocalPoint(.{
-                                .pos = .new(0.5, -0.5),
-                                .scale = 0.5,
-                            });
-                        } else if (inRange(p.y, 0, 1)) {
-                            try result.append(.right);
-                            cur_sexpr = pair.right;
-                            cur_sexpr_pos = cur_sexpr_pos.applyToLocalPoint(.{
-                                .pos = .new(0.5, 0.5),
-                                .scale = 0.5,
-                            });
-                        } else {
-                            return null;
-                        }
-                    },
-                }
-            }
-        }
-
-        pub fn overlapsPatternSexpr(alloc: std.mem.Allocator, sexpr: *const Sexpr, sexpr_pos: Point, needle_pos: Vec2) !?core.SexprAddress {
-            var result = std.ArrayList(core.SexprAddressItem).init(alloc);
-            defer result.deinit();
-            // TODO (low priority): probably can be made more efficient by using less changes of coordinates
-
-            var cur_sexpr_pos = sexpr_pos;
-            var cur_sexpr = sexpr;
-            while (true) {
-                switch (cur_sexpr.*) {
-                    .atom_lit, .atom_var => {
-                        if (overlapsPatternAtom(cur_sexpr_pos, needle_pos)) {
-                            return try result.toOwnedSlice();
-                        } else {
-                            return null;
-                        }
-                    },
-                    .pair => |pair| {
-                        const p = cur_sexpr_pos.inverseApplyGetLocal(.{ .pos = needle_pos }).pos;
-
-                        if (overlapsPatternAtom(cur_sexpr_pos, needle_pos)) {
-                            return try result.toOwnedSlice();
-                        } else if (inRange(p.y, -1, 0)) {
-                            try result.append(.left);
-                            cur_sexpr = pair.left;
-                            cur_sexpr_pos = cur_sexpr_pos.applyToLocalPoint(.{
-                                .pos = .new(-1, -0.5),
-                                .scale = 0.5,
-                            });
-                        } else if (inRange(p.y, 0, 1)) {
-                            try result.append(.right);
-                            cur_sexpr = pair.right;
-                            cur_sexpr_pos = cur_sexpr_pos.applyToLocalPoint(.{
-                                .pos = .new(-1, 0.5),
-                                .scale = 0.5,
-                            });
-                        } else {
-                            return null;
-                        }
-                    },
-                }
-            }
-        }
-
-        pub fn overlapsAtom(atom_point: Point, needle_pos: Vec2, kind: enum { atom, pair }) bool {
-            const p = atom_point.inverseApplyGetLocal(.{ .pos = needle_pos }).pos;
-            return inRange(p.y, -1, 1) and
-                if (kind == .pair)
-                inRange(p.x, -0.5 * (1 - @abs(p.y)), 0.5 - 0.25 * (1 - @abs(@abs(p.y) - 0.5) / 0.5))
-            else
-                inRange(p.x, -0.5 * (1 - @abs(p.y)), 2);
-        }
-
-        pub fn sexprPatternChildView(parent: Point, address: core.SexprAddress) Point {
-            var result = parent;
-            for (address) |cur| {
-                result = result.applyToLocalPoint(.{
-                    .pos = switch (cur) {
-                        .left => .new(-1, -0.5),
-                        .right => .new(-1, 0.5),
-                    },
-                    .scale = 0.5,
-                });
-            }
-            return result;
-        }
-
-        pub fn sexprChildView(parent: Point, address: core.SexprAddress) Point {
-            var result = parent;
-            for (address) |cur| {
-                result = result.applyToLocalPoint(.{
-                    .pos = switch (cur) {
-                        .left => .new(0.5, -0.5),
-                        .right => .new(0.5, 0.5),
-                    },
-                    .scale = 0.5,
-                });
-            }
-            return result;
-        }
     };
 }
+
+const SexprView = struct {
+    pub fn overlapsPatternAtom(atom_point: Point, needle_pos: Vec2) bool {
+        const p = atom_point.inverseApplyGetLocal(.{ .pos = needle_pos }).pos;
+        return inRange(p.y, -1, 1) and
+            inRange(p.x, -1, 0.5 * (1 - @abs(p.y)));
+    }
+
+    pub fn overlapsSexpr(alloc: std.mem.Allocator, sexpr: *const Sexpr, sexpr_pos: Point, needle_pos: Vec2) !?core.SexprAddress {
+        var result = std.ArrayList(core.SexprAddressItem).init(alloc);
+        defer result.deinit();
+        // TODO (low priority): probably can be made more efficient by using less changes of coordinates
+
+        var cur_sexpr_pos = sexpr_pos;
+        var cur_sexpr = sexpr;
+        while (true) {
+            switch (cur_sexpr.*) {
+                .atom_lit, .atom_var => {
+                    if (overlapsAtom(cur_sexpr_pos, needle_pos, .atom)) {
+                        return try result.toOwnedSlice();
+                    } else {
+                        return null;
+                    }
+                },
+                .pair => |pair| {
+                    const p = cur_sexpr_pos.inverseApplyGetLocal(.{ .pos = needle_pos }).pos;
+
+                    if (overlapsAtom(cur_sexpr_pos, needle_pos, .pair)) {
+                        return try result.toOwnedSlice();
+                    } else if (inRange(p.y, -1, 0)) {
+                        try result.append(.left);
+                        cur_sexpr = pair.left;
+                        cur_sexpr_pos = cur_sexpr_pos.applyToLocalPoint(.{
+                            .pos = .new(0.5, -0.5),
+                            .scale = 0.5,
+                        });
+                    } else if (inRange(p.y, 0, 1)) {
+                        try result.append(.right);
+                        cur_sexpr = pair.right;
+                        cur_sexpr_pos = cur_sexpr_pos.applyToLocalPoint(.{
+                            .pos = .new(0.5, 0.5),
+                            .scale = 0.5,
+                        });
+                    } else {
+                        return null;
+                    }
+                },
+            }
+        }
+    }
+
+    pub fn overlapsPatternSexpr(alloc: std.mem.Allocator, sexpr: *const Sexpr, sexpr_pos: Point, needle_pos: Vec2) !?core.SexprAddress {
+        var result = std.ArrayList(core.SexprAddressItem).init(alloc);
+        defer result.deinit();
+        // TODO (low priority): probably can be made more efficient by using less changes of coordinates
+
+        var cur_sexpr_pos = sexpr_pos;
+        var cur_sexpr = sexpr;
+        while (true) {
+            switch (cur_sexpr.*) {
+                .atom_lit, .atom_var => {
+                    if (overlapsPatternAtom(cur_sexpr_pos, needle_pos)) {
+                        return try result.toOwnedSlice();
+                    } else {
+                        return null;
+                    }
+                },
+                .pair => |pair| {
+                    const p = cur_sexpr_pos.inverseApplyGetLocal(.{ .pos = needle_pos }).pos;
+
+                    if (overlapsPatternAtom(cur_sexpr_pos, needle_pos)) {
+                        return try result.toOwnedSlice();
+                    } else if (inRange(p.y, -1, 0)) {
+                        try result.append(.left);
+                        cur_sexpr = pair.left;
+                        cur_sexpr_pos = cur_sexpr_pos.applyToLocalPoint(.{
+                            .pos = .new(-1, -0.5),
+                            .scale = 0.5,
+                        });
+                    } else if (inRange(p.y, 0, 1)) {
+                        try result.append(.right);
+                        cur_sexpr = pair.right;
+                        cur_sexpr_pos = cur_sexpr_pos.applyToLocalPoint(.{
+                            .pos = .new(-1, 0.5),
+                            .scale = 0.5,
+                        });
+                    } else {
+                        return null;
+                    }
+                },
+            }
+        }
+    }
+
+    pub fn overlapsAtom(atom_point: Point, needle_pos: Vec2, kind: enum { atom, pair }) bool {
+        const p = atom_point.inverseApplyGetLocal(.{ .pos = needle_pos }).pos;
+        return inRange(p.y, -1, 1) and
+            if (kind == .pair)
+            inRange(p.x, -0.5 * (1 - @abs(p.y)), 0.5 - 0.25 * (1 - @abs(@abs(p.y) - 0.5) / 0.5))
+        else
+            inRange(p.x, -0.5 * (1 - @abs(p.y)), 2);
+    }
+
+    pub fn sexprPatternChildView(parent: Point, address: core.SexprAddress) Point {
+        var result = parent;
+        for (address) |cur| {
+            result = result.applyToLocalPoint(.{
+                .pos = switch (cur) {
+                    .left => .new(-1, -0.5),
+                    .right => .new(-1, 0.5),
+                },
+                .scale = 0.5,
+            });
+        }
+        return result;
+    }
+
+    pub fn sexprChildView(parent: Point, address: core.SexprAddress) Point {
+        var result = parent;
+        for (address) |cur| {
+            result = result.applyToLocalPoint(.{
+                .pos = switch (cur) {
+                    .left => .new(0.5, -0.5),
+                    .right => .new(0.5, 0.5),
+                },
+                .scale = 0.5,
+            });
+        }
+        return result;
+    }
+};
 
 pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
     return struct {
@@ -1034,18 +1039,18 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             pub fn getGlobalPointOf(self: CaseGroup, parent_point: Point, full_address: core.FullAddress) !Point {
                 switch (full_address.which) {
-                    .pattern => return artist.sexprPatternChildView(
+                    .pattern => return SexprView.sexprPatternChildView(
                         try self.getPatternGlobalPoint(parent_point, full_address.case_address),
                         full_address.sexpr_address,
                     ),
-                    .template => return artist.sexprChildView(
+                    .template => return SexprView.sexprChildView(
                         (try self.getPatternGlobalPoint(
                             parent_point,
                             full_address.case_address,
                         )).applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
                         full_address.sexpr_address,
                     ),
-                    .fnk_name => return artist.sexprChildView(
+                    .fnk_name => return SexprView.sexprChildView(
                         (try self.getPatternGlobalPoint(
                             parent_point,
                             full_address.case_address,
@@ -1185,7 +1190,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             .applyToLocalPoint(switch (goal.which) {
                             .pattern => .{ .turns = 0.02, .pos = .new(-0.5, 0) },
                             .template => .{ .turns = -0.02, .pos = .new(0.5, 0) },
-                            // TODO: check
                             .fnk_name => .{ .turns = 0.02, .pos = .new(0.5, 0) },
                         })
                     else
@@ -1198,7 +1202,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     else
                         @round(grabbing.is_pattern), 0.6, delta_seconds);
 
-                    if (try doNothing(
+                    if (try updateCasePositionsAndReturnMouseOverlap(
                         self.mem,
                         &.{},
                         platform.getMouse().cur.pos(camera),
@@ -1220,7 +1224,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     }
                 },
                 .nothing => {
-                    if (try doNothing(self.mem, &.{}, platform.getMouse().cur.pos(camera), self.cases, delta_seconds)) |overlap| {
+                    if (try updateCasePositionsAndReturnMouseOverlap(self.mem, &.{}, platform.getMouse().cur.pos(camera), self.cases, delta_seconds)) |overlap| {
                         switch (overlap) {
                             .case => |case| self.focus = .{ .hovering_case = case },
                             .sexpr => |sexpr| self.focus = .{ .hovering_sexpr = .{
@@ -1242,7 +1246,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         delta_seconds,
                     );
 
-                    if (try doNothing(
+                    if (try updateCasePositionsAndReturnMouseOverlap(
                         self.mem,
                         &.{},
                         platform.getMouse().cur.pos(camera),
@@ -1270,7 +1274,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     try self.cases.setUnfolded(unfolded);
                     self.focus = .{ .nothing = {} };
 
-                    if (try doNothing(
+                    if (try updateCasePositionsAndReturnMouseOverlap(
                         self.mem,
                         &.{},
                         platform.getMouse().cur.pos(camera),
@@ -1311,9 +1315,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .grabbing_sexpr => |grabbing| {
                         if (grabbing.address_if_released) |full_address| {
                             try self.cases.setSexprAt(self.mem, full_address, grabbing.sexpr);
-                            // TODO: correctly modify the case
-                            // const case_ref = try self.cases.caseRefAt(address.case_address);
-                            // case_ref.pattern = try case_ref.pattern.setAt(self.mem, full_address.sexpr_address, grabbing.sexpr);
                             self.focus = .{ .hovering_sexpr = .{
                                 .full_address = full_address,
                                 .global_point = grabbing.point,
@@ -1332,7 +1333,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         } };
                     },
                     .hovering_sexpr => |hovering| {
-                        // const case = try self.cases.caseAt(hovering.full_address.case_address);
                         self.focus = .{
                             .grabbing_sexpr = .{
                                 .address_if_released = hovering.full_address,
@@ -1490,8 +1490,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             },
         };
 
-        // TODO: rename this fn
-        fn doNothing(mem: *VeryPermamentGameStuff, parent_address: core.CaseAddress, relative_mouse_pos: Vec2, group: CaseGroup, delta_seconds: f32) !?OverlapResult {
+        fn updateCasePositionsAndReturnMouseOverlap(mem: *VeryPermamentGameStuff, parent_address: core.CaseAddress, relative_mouse_pos: Vec2, group: CaseGroup, delta_seconds: f32) !?OverlapResult {
             const is_gen0 = parent_address.len == 0;
             var cur_top_line: f32 = 2;
             const unfolded = group.unfolded;
@@ -1510,7 +1509,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
                 const cur_address = try childAddress(mem, parent_address, k);
 
-                if (try artist.overlapsPatternSexpr(
+                if (try SexprView.overlapsPatternSexpr(
                     platform.gpa,
                     case.pattern,
                     relative_pattern_point,
@@ -1523,7 +1522,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     } } };
                 } else if (blk: {
                     if (is_folded) break :blk null;
-                    break :blk try artist.overlapsSexpr(
+                    break :blk try SexprView.overlapsSexpr(
                         platform.gpa,
                         case.template,
                         relative_pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
@@ -1537,7 +1536,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     } } };
                 } else if (blk: {
                     if (is_folded) break :blk null;
-                    break :blk try artist.overlapsSexpr(
+                    break :blk try SexprView.overlapsSexpr(
                         platform.gpa,
                         case.fnk_name,
                         relative_pattern_point.applyToLocalPoint(FNK_NAME_OFFSET),
@@ -1556,7 +1555,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
 
                 if (!is_folded) if (case.next) |next| {
-                    const child_overlap = try doNothing(
+                    const child_overlap = try updateCasePositionsAndReturnMouseOverlap(
                         mem,
                         cur_address,
                         local_mouse_pos,
