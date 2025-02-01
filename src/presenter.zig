@@ -561,7 +561,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
 
             try Artist(platform, drawer).init();
 
-            const result = Self{
+            var result = Self{
                 .mem = mem,
                 .persistence = player_data,
                 .state = .{
@@ -572,6 +572,11 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                     // }, &mem),
                 },
             };
+            result.state = .{ .editing_fnk = try .init(Fnk{
+                .name = try result.mem.storeSexpr(Sexpr.doLit("default")),
+                .body = defaultFnkBody(&result.mem),
+            }, &result.mem) };
+
             return result;
         }
 
