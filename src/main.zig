@@ -195,17 +195,17 @@ pub const FnkBody = struct {
 pub const MatchCases = std.ArrayListUnmanaged(MatchCaseDefinition);
 pub const MatchCaseDefinition = struct {
     pattern: *const Sexpr,
-    fn_name: *const Sexpr,
+    fnk_name: *const Sexpr,
     template: *const Sexpr,
     next: ?MatchCases,
 
     pub fn format(value: MatchCaseDefinition, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: std.io.AnyWriter) !void {
         std.debug.assert(std.mem.eql(u8, fmt, ""));
         std.debug.assert(std.meta.eql(options, .{}));
-        if (value.fn_name.equals(&Sexpr.identity)) {
+        if (value.fnk_name.equals(&Sexpr.identity)) {
             try writer.print("{any} -> {any}", .{ value.pattern, value.template });
         } else {
-            try writer.print("{any} -> {any}: {any}", .{ value.pattern, value.fn_name, value.template });
+            try writer.print("{any} -> {any}: {any}", .{ value.pattern, value.fnk_name, value.template });
         }
         if (value.next) |next| {
             try writer.print(" {{\n{any}}}", .{FnkBody{ .cases = next }});
@@ -475,7 +475,7 @@ pub const ExecutionThread = struct {
 
                 this.score.successful_matches += 1;
 
-                const new_thing = try StackThing.init(this.active_value, case.fn_name, scoring_run);
+                const new_thing = try StackThing.init(this.active_value, case.fnk_name, scoring_run);
                 switch (new_thing) {
                     .stack_thing => |x| {
                         try this.stack.append(x);
@@ -646,7 +646,7 @@ pub fn main() !u8 {
                 for (last_thing.cur_cases) |case| {
                     try stdout.print("\t{any} -> {any}: {any}{s}\n", .{
                         case.pattern,
-                        case.fn_name,
+                        case.fnk_name,
                         case.template,
                         if (case.next == null) ";" else " { ... }",
                     });
@@ -709,7 +709,7 @@ pub fn main() !u8 {
                 },
             } = .{ .score = .{ .time = 0, .max_stack = 0 } };
             for (fnk_body.cases.items) |case| {
-                std.debug.assert(case.fn_name.equals(&Sexpr.identity));
+                std.debug.assert(case.fnk_name.equals(&Sexpr.identity));
                 std.debug.assert(case.next == null);
                 Sexpr.assertLit(case.pattern);
                 Sexpr.assertLit(case.template);
@@ -1099,12 +1099,12 @@ fn fnkFromSexprHelper(s: *const Sexpr, arena: std.mem.Allocator, pool: *MemoryPo
             while (true) {
                 const cur = cur_parent.left;
                 const pattern = try internalFromExternal(cur.pair.left, pool);
-                const fn_name = cur.pair.right.pair.left;
+                const fnk_name = cur.pair.right.pair.left;
                 const template = try internalFromExternal(cur.pair.right.pair.right.pair.left, pool);
                 const next = try fnkFromSexprHelper(cur.pair.right.pair.right.pair.right, arena, pool);
                 try cases.append(arena, .{
                     .pattern = pattern,
-                    .fn_name = fn_name,
+                    .fnk_name = fnk_name,
                     .template = template,
                     .next = next,
                 });

@@ -565,11 +565,11 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 .mem = mem,
                 .persistence = player_data,
                 .state = .{
-                    // .level_select = .init(),
-                    .editing_fnk = try .init(Fnk{
-                        .name = try mem.storeSexpr(Sexpr.doLit("default")),
-                        .body = defaultFnkBody(&mem),
-                    }, &mem),
+                    .level_select = .init(),
+                    // .editing_fnk = try .init(Fnk{
+                    //     .name = try mem.storeSexpr(Sexpr.doLit("default")),
+                    //     .body = defaultFnkBody(&mem),
+                    // }, &mem),
                 },
             };
             return result;
@@ -958,7 +958,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         const CaseState = struct {
             // TODO: generic tree type to avoid duplication
             pattern: *const Sexpr,
-            fn_name: *const Sexpr,
+            fnk_name: *const Sexpr,
             template: *const Sexpr,
             next: ?CaseGroup,
 
@@ -1045,7 +1045,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         )).applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
                         full_address.sexpr_address,
                     ),
-                    else => return error.TODO,
+                    .fnk_name => return artist.sexprChildView(
+                        (try self.getPatternGlobalPoint(
+                            parent_point,
+                            full_address.case_address,
+                        )).applyToLocalPoint(FNK_NAME_OFFSET),
+                        full_address.sexpr_address,
+                    ),
                 }
             }
 
@@ -1070,7 +1076,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 return switch (full_address.which) {
                     .pattern => case.pattern.getAt(full_address.sexpr_address) orelse error.BAD_INPUT,
                     .template => case.template.getAt(full_address.sexpr_address) orelse error.BAD_INPUT,
-                    else => error.TODO,
+                    .fnk_name => case.fnk_name.getAt(full_address.sexpr_address) orelse error.BAD_INPUT,
                 };
             }
 
@@ -1079,7 +1085,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 switch (full_address.which) {
                     .pattern => case_ref.pattern = try case_ref.pattern.setAt(mem, full_address.sexpr_address, value),
                     .template => case_ref.template = try case_ref.template.setAt(mem, full_address.sexpr_address, value),
-                    else => return error.TODO,
+                    .fnk_name => case_ref.fnk_name = try case_ref.fnk_name.setAt(mem, full_address.sexpr_address, value),
                 }
             }
         };
@@ -1111,13 +1117,18 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         const camera = Camera{ .center = .new(10, 3), .height = 15.0 };
         const DIST_TO_TEMPLATE = 5;
+        const FNK_NAME_OFFSET = Point{
+            .pos = .new(DIST_TO_TEMPLATE - 1, -0.75),
+            .turns = -0.25,
+            .scale = 0.5,
+        };
 
         // TODO: make these Unmanaged
         fn makeCasesPhysical(cases: core.MatchCases) !CaseGroup {
             var result = std.ArrayList(CaseState).init(platform.gpa);
             for (cases.items, 0..) |case, k| {
                 try result.append(.{
-                    .fn_name = case.fn_name,
+                    .fnk_name = case.fnk_name,
                     .pattern = case.pattern,
                     .template = case.template,
                     .next = if (case.next) |next| try makeCasesPhysical(next) else null,
@@ -1174,7 +1185,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             .applyToLocalPoint(switch (goal.which) {
                             .pattern => .{ .turns = 0.02, .pos = .new(-0.5, 0) },
                             .template => .{ .turns = -0.02, .pos = .new(0.5, 0) },
-                            .fnk_name => return error.TODO,
+                            // TODO: check
+                            .fnk_name => .{ .turns = 0.02, .pos = .new(0.5, 0) },
                         })
                     else
                         Point{
@@ -1329,6 +1341,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 .is_pattern = isPattern(hovering.full_address.which),
                             },
                         };
+                        if (hovering.full_address.which == .fnk_name) {
+                            (try self.cases.caseRefAt(hovering.full_address.case_address)).fnk_name = &Sexpr.identity;
+                        }
                     },
                 }
             }
@@ -1406,7 +1421,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             hovering.global_point,
                             case.template.getAt(full_address.sexpr_address).?,
                         ),
-                        else => return error.TODO,
+                        .fnk_name => try artist.drawSexpr(
+                            camera,
+                            hovering.global_point,
+                            case.fnk_name.getAt(full_address.sexpr_address).?,
+                        ),
                     }
                     // try artist.drawPatternOutline(camera, artist.sexprPatternChildView(
                     //     case.pattern_point,
@@ -1445,15 +1464,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
                 case.template,
             );
-            if (!case.fn_name.equals(&Sexpr.identity)) {
+            if (!case.fnk_name.equals(&Sexpr.identity)) {
                 try artist.drawSexpr(
                     camera,
-                    pattern_point.applyToLocalPoint(.{
-                        .pos = .new(DIST_TO_TEMPLATE - 1, -0.75),
-                        .turns = -0.25,
-                        .scale = 0.5,
-                    }),
-                    case.fn_name,
+                    pattern_point.applyToLocalPoint(FNK_NAME_OFFSET),
+                    case.fnk_name,
                 );
             }
             drawer.drawCable(
@@ -1519,6 +1534,20 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         .case_address = cur_address,
                         .sexpr_address = local_address,
                         .which = .template,
+                    } } };
+                } else if (blk: {
+                    if (is_folded) break :blk null;
+                    break :blk try artist.overlapsSexpr(
+                        platform.gpa,
+                        case.fnk_name,
+                        relative_pattern_point.applyToLocalPoint(FNK_NAME_OFFSET),
+                        relative_mouse_pos,
+                    );
+                }) |local_address| {
+                    overlapped = .{ .sexpr = .{ .full_address = .{
+                        .case_address = cur_address,
+                        .sexpr_address = local_address,
+                        .which = .fnk_name,
                     } } };
                 } else if (inRange(local_mouse_pos.y, -1, 1) and
                     inRange(local_mouse_pos.x, -5 / case.pattern_point_relative_to_parent.scale, 0))

@@ -101,17 +101,17 @@ fn parseMatchCases(input: *[]const u8, pool: *MemoryPool(Sexpr), allocator_for_c
         try parseChar(input, '-');
         try parseChar(input, '>');
         skipWhitespace(input);
-        const fn_name_or_template = try parseSexpr(input, pool);
+        const fnk_name_or_template = try parseSexpr(input, pool);
         skipWhitespace(input);
-        var fn_name: *const Sexpr = undefined;
+        var fnk_name: *const Sexpr = undefined;
         var template: *const Sexpr = undefined;
         if (parseCharIfPossible(input, ':')) {
-            fn_name = fn_name_or_template;
+            fnk_name = fnk_name_or_template;
             template = try parseSexpr(input, pool);
             skipWhitespace(input);
         } else {
-            fn_name = &Sexpr.identity;
-            template = fn_name_or_template;
+            fnk_name = &Sexpr.identity;
+            template = fnk_name_or_template;
         }
         var next: ?MatchCases = undefined;
         if (parseCharIfPossible(input, ';')) {
@@ -124,7 +124,7 @@ fn parseMatchCases(input: *[]const u8, pool: *MemoryPool(Sexpr), allocator_for_c
 
         try list.append(allocator_for_cases, .{
             .pattern = pattern,
-            .fn_name = fn_name,
+            .fnk_name = fnk_name,
             .template = template,
             .next = next,
         });
