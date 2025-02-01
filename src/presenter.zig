@@ -482,9 +482,11 @@ pub const Drawer = struct {
         .drawAtomDebug = undefined,
         .drawAtom = dummySignatures.camera_point_visuals,
         .drawPatternAtomDebug = undefined,
+        .drawCaseHolder = dummySignatures.camera_point,
         .drawPairHolder = dummySignatures.camera_point,
         .drawPatternPairHolder = dummySignatures.camera_point,
         .drawPatternAtom = dummySignatures.camera_point_visuals,
+        .drawPatternAtomOutline = dummySignatures.camera_point,
         .drawCable = struct {
             pub fn anon(camera: Camera, world_from: Vec2, world_to: Vec2, world_scale: f32, offset: f32) void {
                 _ = camera;
@@ -1133,10 +1135,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .cases = cases,
                 .sample_input = &Sexpr.true,
             };
-        }
-
-        pub fn deinit(self: *Self) void {
-            self.cases.deinit();
         }
 
         fn debugMakeAddress(self: *Self, k: usize) !core.CaseAddress {
