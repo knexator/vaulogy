@@ -244,6 +244,56 @@ fn inRange(value: f32, min_inclusive: f32, max_exclusive: f32) bool {
     return min_inclusive <= value and value < max_exclusive;
 }
 
+fn in01(value: f32) bool {
+    return 0 <= value and value <= 1;
+}
+
+fn inverse_lerp(min: f32, max: f32, value: f32) f32 {
+    return (value - min) / (max - min);
+}
+
+fn remap(value: f32, old_min: f32, old_max: f32, new_min: f32, new_max: f32) f32 {
+    return lerp(new_min, new_max, inverse_lerp(old_min, old_max, value));
+}
+
+fn towards(v: *f32, goal: f32, max_delta: f32) void {
+    if (@abs(v.* - goal) <= max_delta) {
+        v.* = goal;
+    } else if (v.* < goal) {
+        v.* += max_delta;
+    } else {
+        v.* -= max_delta;
+    }
+}
+
+const lerp_towards_float = lerp_towards;
+fn lerp_towards(v: *f32, goal: f32, ratio: f32, delta_seconds: f32) void {
+    // TODO: make this framerate independent
+    _ = delta_seconds;
+    v.* = std.math.lerp(v.*, goal, ratio);
+}
+
+const clamp = std.math.clamp;
+const lerp = std.math.lerp;
+
+fn clamp01(value: anytype) @TypeOf(value, 0.0) {
+    return std.math.clamp(value, 0.0, 1.0);
+}
+
+fn smoothstep(x: anytype, edge0: anytype, edge1: anytype) @TypeOf(x, edge0, edge1) {
+    const y = std.math.clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+    return y * y * (3.0 - 2.0 * y);
+}
+
+fn tof32(value: anytype) f32 {
+    const T = @TypeOf(value);
+    return switch (@typeInfo(T)) {
+        .float, .comptime_float => value,
+        .int, .comptime_int => @floatFromInt(value),
+        else => @compileError("Expected an int, float or vector of one, found " ++ @typeName(T)),
+    };
+}
+
 pub const Rect = struct {
     top_left: Vec2,
     size: Vec2,
@@ -717,6 +767,35 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             }
         }
 
+        pub fn drawBothSexpr(camera: Camera, world_point: Point, is_pattern: f32, sexpr: *const Sexpr) !void {
+            std.debug.assert(in01(is_pattern));
+            if (is_pattern > 0.5) {
+                try drawPatternSexpr(
+                    camera,
+                    world_point.applyToLocalPoint(.{ .turns = remap(
+                        is_pattern,
+                        0.5,
+                        1,
+                        0.5,
+                        0,
+                    ) }),
+                    sexpr,
+                );
+            } else {
+                try drawSexpr(
+                    camera,
+                    world_point.applyToLocalPoint(.{ .turns = remap(
+                        is_pattern,
+                        0.5,
+                        0,
+                        -0.5,
+                        0,
+                    ) }),
+                    sexpr,
+                );
+            }
+        }
+
         pub fn drawPatternSexpr(camera: Camera, world_point: Point, sexpr: *const Sexpr) !void {
             switch (sexpr.*) {
                 .atom_lit => |lit| {
@@ -992,6 +1071,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     else => error.TODO,
                 };
             }
+
+            pub fn setSexprAt(self: CaseGroup, mem: *VeryPermamentGameStuff, full_address: core.FullAddress, value: *const core.Sexpr) !void {
+                const case_ref = try self.caseRefAt(full_address.case_address);
+                switch (full_address.which) {
+                    .pattern => case_ref.pattern = try case_ref.pattern.setAt(mem, full_address.sexpr_address, value),
+                    .template => case_ref.template = try case_ref.template.setAt(mem, full_address.sexpr_address, value),
+                    else => return error.TODO,
+                }
+            }
         };
 
         mem: *VeryPermamentGameStuff,
@@ -1015,6 +1103,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 sexpr: *const Sexpr,
                 address_if_released: ?core.FullAddress,
                 point: Point,
+                is_pattern: f32,
             },
         } = .{ .nothing = {} },
 
@@ -1083,16 +1172,21 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .grabbing_sexpr => |*grabbing| {
                     grabbing.point.lerp_towards(if (grabbing.address_if_released) |goal|
-                        artist.sexprPatternChildView(
-                            try self.cases.getPatternGlobalPoint(.{}, goal.case_address),
-                            goal.sexpr_address,
-                        )
-                            .applyToLocalPoint(.{ .turns = 0.02, .pos = .new(-0.5, 0) })
+                        (try self.cases.getGlobalPointOf(.{}, goal))
+                            .applyToLocalPoint(switch (goal.which) {
+                            .pattern => .{ .turns = 0.02, .pos = .new(-0.5, 0) },
+                            .template => .{ .turns = -0.02, .pos = .new(0.5, 0) },
+                            .fnk_name => return error.TODO,
+                        })
                     else
                         Point{
                             .pos = platform.getMouse().cur.pos(camera),
                             .scale = 1,
                         }, 0.6, delta_seconds);
+                    lerp_towards(&grabbing.is_pattern, if (grabbing.address_if_released) |goal|
+                        isPattern(goal.which)
+                    else
+                        @round(grabbing.is_pattern), 0.6, delta_seconds);
 
                     if (try doNothing(
                         self.mem,
@@ -1205,12 +1299,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         }
                     },
                     .grabbing_sexpr => |grabbing| {
-                        if (grabbing.address_if_released) |address| {
+                        if (grabbing.address_if_released) |full_address| {
+                            try self.cases.setSexprAt(self.mem, full_address, grabbing.sexpr);
                             // TODO: correctly modify the case
-                            const case_ref = try self.cases.caseRefAt(address.case_address);
-                            case_ref.pattern = try case_ref.pattern.setAt(self.mem, address.sexpr_address, grabbing.sexpr);
+                            // const case_ref = try self.cases.caseRefAt(address.case_address);
+                            // case_ref.pattern = try case_ref.pattern.setAt(self.mem, full_address.sexpr_address, grabbing.sexpr);
                             self.focus = .{ .hovering_sexpr = .{
-                                .full_address = address,
+                                .full_address = full_address,
                                 .global_point = grabbing.point,
                             } };
                         } else {
@@ -1233,11 +1328,19 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 .address_if_released = hovering.full_address,
                                 .sexpr = try self.cases.getSexprAt(hovering.full_address),
                                 .point = hovering.global_point,
+                                .is_pattern = isPattern(hovering.full_address.which),
                             },
                         };
                     },
                 }
             }
+        }
+
+        fn isPattern(which: @FieldType(core.FullAddress, "which")) f32 {
+            return switch (which) {
+                .pattern => 1,
+                else => 0,
+            };
         }
 
         pub fn draw(self: Self) !void {
@@ -1274,9 +1377,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     });
                 },
                 .grabbing_sexpr => |grabbing| {
-                    try artist.drawPatternSexpr(
+                    try artist.drawBothSexpr(
                         camera,
                         grabbing.point,
+                        grabbing.is_pattern,
                         grabbing.sexpr,
                     );
                 },
@@ -1615,23 +1719,6 @@ const UI = struct {
     };
 };
 
-fn towards(v: *f32, goal: f32, max_delta: f32) void {
-    if (@abs(v.* - goal) <= max_delta) {
-        v.* = goal;
-    } else if (v.* < goal) {
-        v.* += max_delta;
-    } else {
-        v.* -= max_delta;
-    }
-}
-
-const lerp_towards_float = lerp_towards;
-fn lerp_towards(v: *f32, goal: f32, ratio: f32, delta_seconds: f32) void {
-    // TODO: make this framerate independent
-    _ = delta_seconds;
-    v.* = std.math.lerp(v.*, goal, ratio);
-}
-
 pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
     const artist = Artist(platform, drawer);
     return struct {
@@ -1823,26 +1910,5 @@ pub fn IntroSequence(platform: Platform, drawer: Drawer) type {
                 drawer.drawPatternAtomDebug(camera, cur);
             }
         }
-    };
-}
-
-const clamp = std.math.clamp;
-const lerp = std.math.lerp;
-
-fn clamp01(value: anytype) @TypeOf(value, 0.0) {
-    return std.math.clamp(value, 0.0, 1.0);
-}
-
-fn smoothstep(x: anytype, edge0: anytype, edge1: anytype) @TypeOf(x, edge0, edge1) {
-    const y = std.math.clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
-    return y * y * (3.0 - 2.0 * y);
-}
-
-fn tof32(value: anytype) f32 {
-    const T = @TypeOf(value);
-    return switch (@typeInfo(T)) {
-        .float, .comptime_float => value,
-        .int, .comptime_int => @floatFromInt(value),
-        else => @compileError("Expected an int, float or vector of one, found " ++ @typeName(T)),
     };
 }
