@@ -457,6 +457,8 @@ pub const Drawer = struct {
     drawPatternAtom: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
     drawCable: fn (camera: Camera, world_from: Vec2, world_to: Vec2, world_scale: f32, offset: f32) void,
     drawCaseHolder: fn (camera: Camera, world_point: Point) void,
+    drawVariable: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
+    drawPatternVariable: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
 
     const dummySignatures = struct {
         pub fn color(c: Color) void {
@@ -481,6 +483,8 @@ pub const Drawer = struct {
         .drawRect = undefined,
         .drawAtomDebug = undefined,
         .drawAtom = dummySignatures.camera_point_visuals,
+        .drawVariable = dummySignatures.camera_point_visuals,
+        .drawPatternVariable = dummySignatures.camera_point_visuals,
         .drawPatternAtomDebug = undefined,
         .drawCaseHolder = dummySignatures.camera_point,
         .drawPairHolder = dummySignatures.camera_point,
@@ -510,7 +514,7 @@ fn defaultFnkBody(mem: *VeryPermamentGameStuff) FnkBody {
         \\          true -> true;
         \\      }
         \\  }
-        \\  (nil . true) -> false;
+        \\  @hola -> ( @hola . false );
         \\  (true . nil) -> true;
         \\  (true . (true . nil)) -> true;
         \\}
@@ -736,6 +740,16 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             drawer.drawPatternAtomOutline(camera, world_point);
         }
 
+        pub fn drawVariable(camera: Camera, world_point: Point, name: []const u8) !void {
+            const visuals = try AtomVisualCache.getAtomVisuals(name);
+            drawer.drawVariable(camera, world_point, visuals);
+        }
+
+        pub fn drawPatternVariable(camera: Camera, world_point: Point, name: []const u8) !void {
+            const visuals = try AtomVisualCache.getAtomVisuals(name);
+            drawer.drawPatternVariable(camera, world_point, visuals);
+        }
+
         pub fn drawAtom(camera: Camera, world_point: Point, name: []const u8) !void {
             const visuals = try AtomVisualCache.getAtomVisuals(name);
             drawer.drawAtom(camera, world_point, visuals);
@@ -762,7 +776,9 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                         .scale = 0.5,
                     }), pair.right);
                 },
-                else => return error.TODO,
+                .atom_var => |x| {
+                    try drawVariable(camera, world_point, x.value);
+                },
             }
         }
 
@@ -811,7 +827,9 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                         .scale = 0.5,
                     }), pair.right);
                 },
-                else => return error.TODO,
+                .atom_var => |x| {
+                    try drawPatternVariable(camera, world_point, x.value);
+                },
             }
         }
     };

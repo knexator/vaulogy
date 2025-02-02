@@ -188,6 +188,56 @@ const SdlDrawer = struct {
         polygon(screen_positions, indices, outline, visuals.color, Color.black);
     }
 
+    pub fn drawVariable(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {
+        const screen_point = screenFromWorld(camera, world_point);
+        if (screen_point.scale < 0.1) return;
+        const local_positions = [_]Vec2{
+            Vec2.new(-0.5, 0),
+            Vec2.new(0, 1),
+            Vec2.new(0.5, 1),
+            Vec2.new(0, 0),
+            Vec2.new(0.5, -1),
+            Vec2.new(0, -1),
+        };
+        const indices = [_][3]usize{
+            .{ 1, 2, 3 },
+            .{ 0, 1, 3 },
+            .{ 0, 3, 5 },
+            .{ 3, 4, 5 },
+        };
+        const outline = [_]usize{ 0, 1, 2, 3, 4, 5 };
+        var screen_positions: [local_positions.len]Vec2 = undefined;
+        for (local_positions, 0..) |pos, i| {
+            screen_positions[i] = screen_point.applyToLocalPosition(pos);
+        }
+        polygon(&screen_positions, &indices, &outline, visuals.color, Color.black);
+    }
+
+    pub fn drawPatternVariable(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {
+        const screen_point = screenFromWorld(camera, world_point);
+        if (screen_point.scale < 0.1) return;
+        const local_positions = [_]Vec2{
+            Vec2.new(0.5, 0),
+            Vec2.new(0, 1),
+            Vec2.new(-0.5, 1),
+            Vec2.new(0, 0),
+            Vec2.new(-0.5, -1),
+            Vec2.new(0, -1),
+        };
+        const indices = [_][3]usize{
+            .{ 1, 2, 3 },
+            .{ 0, 1, 3 },
+            .{ 0, 3, 5 },
+            .{ 3, 4, 5 },
+        };
+        const outline = [_]usize{ 0, 1, 2, 3, 4, 5 };
+        var screen_positions: [local_positions.len]Vec2 = undefined;
+        for (local_positions, 0..) |pos, i| {
+            screen_positions[i] = screen_point.applyToLocalPosition(pos);
+        }
+        polygon(&screen_positions, &indices, &outline, visuals.color, Color.black);
+    }
+
     pub fn drawPairHolder(camera: Camera, world_point: Point) void {
         const screen_point = screenFromWorld(camera, world_point);
         if (screen_point.scale < 0.1) return;
@@ -357,6 +407,8 @@ const sdl_drawer = presenter.Drawer{
     .drawRect = SdlDrawer.drawRect,
     .drawAtom = SdlDrawer.drawAtom,
     .drawPatternAtom = SdlDrawer.drawPatternAtom,
+    .drawVariable = SdlDrawer.drawVariable,
+    .drawPatternVariable = SdlDrawer.drawPatternVariable,
     .drawAtomDebug = SdlDrawer.drawAtomDebug,
     .drawPatternAtomOutline = SdlDrawer.drawPatternAtomOutline,
     .drawPairHolder = SdlDrawer.drawPairHolder,
