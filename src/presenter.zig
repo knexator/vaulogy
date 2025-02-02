@@ -514,7 +514,7 @@ fn defaultFnkBody(mem: *VeryPermamentGameStuff) FnkBody {
         \\          true -> true;
         \\      }
         \\  }
-        \\  @hola -> ( @hola . false );
+        \\  @true -> ( @true . false );
         \\  (true . nil) -> true;
         \\  (true . (true . nil)) -> true;
         \\}
@@ -1120,7 +1120,23 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 address_if_released: ?core.CaseAddress,
             },
             hovering_sexpr: struct {
-                full_address: core.FullAddress,
+                address: union(enum) {
+                    full_address: core.FullAddress,
+                    toolbar: usize,
+
+                    pub fn equals(self: @This(), other: @This()) bool {
+                        return switch (self) {
+                            .full_address => |self_full| switch (other) {
+                                .full_address => |other_full| self_full.equals(other_full),
+                                else => false,
+                            },
+                            .toolbar => |self_toolbar| switch (other) {
+                                .toolbar => |other_toolbar| self_toolbar == other_toolbar,
+                                else => false,
+                            },
+                        };
+                    }
+                },
                 global_point: Point,
             },
             grabbing_sexpr: struct {
@@ -1137,6 +1153,41 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             .pos = .new(DIST_TO_TEMPLATE - 1, -0.75),
             .turns = -0.25,
             .scale = 0.5,
+        };
+
+        const toolbar = struct {
+            const atom_values = [_]Sexpr{
+                Sexpr.doPair(&Sexpr.nil, &Sexpr.nil),
+                Sexpr.nil,
+                Sexpr.true,
+                Sexpr.false,
+            };
+            const things = blk: {
+                var result: [atom_values.len]struct { value: *const Sexpr, point: Point, index: usize } = undefined;
+                for (&atom_values, 0..) |*atom, k| {
+                    result[k] = .{ .value = atom, .point = .{
+                        .pos = .new(tof32(k) * 1.6 + 2.5, -2.5),
+                        .scale = 0.5,
+                    }, .index = k };
+                }
+                const xx = result;
+                break :blk xx;
+            };
+
+            pub fn findOverlap(mouse_pos: Vec2) ?std.meta.Elem(@TypeOf(things)) {
+                for (things) |thing| {
+                    if (SexprView.overlapsAtom(thing.point, mouse_pos, .atom)) {
+                        return thing;
+                    }
+                }
+                return null;
+            }
+
+            pub fn draw() !void {
+                for (things) |thing| {
+                    try artist.drawSexpr(camera, thing.point, thing.value);
+                }
+            }
         };
 
         // TODO: make these Unmanaged
@@ -1239,24 +1290,43 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         switch (overlap) {
                             .case => |case| self.focus = .{ .hovering_case = case },
                             .sexpr => |sexpr| self.focus = .{ .hovering_sexpr = .{
-                                .full_address = sexpr.full_address,
+                                .address = .{ .full_address = sexpr.full_address },
                                 .global_point = try self.cases.getGlobalPointOf(.{}, sexpr.full_address),
                             } },
                         }
+                    } else if (toolbar.findOverlap(platform.getMouse().cur.pos(camera))) |overlap| {
+                        self.focus = .{
+                            .hovering_sexpr = .{
+                                .global_point = overlap.point,
+                                .address = .{
+                                    .toolbar = overlap.index,
+                                },
+                            },
+                        };
                     }
                 },
                 .hovering_sexpr => |*hovering| {
-                    const unfolded = hovering.full_address.case_address;
-                    try self.cases.setUnfolded(unfolded);
-                    hovering.global_point.lerp_towards(
-                        (try self.cases.getGlobalPointOf(
-                            Point{},
-                            hovering.full_address,
-                        )).applyToLocalPoint(.{ .scale = 1.1 }),
-                        0.6,
-                        delta_seconds,
-                    );
-
+                    switch (hovering.address) {
+                        .full_address => |full_address| {
+                            const unfolded = full_address.case_address;
+                            try self.cases.setUnfolded(unfolded);
+                            hovering.global_point.lerp_towards(
+                                (try self.cases.getGlobalPointOf(
+                                    Point{},
+                                    full_address,
+                                )).applyToLocalPoint(.{ .scale = 1.1 }),
+                                0.6,
+                                delta_seconds,
+                            );
+                        },
+                        .toolbar => |index| {
+                            hovering.global_point.lerp_towards(
+                                toolbar.things[index].point.applyToLocalPoint(.{ .scale = 1.1 }),
+                                0.6,
+                                delta_seconds,
+                            );
+                        },
+                    }
                     if (try updateCasePositionsAndReturnMouseOverlap(
                         self.mem,
                         &.{},
@@ -1267,15 +1337,26 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         switch (overlap) {
                             .case => |case| self.focus = .{ .hovering_case = case },
                             .sexpr => |sexpr| {
-                                if (!sexpr.full_address.equals(hovering.full_address)) {
+                                if (!hovering.address.equals(.{ .full_address = sexpr.full_address })) {
                                     self.focus = .{
                                         .hovering_sexpr = .{
-                                            .full_address = sexpr.full_address,
+                                            .address = .{ .full_address = sexpr.full_address },
                                             .global_point = try self.cases.getGlobalPointOf(.{}, sexpr.full_address),
                                         },
                                     };
                                 }
                             },
+                        }
+                    } else if (toolbar.findOverlap(platform.getMouse().cur.pos(camera))) |overlap| {
+                        if (!hovering.address.equals(.{ .toolbar = overlap.index })) {
+                            self.focus = .{
+                                .hovering_sexpr = .{
+                                    .global_point = overlap.point,
+                                    .address = .{
+                                        .toolbar = overlap.index,
+                                    },
+                                },
+                            };
                         }
                     } else {
                         self.focus = .nothing;
@@ -1297,7 +1378,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             .sexpr => |sexpr| {
                                 self.focus = .{
                                     .hovering_sexpr = .{
-                                        .full_address = sexpr.full_address,
+                                        .address = .{ .full_address = sexpr.full_address },
                                         .global_point = try self.cases.getGlobalPointOf(.{}, sexpr.full_address),
                                     },
                                 };
@@ -1327,7 +1408,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         if (grabbing.address_if_released) |full_address| {
                             try self.cases.setSexprAt(self.mem, full_address, grabbing.sexpr);
                             self.focus = .{ .hovering_sexpr = .{
-                                .full_address = full_address,
+                                .address = .{ .full_address = full_address },
                                 .global_point = grabbing.point,
                             } };
                         } else {
@@ -1344,16 +1425,30 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         } };
                     },
                     .hovering_sexpr => |hovering| {
-                        self.focus = .{
-                            .grabbing_sexpr = .{
-                                .address_if_released = hovering.full_address,
-                                .sexpr = try self.cases.getSexprAt(hovering.full_address),
-                                .point = hovering.global_point,
-                                .is_pattern = isPattern(hovering.full_address.which),
+                        switch (hovering.address) {
+                            .full_address => |full_address| {
+                                self.focus = .{
+                                    .grabbing_sexpr = .{
+                                        .address_if_released = full_address,
+                                        .sexpr = try self.cases.getSexprAt(full_address),
+                                        .point = hovering.global_point,
+                                        .is_pattern = isPattern(full_address.which),
+                                    },
+                                };
+                                if (full_address.which == .fnk_name) {
+                                    (try self.cases.caseRefAt(full_address.case_address)).fnk_name = &Sexpr.identity;
+                                }
                             },
-                        };
-                        if (hovering.full_address.which == .fnk_name) {
-                            (try self.cases.caseRefAt(hovering.full_address.case_address)).fnk_name = &Sexpr.identity;
+                            .toolbar => |index| {
+                                self.focus = .{
+                                    .grabbing_sexpr = .{
+                                        .address_if_released = null,
+                                        .is_pattern = 0,
+                                        .point = hovering.global_point,
+                                        .sexpr = toolbar.things[index].value,
+                                    },
+                                };
+                            },
                         }
                     },
                 }
@@ -1391,6 +1486,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             try drawCases(true, .{}, self.cases);
 
+            try toolbar.draw();
+
             switch (self.focus) {
                 .nothing => {},
                 .hovering_case => |unfolded| {
@@ -1419,24 +1516,34 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     try drawCaseExtra(pattern_point, grabbing.case);
                 },
                 .hovering_sexpr => |hovering| {
-                    const full_address = hovering.full_address;
-                    const case = try self.cases.caseAt(full_address.case_address);
-                    switch (full_address.which) {
-                        .pattern => try artist.drawPatternSexpr(
-                            camera,
-                            hovering.global_point,
-                            case.pattern.getAt(full_address.sexpr_address).?,
-                        ),
-                        .template => try artist.drawSexpr(
-                            camera,
-                            hovering.global_point,
-                            case.template.getAt(full_address.sexpr_address).?,
-                        ),
-                        .fnk_name => try artist.drawSexpr(
-                            camera,
-                            hovering.global_point,
-                            case.fnk_name.getAt(full_address.sexpr_address).?,
-                        ),
+                    switch (hovering.address) {
+                        .full_address => |full_address| {
+                            const case = try self.cases.caseAt(full_address.case_address);
+                            switch (full_address.which) {
+                                .pattern => try artist.drawPatternSexpr(
+                                    camera,
+                                    hovering.global_point,
+                                    case.pattern.getAt(full_address.sexpr_address).?,
+                                ),
+                                .template => try artist.drawSexpr(
+                                    camera,
+                                    hovering.global_point,
+                                    case.template.getAt(full_address.sexpr_address).?,
+                                ),
+                                .fnk_name => try artist.drawSexpr(
+                                    camera,
+                                    hovering.global_point,
+                                    case.fnk_name.getAt(full_address.sexpr_address).?,
+                                ),
+                            }
+                        },
+                        .toolbar => |index| {
+                            try artist.drawSexpr(
+                                camera,
+                                hovering.global_point,
+                                toolbar.things[index].value,
+                            );
+                        },
                     }
                     // try artist.drawPatternOutline(camera, artist.sexprPatternChildView(
                     //     case.pattern_point,
