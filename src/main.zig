@@ -158,6 +158,9 @@ pub const Sexpr = union(enum) {
 };
 pub const SexprAddressItem = enum { left, right };
 pub const SexprAddress = []SexprAddressItem;
+pub fn equalSexprAddress(a: SexprAddress, b: SexprAddress) bool {
+    return std.mem.eql(SexprAddressItem, a, b);
+}
 
 pub const CaseAddress = []usize;
 pub const FullAddress = struct {
@@ -168,7 +171,7 @@ pub const FullAddress = struct {
     pub fn equals(this: FullAddress, other: FullAddress) bool {
         return this.which == other.which and
             std.mem.eql(usize, this.case_address, other.case_address) and
-            std.mem.eql(SexprAddressItem, this.sexpr_address, other.sexpr_address);
+            equalSexprAddress(this.sexpr_address, other.sexpr_address);
     }
 };
 
