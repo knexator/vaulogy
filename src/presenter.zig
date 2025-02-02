@@ -505,7 +505,7 @@ pub const Drawer = struct {
 };
 
 fn defaultFnkBody(mem: *VeryPermamentGameStuff) FnkBody {
-    const default_fnk =
+    _ =
         \\default {
         \\  true -> default: (nil . true) {
         \\      false -> true;
@@ -517,6 +517,14 @@ fn defaultFnkBody(mem: *VeryPermamentGameStuff) FnkBody {
         \\  @true -> ( @true . false );
         \\  (true . nil) -> true;
         \\  (true . (true . nil)) -> true;
+        \\}
+    ;
+    const default_fnk =
+        \\default {
+        \\  true -> false;
+        \\  @xxx -> default: true {
+        \\      @res -> (final . @res);
+        \\  }
         \\}
     ;
     var parser = parsing.Parser{ .remaining_text = default_fnk };
@@ -532,11 +540,15 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
         mem: VeryPermamentGameStuff,
         persistence: PlayerData,
 
+        // TODO: remove this hack
+        scoring_run: core.ScoringRun,
+
         state: union(enum) {
             /// not used for now
             intro: IntroSequence(platform, drawer),
             level_select: LevelSelect(platform, drawer),
             editing_fnk: EditingFnk(platform, drawer),
+            executing_fnk: ExecutingFnk(platform, drawer),
         },
 
         pub fn init(result: *Self) !void {
@@ -569,6 +581,8 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 .body = defaultFnkBody(&result.mem),
             }, &result.mem) };
 
+            result.scoring_run = undefined;
+
             try Artist(platform, drawer).init();
         }
 
@@ -584,6 +598,22 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 },
                 .editing_fnk => |*editing| if (try editing.update(delta_seconds)) {
                     // todo
+                    const fnk = try editing.getFnk();
+                    try self.persistence.fnks.put(fnk.name, fnk.body);
+                    self.scoring_run = try core.ScoringRun.initFromFnks(
+                        self.persistence.fnks,
+                        &self.mem,
+                    );
+                    self.state = .{ .executing_fnk = try .init(
+                        editing.sample_input,
+                        fnk.name,
+                        &self.scoring_run,
+                    ) };
+                },
+                // TODO
+                .executing_fnk => |*executing| if (try executing.update(delta_seconds)) |final_value| {
+                    _ = final_value;
+                    self.state = .{ .level_select = .init() };
                 },
                 inline else => |*x| x.update(delta_seconds),
             }
@@ -1253,6 +1283,29 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             return .{ .cases = result, .unfolded = 0 };
         }
 
+        pub fn getFnk(self: Self) !Fnk {
+            return Fnk{
+                .name = self.fnk_name,
+                .body = .{ .cases = try getMatchCases(self.mem, self.cases) },
+            };
+        }
+
+        fn getMatchCases(mem: *VeryPermamentGameStuff, group: CaseGroup) !core.MatchCases {
+            var result = std.ArrayListUnmanaged(core.MatchCaseDefinition){};
+            for (group.cases.items) |case| {
+                try result.append(mem.arena_for_cases.allocator(), .{
+                    .fnk_name = case.fnk_name,
+                    .pattern = case.pattern,
+                    .template = case.template,
+                    .next = if (case.next) |next|
+                        (try getMatchCases(mem, next))
+                    else
+                        null,
+                });
+            }
+            return result;
+        }
+
         pub fn init(fnk: Fnk, mem: *VeryPermamentGameStuff) !Self {
             const cases = try makeCasesPhysical(mem, fnk.body.cases);
             const sample_input = try mem.storeSexpr(Sexpr.doPair(&Sexpr.nil, &Sexpr.input));
@@ -1264,6 +1317,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .sample_input = sample_input,
             };
         }
+
+        // TODO: deinit
 
         fn debugMakeAddress(self: *Self, k: usize) !core.CaseAddress {
             return try debugMakeAddress2(self.mem, k);
@@ -1826,8 +1881,119 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
     };
 }
 
+pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
+    return struct {
+        const Self = @This();
+        const artist = Artist(platform, drawer);
+
+        const camera = EditingFnk(platform, drawer).camera;
+
+        // TODO: remove this, probably
+        scoring_run: *core.ScoringRun,
+        thread: core.ExecutionThread,
+
+        pub fn init(
+            input: *const Sexpr,
+            fn_name: *const Sexpr,
+            scoring_run: *core.ScoringRun,
+        ) !Self {
+            return .{
+                .thread = try .init(input, fn_name, scoring_run),
+                .scoring_run = scoring_run,
+            };
+        }
+
+        pub fn update(self: *Self, delta_seconds: f32) !?*const Sexpr {
+            _ = delta_seconds;
+
+            if (platform.getMouse().wasPressed(.left)) {
+                return try self.thread.advanceStep(self.scoring_run);
+            } else {
+                return null;
+            }
+        }
+
+        pub fn draw(self: Self) !void {
+            drawer.clear(Color.gray(128));
+
+            var parent_point = Point{};
+            try artist.drawSexpr(camera, parent_point.applyToLocalPoint(SAMPLE_INPUT_POS), self.thread.active_value);
+
+            if (self.thread.stack.items.len == 0) {
+                return;
+            }
+
+            var it = std.mem.reverseIterator(self.thread.stack.items);
+            const active_stack: core.StackThing = it.next().?;
+            try artist.drawSexpr(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), active_stack.cur_fnk_name);
+            try drawCases(true, parent_point, active_stack.cur_cases);
+
+            while (it.next()) |x| {
+                parent_point = parent_point.applyToLocalPoint(.{ .pos = .new(-2.1, 0) });
+                try artist.drawSexpr(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), x.cur_fnk_name);
+            }
+        }
+
+        // TODO: remove this duplication from EditingFnk
+        fn drawCases(is_first: bool, parent_point: Point, cases: []const core.MatchCaseDefinition) OoM!void {
+            for (cases, 0..) |case, k| {
+                const relative_pattern_point = if (k == 0) Point{
+                    .pos = .new(if (is_first) 5 else 4, 3),
+                    .scale = 1,
+                } else Point{
+                    .pos = .new(if (is_first) 5 else 4, 3.5 + tof32(k) * 1.5),
+                    .scale = 0.5,
+                };
+                const pattern_point = parent_point.applyToLocalPoint(relative_pattern_point);
+                try artist.drawPatternSexpr(
+                    camera,
+                    pattern_point,
+                    case.pattern,
+                );
+                if (k == 0) {
+                    try drawCaseExtra(pattern_point, case);
+                }
+
+                const pos = pattern_point.applyToLocalPosition(.new(0, 1));
+                drawer.drawCable(
+                    camera,
+                    pos.sub(.new(if (is_first) 5 else 3, 0)),
+                    pos,
+                    1,
+                    0,
+                );
+            }
+        }
+
+        fn drawCaseExtra(pattern_point: Point, case: core.MatchCaseDefinition) !void {
+            try artist.drawSexpr(
+                camera,
+                pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
+                case.template,
+            );
+            if (!case.fnk_name.equals(&Sexpr.identity)) {
+                try artist.drawSexpr(
+                    camera,
+                    pattern_point.applyToLocalPoint(FNK_NAME_OFFSET),
+                    case.fnk_name,
+                );
+            }
+            drawer.drawCable(
+                camera,
+                pattern_point.applyToLocalPosition(.new(0.5, 0)),
+                pattern_point.applyToLocalPosition(.new(DIST_TO_TEMPLATE - 0.5, 0)),
+                pattern_point.scale,
+                0,
+            );
+            if (case.next) |next| {
+                try drawCases(false, pattern_point, next.items);
+            }
+        }
+    };
+}
+
 test {
-    std.testing.refAllDecls(EditingFnk(.{
+    const dummy_platform = Platform{
         .gpa = std.testing.allocator,
         .getMouse = struct {
             pub fn anon() Mouse {
@@ -1836,7 +2002,9 @@ test {
         }.anon,
         .getPlayerData = undefined,
         .setPlayerData = undefined,
-    }, Drawer.dummy));
+    };
+    std.testing.refAllDecls(EditingFnk(dummy_platform, Drawer.dummy));
+    std.testing.refAllDecls(ExecutingFnk(dummy_platform, Drawer.dummy));
 }
 
 const UI = struct {

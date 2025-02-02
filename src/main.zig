@@ -321,16 +321,11 @@ pub const ScoringRun = struct {
         compile_time: usize,
     },
 
-    pub fn init(
-        all_fnks_raw: []const u8,
+    pub fn initFromFnks(
+        all_fnks: FnkCollection,
         mem: *VeryPermamentGameStuff,
     ) !ScoringRun {
         const used_fnks = FnkSet.init(mem.gpa);
-        var all_fnks = FnkCollection.init(mem.gpa);
-
-        // var remaining_fnk_input = all_fnks_raw;
-        var parser = parsing.Parser{ .remaining_text = all_fnks_raw };
-        try parser.parseFnkCollection(&all_fnks, &mem.pool_for_sexprs, mem.arena_for_cases.allocator());
 
         return ScoringRun{
             .mem = mem,
@@ -338,6 +333,17 @@ pub const ScoringRun = struct {
             .all_fnks = all_fnks,
             .score = .{ .code_size = 0, .compile_time = 0 },
         };
+    }
+
+    pub fn init(
+        all_fnks_raw: []const u8,
+        mem: *VeryPermamentGameStuff,
+    ) !ScoringRun {
+        var all_fnks = FnkCollection.init(mem.gpa);
+        var parser = parsing.Parser{ .remaining_text = all_fnks_raw };
+        try parser.parseFnkCollection(&all_fnks, &mem.pool_for_sexprs, mem.arena_for_cases.allocator());
+
+        return ScoringRun.initFromFnks(all_fnks, mem);
     }
 
     pub fn deinit(this: *ScoringRun) void {
@@ -378,8 +384,8 @@ pub const ScoringRun = struct {
     }
 };
 
-const StackThing = struct {
-    cur_fn_name: *const Sexpr,
+pub const StackThing = struct {
+    cur_fnk_name: *const Sexpr,
     cur_cases: []const MatchCaseDefinition,
     cur_bindings: Bindings,
 
@@ -398,7 +404,7 @@ const StackThing = struct {
         return .{ .stack_thing = StackThing{
             .cur_bindings = bindings,
             .cur_cases = cases,
-            .cur_fn_name = fn_name,
+            .cur_fnk_name = fn_name,
         } };
     }
 
@@ -642,7 +648,7 @@ pub fn main() !u8 {
             while (exec.stack.items.len > 0) {
                 try stdout.print("Step {d}:\n", .{step});
                 for (exec.stack.items, 0..) |stack, k| {
-                    try stdout.print("{d}: {any}\n", .{ k, stack.cur_fn_name });
+                    try stdout.print("{d}: {any}\n", .{ k, stack.cur_fnk_name });
                 }
                 const last_thing = exec.stack.getLast();
                 try stdout.print("matching {any} with\n", .{exec.active_value});
