@@ -1148,10 +1148,28 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 };
             }
 
+            pub fn setSexpr(address: @This(), self: *Self, value: *const Sexpr) !void {
+                switch (address) {
+                    .full_address => |full_address| try self.cases.setSexprAt(self.mem, full_address, value),
+                    .sample_input => |local_address| {
+                        self.sample_input = try self.sample_input.setAt(self.mem, local_address, value);
+                    },
+                    .toolbar => unreachable,
+                }
+            }
+
             pub fn isPattern(address: @This()) bool {
                 return switch (address) {
                     .full_address => |full_address| full_address.which == .pattern,
                     else => false,
+                };
+            }
+
+            pub fn acceptsDrop(address: @This()) bool {
+                return switch (address) {
+                    .toolbar => false,
+                    .full_address => true,
+                    .sample_input => true,
                 };
             }
         };
@@ -1175,7 +1193,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             },
             grabbing_sexpr: struct {
                 sexpr: *const Sexpr,
-                address_if_released: ?core.FullAddress,
+                address_if_released: ?SexprPlace,
                 point: Point,
                 is_pattern: f32,
             },
@@ -1278,11 +1296,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .grabbing_sexpr => |*grabbing| {
                     grabbing.point.lerp_towards(if (grabbing.address_if_released) |goal|
-                        (try self.cases.getGlobalPointOf(.{}, goal))
-                            .applyToLocalPoint(switch (goal.which) {
-                            .pattern => .{ .turns = 0.02, .pos = .new(-0.5, 0) },
-                            .template => .{ .turns = -0.02, .pos = .new(0.5, 0) },
-                            .fnk_name => .{ .turns = 0.02, .pos = .new(0.5, 0) },
+                        (try goal.getGlobalPoint(self.*))
+                            .applyToLocalPoint(switch (goal) {
+                            .full_address => |full| switch (full.which) {
+                                .pattern => .{ .turns = 0.02, .pos = .new(-0.5, 0) },
+                                .template => .{ .turns = -0.02, .pos = .new(0.5, 0) },
+                                .fnk_name => .{ .turns = 0.02, .pos = .new(0.5, 0) },
+                            },
+                            .sample_input => .{ .turns = -0.02, .pos = .new(0.5, 0) },
+                            .toolbar => unreachable,
                         })
                     else
                         Point{
@@ -1290,7 +1312,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             .scale = 1,
                         }, 0.6, delta_seconds);
                     lerp_towards(&grabbing.is_pattern, if (grabbing.address_if_released) |goal|
-                        isPattern(goal.which)
+                        if (goal.isPattern()) 1 else 0
                     else
                         @round(grabbing.is_pattern), 0.6, delta_seconds);
                 },
@@ -1312,6 +1334,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             // update cases & focus
+            // TODO NOW: get overlap in a common step
             switch (self.focus) {
                 .grabbing_case => |*grabbing| {
                     try doGrabbingCaseFirstPass(self.mem, grabbing.address_if_released, &.{}, self.cases, delta_seconds);
@@ -1339,12 +1362,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             },
                             .sexpr => |sexpr| {
                                 try self.cases.setUnfolded(sexpr.full_address.case_address);
-                                grabbing.address_if_released = sexpr.full_address;
+                                grabbing.address_if_released = .{ .full_address = sexpr.full_address };
                             },
                         }
                     } else if (try SexprView.overlapsSexpr(self.mem.gpa, self.sample_input, SAMPLE_INPUT_POS, mouse_pos)) |overlap| {
-                        // TODO NOW
-                        _ = overlap;
+                        grabbing.address_if_released = .{ .sample_input = overlap };
                     } else {
                         grabbing.address_if_released = null;
                     }
@@ -1414,10 +1436,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         }
                     },
                     .grabbing_sexpr => |grabbing| {
-                        if (grabbing.address_if_released) |full_address| {
-                            try self.cases.setSexprAt(self.mem, full_address, grabbing.sexpr);
+                        if (grabbing.address_if_released) |address| {
+                            try address.setSexpr(self, grabbing.sexpr);
                             self.focus = .{ .hovering_sexpr = .{
-                                .address = .{ .full_address = full_address },
+                                .address = address,
                                 .global_point = grabbing.point,
                             } };
                         } else {
@@ -1435,10 +1457,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     },
                     .hovering_sexpr => |hovering| {
                         switch (hovering.address) {
+                            // TODO NOW
                             .full_address => |full_address| {
                                 self.focus = .{
                                     .grabbing_sexpr = .{
-                                        .address_if_released = full_address,
+                                        .address_if_released = .{ .full_address = full_address },
                                         .sexpr = try self.cases.getSexprAt(full_address),
                                         .point = hovering.global_point,
                                         .is_pattern = isPattern(full_address.which),
@@ -1451,8 +1474,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             .toolbar, .sample_input => {
                                 self.focus = .{
                                     .grabbing_sexpr = .{
-                                        .address_if_released = null,
-                                        .is_pattern = 0,
+                                        .address_if_released = if (hovering.address.acceptsDrop()) hovering.address else null,
+                                        .is_pattern = if (hovering.address.isPattern()) 1 else 0,
                                         .point = hovering.global_point,
                                         .sexpr = try hovering.address.getSexpr(self.*),
                                     },
