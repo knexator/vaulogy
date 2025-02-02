@@ -978,145 +978,145 @@ const FNK_NAME_OFFSET = Point{
 const SAMPLE_INPUT_POS = Point{ .pos = .new(1, 0) };
 const MAIN_FNK_POS = Point{ .pos = .new(0, -1.25), .turns = -0.25 };
 
+const CaseState = struct {
+    // TODO: generic tree type to avoid duplication
+    pattern: *const Sexpr,
+    fnk_name: *const Sexpr,
+    template: *const Sexpr,
+    next: ?CaseGroup,
+
+    pattern_point_relative_to_parent: Point,
+};
+const CaseGroup = struct {
+    cases: std.ArrayListUnmanaged(CaseState),
+    unfolded: usize,
+
+    pub fn caseAt(self: CaseGroup, address: core.CaseAddress) !CaseState {
+        return (try caseRefAt(self, address)).*;
+    }
+
+    // TODO: could this triplication be removed?
+    pub fn caseRefAt(self: CaseGroup, address: core.CaseAddress) !*CaseState {
+        if (address.len == 0) {
+            return error.BAD_INPUT;
+        } else if (address.len == 1) {
+            return &self.cases.items[address[0]];
+        } else if (self.cases.items[address[0]].next) |next| {
+            return next.caseRefAt(address[1..]);
+        } else {
+            return error.BAD_INPUT;
+        }
+    }
+
+    pub fn insertAt(self: *CaseGroup, mem: *VeryPermamentGameStuff, address: core.CaseAddress, case: CaseState) !void {
+        if (address.len == 0) {
+            return error.BAD_INPUT;
+        } else if (address.len == 1) {
+            try self.cases.insert(mem.gpa, address[0], case);
+        } else if (self.cases.items[address[0]].next) |*next| {
+            try next.insertAt(mem, address[1..], case);
+        } else if (address.len == 2 and address[1] == 0) {
+            var new_next: CaseGroup = .{
+                .unfolded = 0,
+                .cases = std.ArrayListUnmanaged(CaseState){},
+            };
+            try new_next.cases.append(mem.gpa, case);
+            self.cases.items[address[0]].next = new_next;
+        } else {
+            return error.BAD_INPUT;
+        }
+    }
+
+    pub fn removeAt(self: *CaseGroup, address: core.CaseAddress) !CaseState {
+        if (address.len == 0) {
+            return error.BAD_INPUT;
+        } else if (address.len == 1) {
+            return self.cases.orderedRemove(address[0]);
+        } else if (self.cases.items[address[0]].next) |*next| {
+            const result = next.removeAt(address[1..]);
+            if (next.cases.items.len == 0) {
+                self.cases.items[address[0]].next = null;
+            }
+            return result;
+        } else {
+            return error.BAD_INPUT;
+        }
+    }
+
+    pub fn setUnfolded(self: *CaseGroup, address: core.CaseAddress) !void {
+        if (address.len == 0) {
+            return error.BAD_INPUT;
+        } else if (address.len == 1) {
+            self.unfolded = address[0];
+        } else if (self.cases.items[address[0]].next) |*next| {
+            try next.setUnfolded(address[1..]);
+        } else {
+            return error.BAD_INPUT;
+        }
+    }
+
+    pub fn getGlobalPointOf(self: CaseGroup, parent_point: Point, full_address: core.FullAddress) !Point {
+        switch (full_address.which) {
+            .pattern => return SexprView.sexprPatternChildView(
+                try self.getPatternGlobalPoint(parent_point, full_address.case_address),
+                full_address.sexpr_address,
+            ),
+            .template => return SexprView.sexprChildView(
+                (try self.getPatternGlobalPoint(
+                    parent_point,
+                    full_address.case_address,
+                )).applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
+                full_address.sexpr_address,
+            ),
+            .fnk_name => return SexprView.sexprChildView(
+                (try self.getPatternGlobalPoint(
+                    parent_point,
+                    full_address.case_address,
+                )).applyToLocalPoint(FNK_NAME_OFFSET),
+                full_address.sexpr_address,
+            ),
+        }
+    }
+
+    pub fn getPatternGlobalPoint(self: CaseGroup, parent_point: Point, address: core.CaseAddress) !Point {
+        if (address.len == 0) {
+            return parent_point;
+        } else if (address.len == 1) {
+            return parent_point.applyToLocalPoint(
+                self.cases.items[address[0]].pattern_point_relative_to_parent,
+            );
+        } else if (self.cases.items[address[0]].next) |*next| {
+            return next.getPatternGlobalPoint(parent_point.applyToLocalPoint(
+                self.cases.items[address[0]].pattern_point_relative_to_parent,
+            ), address[1..]);
+        } else {
+            return error.BAD_INPUT;
+        }
+    }
+
+    pub fn getSexprAt(self: CaseGroup, full_address: core.FullAddress) !*const core.Sexpr {
+        const case = try self.caseAt(full_address.case_address);
+        return switch (full_address.which) {
+            .pattern => case.pattern.getAt(full_address.sexpr_address) orelse error.BAD_INPUT,
+            .template => case.template.getAt(full_address.sexpr_address) orelse error.BAD_INPUT,
+            .fnk_name => case.fnk_name.getAt(full_address.sexpr_address) orelse error.BAD_INPUT,
+        };
+    }
+
+    pub fn setSexprAt(self: CaseGroup, mem: *VeryPermamentGameStuff, full_address: core.FullAddress, value: *const core.Sexpr) !void {
+        const case_ref = try self.caseRefAt(full_address.case_address);
+        switch (full_address.which) {
+            .pattern => case_ref.pattern = try case_ref.pattern.setAt(mem, full_address.sexpr_address, value),
+            .template => case_ref.template = try case_ref.template.setAt(mem, full_address.sexpr_address, value),
+            .fnk_name => case_ref.fnk_name = try case_ref.fnk_name.setAt(mem, full_address.sexpr_address, value),
+        }
+    }
+};
+
 pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
     return struct {
         const Self = @This();
         const artist = Artist(platform, drawer);
-
-        const CaseState = struct {
-            // TODO: generic tree type to avoid duplication
-            pattern: *const Sexpr,
-            fnk_name: *const Sexpr,
-            template: *const Sexpr,
-            next: ?CaseGroup,
-
-            pattern_point_relative_to_parent: Point,
-        };
-        const CaseGroup = struct {
-            cases: std.ArrayListUnmanaged(CaseState),
-            unfolded: usize,
-
-            pub fn caseAt(self: CaseGroup, address: core.CaseAddress) !CaseState {
-                return (try caseRefAt(self, address)).*;
-            }
-
-            // TODO: could this triplication be removed?
-            pub fn caseRefAt(self: CaseGroup, address: core.CaseAddress) !*CaseState {
-                if (address.len == 0) {
-                    return error.BAD_INPUT;
-                } else if (address.len == 1) {
-                    return &self.cases.items[address[0]];
-                } else if (self.cases.items[address[0]].next) |next| {
-                    return next.caseRefAt(address[1..]);
-                } else {
-                    return error.BAD_INPUT;
-                }
-            }
-
-            pub fn insertAt(self: *CaseGroup, mem: *VeryPermamentGameStuff, address: core.CaseAddress, case: CaseState) !void {
-                if (address.len == 0) {
-                    return error.BAD_INPUT;
-                } else if (address.len == 1) {
-                    try self.cases.insert(mem.gpa, address[0], case);
-                } else if (self.cases.items[address[0]].next) |*next| {
-                    try next.insertAt(mem, address[1..], case);
-                } else if (address.len == 2 and address[1] == 0) {
-                    var new_next: CaseGroup = .{
-                        .unfolded = 0,
-                        .cases = std.ArrayListUnmanaged(CaseState){},
-                    };
-                    try new_next.cases.append(mem.gpa, case);
-                    self.cases.items[address[0]].next = new_next;
-                } else {
-                    return error.BAD_INPUT;
-                }
-            }
-
-            pub fn removeAt(self: *CaseGroup, address: core.CaseAddress) !CaseState {
-                if (address.len == 0) {
-                    return error.BAD_INPUT;
-                } else if (address.len == 1) {
-                    return self.cases.orderedRemove(address[0]);
-                } else if (self.cases.items[address[0]].next) |*next| {
-                    const result = next.removeAt(address[1..]);
-                    if (next.cases.items.len == 0) {
-                        self.cases.items[address[0]].next = null;
-                    }
-                    return result;
-                } else {
-                    return error.BAD_INPUT;
-                }
-            }
-
-            pub fn setUnfolded(self: *CaseGroup, address: core.CaseAddress) !void {
-                if (address.len == 0) {
-                    return error.BAD_INPUT;
-                } else if (address.len == 1) {
-                    self.unfolded = address[0];
-                } else if (self.cases.items[address[0]].next) |*next| {
-                    try next.setUnfolded(address[1..]);
-                } else {
-                    return error.BAD_INPUT;
-                }
-            }
-
-            pub fn getGlobalPointOf(self: CaseGroup, parent_point: Point, full_address: core.FullAddress) !Point {
-                switch (full_address.which) {
-                    .pattern => return SexprView.sexprPatternChildView(
-                        try self.getPatternGlobalPoint(parent_point, full_address.case_address),
-                        full_address.sexpr_address,
-                    ),
-                    .template => return SexprView.sexprChildView(
-                        (try self.getPatternGlobalPoint(
-                            parent_point,
-                            full_address.case_address,
-                        )).applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
-                        full_address.sexpr_address,
-                    ),
-                    .fnk_name => return SexprView.sexprChildView(
-                        (try self.getPatternGlobalPoint(
-                            parent_point,
-                            full_address.case_address,
-                        )).applyToLocalPoint(FNK_NAME_OFFSET),
-                        full_address.sexpr_address,
-                    ),
-                }
-            }
-
-            pub fn getPatternGlobalPoint(self: CaseGroup, parent_point: Point, address: core.CaseAddress) !Point {
-                if (address.len == 0) {
-                    return parent_point;
-                } else if (address.len == 1) {
-                    return parent_point.applyToLocalPoint(
-                        self.cases.items[address[0]].pattern_point_relative_to_parent,
-                    );
-                } else if (self.cases.items[address[0]].next) |*next| {
-                    return next.getPatternGlobalPoint(parent_point.applyToLocalPoint(
-                        self.cases.items[address[0]].pattern_point_relative_to_parent,
-                    ), address[1..]);
-                } else {
-                    return error.BAD_INPUT;
-                }
-            }
-
-            pub fn getSexprAt(self: CaseGroup, full_address: core.FullAddress) !*const core.Sexpr {
-                const case = try self.caseAt(full_address.case_address);
-                return switch (full_address.which) {
-                    .pattern => case.pattern.getAt(full_address.sexpr_address) orelse error.BAD_INPUT,
-                    .template => case.template.getAt(full_address.sexpr_address) orelse error.BAD_INPUT,
-                    .fnk_name => case.fnk_name.getAt(full_address.sexpr_address) orelse error.BAD_INPUT,
-                };
-            }
-
-            pub fn setSexprAt(self: CaseGroup, mem: *VeryPermamentGameStuff, full_address: core.FullAddress, value: *const core.Sexpr) !void {
-                const case_ref = try self.caseRefAt(full_address.case_address);
-                switch (full_address.which) {
-                    .pattern => case_ref.pattern = try case_ref.pattern.setAt(mem, full_address.sexpr_address, value),
-                    .template => case_ref.template = try case_ref.template.setAt(mem, full_address.sexpr_address, value),
-                    .fnk_name => case_ref.fnk_name = try case_ref.fnk_name.setAt(mem, full_address.sexpr_address, value),
-                }
-            }
-        };
 
         const SexprPlace = union(enum) {
             full_address: core.FullAddress,
