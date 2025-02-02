@@ -1106,6 +1106,56 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         };
 
+        const SexprPlace = union(enum) {
+            full_address: core.FullAddress,
+            toolbar: usize,
+            sample_input: core.SexprAddress,
+
+            pub fn equals(self: @This(), other: @This()) bool {
+                // TODO: use std.meta.activeTag to simplify the code
+                return switch (self) {
+                    .full_address => |self_full| switch (other) {
+                        .full_address => |other_full| self_full.equals(other_full),
+                        else => false,
+                    },
+                    .toolbar => |self_toolbar| switch (other) {
+                        .toolbar => |other_toolbar| self_toolbar == other_toolbar,
+                        else => false,
+                    },
+                    .sample_input => |self_local| switch (other) {
+                        .sample_input => |other_local| core.equalSexprAddress(self_local, other_local),
+                        else => false,
+                    },
+                };
+            }
+
+            pub fn getGlobalPoint(address: @This(), self: Self) !Point {
+                return switch (address) {
+                    .full_address => |full_address| try self.cases.getGlobalPointOf(
+                        Point{},
+                        full_address,
+                    ),
+                    .toolbar => |index| toolbar.things[index].point,
+                    .sample_input => |local| SexprView.sexprChildView(SAMPLE_INPUT_POS, local),
+                };
+            }
+
+            pub fn getSexpr(address: @This(), self: Self) !*const Sexpr {
+                return switch (address) {
+                    .full_address => |full_address| try self.cases.getSexprAt(full_address),
+                    .toolbar => |index| toolbar.things[index].value,
+                    .sample_input => |local| self.sample_input.getAt(local).?,
+                };
+            }
+
+            pub fn isPattern(address: @This()) bool {
+                return switch (address) {
+                    .full_address => |full_address| full_address.which == .pattern,
+                    else => false,
+                };
+            }
+        };
+
         mem: *VeryPermamentGameStuff,
 
         fnk_name: *const Sexpr,
@@ -1120,55 +1170,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 address_if_released: ?core.CaseAddress,
             },
             hovering_sexpr: struct {
-                address: union(enum) {
-                    full_address: core.FullAddress,
-                    toolbar: usize,
-                    sample_input: core.SexprAddress,
-
-                    pub fn equals(self: @This(), other: @This()) bool {
-                        // TODO: use std.meta.activeTag to simplify the code
-                        return switch (self) {
-                            .full_address => |self_full| switch (other) {
-                                .full_address => |other_full| self_full.equals(other_full),
-                                else => false,
-                            },
-                            .toolbar => |self_toolbar| switch (other) {
-                                .toolbar => |other_toolbar| self_toolbar == other_toolbar,
-                                else => false,
-                            },
-                            .sample_input => |self_local| switch (other) {
-                                .sample_input => |other_local| core.equalSexprAddress(self_local, other_local),
-                                else => false,
-                            },
-                        };
-                    }
-
-                    pub fn getGlobalPoint(address: @This(), self: Self) !Point {
-                        return switch (address) {
-                            .full_address => |full_address| try self.cases.getGlobalPointOf(
-                                Point{},
-                                full_address,
-                            ),
-                            .toolbar => |index| toolbar.things[index].point,
-                            .sample_input => |local| SexprView.sexprChildView(SAMPLE_INPUT_POS, local),
-                        };
-                    }
-
-                    pub fn getSexpr(address: @This(), self: Self) !*const Sexpr {
-                        return switch (address) {
-                            .full_address => |full_address| try self.cases.getSexprAt(full_address),
-                            .toolbar => |index| toolbar.things[index].value,
-                            .sample_input => |local| self.sample_input.getAt(local).?,
-                        };
-                    }
-
-                    pub fn isPattern(address: @This()) bool {
-                        return switch (address) {
-                            .full_address => |full_address| full_address.which == .pattern,
-                            else => false,
-                        };
-                    }
-                },
+                address: SexprPlace,
                 global_point: Point,
             },
             grabbing_sexpr: struct {
