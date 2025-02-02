@@ -1334,91 +1334,74 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             // update cases & focus
-            // TODO NOW: get overlap in a common step
-            switch (self.focus) {
-                .grabbing_case => |*grabbing| {
-                    try doGrabbingCaseFirstPass(self.mem, grabbing.address_if_released, &.{}, self.cases, delta_seconds);
-                    grabbing.address_if_released = if (self.cases.cases.items.len == 0) try self.debugMakeAddress(0) else try doGrabbingCaseSecondPass(
-                        platform.getMouse().cur.pos(camera),
-                        grabbing.address_if_released,
-                        self.mem,
-                        &.{},
-                        &self.cases,
-                    );
-                },
-                .grabbing_sexpr => |*grabbing| {
-                    const mouse_pos = platform.getMouse().cur.pos(camera);
-                    if (try updateCasePositionsAndReturnMouseOverlap(
-                        self.mem,
-                        &.{},
-                        mouse_pos,
-                        self.cases,
-                        delta_seconds,
-                    )) |overlap| {
-                        switch (overlap) {
+            if (std.meta.activeTag(self.focus) == .grabbing_case) {
+                try doGrabbingCaseFirstPass(self.mem, self.focus.grabbing_case.address_if_released, &.{}, self.cases, delta_seconds);
+                self.focus.grabbing_case.address_if_released = if (self.cases.cases.items.len == 0) try self.debugMakeAddress(0) else try doGrabbingCaseSecondPass(
+                    platform.getMouse().cur.pos(camera),
+                    self.focus.grabbing_case.address_if_released,
+                    self.mem,
+                    &.{},
+                    &self.cases,
+                );
+            } else {
+                const mouse_pos = platform.getMouse().cur.pos(camera);
+                const maybe_overlapped: ?union(enum) {
+                    case: core.CaseAddress,
+                    sexpr: SexprPlace,
+                } = if (try updateCasePositionsAndReturnMouseOverlap(
+                    self.mem,
+                    &.{},
+                    mouse_pos,
+                    self.cases,
+                    delta_seconds,
+                )) |overlap|
+                    switch (overlap) {
+                        .case => |case| .{ .case = case },
+                        .sexpr => |sexpr| .{ .sexpr = .{ .full_address = sexpr.full_address } },
+                    }
+                else if (toolbar.findOverlap(mouse_pos)) |overlap|
+                    .{ .sexpr = .{ .toolbar = overlap.index } }
+                else if (try SexprView.overlapsSexpr(self.mem.gpa, self.sample_input, SAMPLE_INPUT_POS, mouse_pos)) |overlap|
+                    .{ .sexpr = .{ .sample_input = overlap } }
+                else
+                    null;
+
+                switch (self.focus) {
+                    .grabbing_case => unreachable,
+                    .grabbing_sexpr => |*grabbing| if (maybe_overlapped) |overlapped|
+                        switch (overlapped) {
                             .case => |case| {
                                 try self.cases.setUnfolded(case);
                                 grabbing.address_if_released = null;
                             },
-                            .sexpr => |sexpr| {
-                                try self.cases.setUnfolded(sexpr.full_address.case_address);
-                                grabbing.address_if_released = .{ .full_address = sexpr.full_address };
+                            .sexpr => |place| {
+                                if (std.meta.activeTag(place) == .full_address) {
+                                    try self.cases.setUnfolded(place.full_address.case_address);
+                                }
+                                grabbing.address_if_released = if (place.acceptsDrop()) place else null;
                             },
                         }
-                    } else if (try SexprView.overlapsSexpr(self.mem.gpa, self.sample_input, SAMPLE_INPUT_POS, mouse_pos)) |overlap| {
-                        grabbing.address_if_released = .{ .sample_input = overlap };
-                    } else {
+                    else {
                         grabbing.address_if_released = null;
-                    }
-                },
-                .nothing, .hovering_sexpr, .hovering_case => {
-                    const mouse_pos = platform.getMouse().cur.pos(camera);
-                    if (try updateCasePositionsAndReturnMouseOverlap(
-                        self.mem,
-                        &.{},
-                        mouse_pos,
-                        self.cases,
-                        delta_seconds,
-                    )) |overlap| {
-                        switch (overlap) {
+                    },
+                    .nothing, .hovering_sexpr, .hovering_case => if (maybe_overlapped) |overlapped| {
+                        switch (overlapped) {
                             .case => |case| self.focus = .{ .hovering_case = case },
-                            .sexpr => |sexpr| {
-                                if (!(std.meta.activeTag(self.focus) == .hovering_sexpr and self.focus.hovering_sexpr.address.equals(.{ .full_address = sexpr.full_address }))) {
+                            .sexpr => |place| {
+                                if (!(std.meta.activeTag(self.focus) == .hovering_sexpr and self.focus.hovering_sexpr.address.equals(place))) {
                                     self.focus = .{
                                         .hovering_sexpr = .{
-                                            .address = .{ .full_address = sexpr.full_address },
-                                            .global_point = try self.cases.getGlobalPointOf(.{}, sexpr.full_address),
+                                            .address = place,
+                                            .global_point = try place.getGlobalPoint(self.*),
                                         },
                                     };
                                 }
                             },
                         }
-                    } else if (toolbar.findOverlap(mouse_pos)) |overlap| {
-                        if (!(std.meta.activeTag(self.focus) == .hovering_sexpr and self.focus.hovering_sexpr.address.equals(.{ .toolbar = overlap.index }))) {
-                            self.focus = .{
-                                .hovering_sexpr = .{
-                                    .global_point = overlap.point,
-                                    .address = .{
-                                        .toolbar = overlap.index,
-                                    },
-                                },
-                            };
-                        }
-                    } else if (try SexprView.overlapsSexpr(self.mem.gpa, self.sample_input, SAMPLE_INPUT_POS, mouse_pos)) |overlap| {
-                        if (!(std.meta.activeTag(self.focus) == .hovering_sexpr and self.focus.hovering_sexpr.address.equals(.{ .sample_input = overlap }))) {
-                            self.focus = .{
-                                .hovering_sexpr = .{
-                                    .global_point = SexprView.sexprChildView(SAMPLE_INPUT_POS, overlap),
-                                    .address = .{
-                                        .sample_input = overlap,
-                                    },
-                                },
-                            };
-                        }
                     } else {
                         self.focus = .nothing;
-                    }
-                },
+                    },
+                }
             }
 
             if (platform.getMouse().wasPressed(.left)) {
