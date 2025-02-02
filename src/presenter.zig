@@ -1439,31 +1439,17 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         } };
                     },
                     .hovering_sexpr => |hovering| {
-                        switch (hovering.address) {
-                            // TODO NOW
-                            .full_address => |full_address| {
-                                self.focus = .{
-                                    .grabbing_sexpr = .{
-                                        .address_if_released = .{ .full_address = full_address },
-                                        .sexpr = try self.cases.getSexprAt(full_address),
-                                        .point = hovering.global_point,
-                                        .is_pattern = isPattern(full_address.which),
-                                    },
-                                };
-                                if (full_address.which == .fnk_name) {
-                                    (try self.cases.caseRefAt(full_address.case_address)).fnk_name = &Sexpr.identity;
-                                }
+                        self.focus = .{
+                            .grabbing_sexpr = .{
+                                .address_if_released = if (hovering.address.acceptsDrop()) hovering.address else null,
+                                .is_pattern = if (hovering.address.isPattern()) 1 else 0,
+                                .point = hovering.global_point,
+                                .sexpr = try hovering.address.getSexpr(self.*),
                             },
-                            .toolbar, .sample_input => {
-                                self.focus = .{
-                                    .grabbing_sexpr = .{
-                                        .address_if_released = if (hovering.address.acceptsDrop()) hovering.address else null,
-                                        .is_pattern = if (hovering.address.isPattern()) 1 else 0,
-                                        .point = hovering.global_point,
-                                        .sexpr = try hovering.address.getSexpr(self.*),
-                                    },
-                                };
-                            },
+                        };
+
+                        if (std.meta.activeTag(hovering.address) == .full_address and hovering.address.full_address.which == .fnk_name) {
+                            (try self.cases.caseRefAt(hovering.address.full_address.case_address)).fnk_name = &Sexpr.identity;
                         }
                     },
                 }
