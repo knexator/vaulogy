@@ -1485,24 +1485,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .hovering_sexpr => |hovering| {
                     switch (hovering.address) {
                         .full_address => |full_address| {
-                            const case = try self.cases.caseAt(full_address.case_address);
-                            switch (full_address.which) {
-                                .pattern => try artist.drawPatternSexpr(
-                                    camera,
-                                    hovering.global_point,
-                                    case.pattern.getAt(full_address.sexpr_address).?,
-                                ),
-                                .template => try artist.drawSexpr(
-                                    camera,
-                                    hovering.global_point,
-                                    case.template.getAt(full_address.sexpr_address).?,
-                                ),
-                                .fnk_name => try artist.drawSexpr(
-                                    camera,
-                                    hovering.global_point,
-                                    case.fnk_name.getAt(full_address.sexpr_address).?,
-                                ),
-                            }
+                            try artist.drawBothSexpr(
+                                camera,
+                                hovering.global_point,
+                                if (full_address.which == .pattern) 1 else 0,
+                                try self.cases.getSexprAt(full_address),
+                            );
                         },
                         .toolbar => |index| {
                             try artist.drawSexpr(
