@@ -1229,6 +1229,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn update(self: *Self, delta_seconds: f32) !void {
+            // focus-specific updates
             switch (self.focus) {
                 .grabbing_case => |*grabbing| {
                     // grabbing case parent is the nothing!
@@ -1236,15 +1237,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         .pos = platform.getMouse().cur.pos(camera),
                         .scale = if (grabbing.address_if_released == null) 0.5 else 1,
                     }).applyToLocalPoint(.{ .pos = .new(3, 0) }), 0.6, delta_seconds);
-
-                    try doGrabbingCaseFirstPass(self.mem, grabbing.address_if_released, &.{}, self.cases, delta_seconds);
-                    grabbing.address_if_released = if (self.cases.cases.items.len == 0) try self.debugMakeAddress(0) else try doGrabbingCaseSecondPass(
-                        platform.getMouse().cur.pos(camera),
-                        grabbing.address_if_released,
-                        self.mem,
-                        &.{},
-                        &self.cases,
-                    );
                 },
                 .grabbing_sexpr => |*grabbing| {
                     grabbing.point.lerp_towards(if (grabbing.address_if_released) |goal|
@@ -1263,48 +1255,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         isPattern(goal.which)
                     else
                         @round(grabbing.is_pattern), 0.6, delta_seconds);
-
-                    if (try updateCasePositionsAndReturnMouseOverlap(
-                        self.mem,
-                        &.{},
-                        platform.getMouse().cur.pos(camera),
-                        self.cases,
-                        delta_seconds,
-                    )) |overlap| {
-                        switch (overlap) {
-                            .case => |case| {
-                                try self.cases.setUnfolded(case);
-                                grabbing.address_if_released = null;
-                            },
-                            .sexpr => |sexpr| {
-                                try self.cases.setUnfolded(sexpr.full_address.case_address);
-                                grabbing.address_if_released = sexpr.full_address;
-                            },
-                        }
-                    } else {
-                        grabbing.address_if_released = null;
-                    }
                 },
-                .nothing => {
-                    if (try updateCasePositionsAndReturnMouseOverlap(self.mem, &.{}, platform.getMouse().cur.pos(camera), self.cases, delta_seconds)) |overlap| {
-                        switch (overlap) {
-                            .case => |case| self.focus = .{ .hovering_case = case },
-                            .sexpr => |sexpr| self.focus = .{ .hovering_sexpr = .{
-                                .address = .{ .full_address = sexpr.full_address },
-                                .global_point = try self.cases.getGlobalPointOf(.{}, sexpr.full_address),
-                            } },
-                        }
-                    } else if (toolbar.findOverlap(platform.getMouse().cur.pos(camera))) |overlap| {
-                        self.focus = .{
-                            .hovering_sexpr = .{
-                                .global_point = overlap.point,
-                                .address = .{
-                                    .toolbar = overlap.index,
-                                },
-                            },
-                        };
-                    }
-                },
+                .nothing => {},
                 .hovering_sexpr => |*hovering| {
                     switch (hovering.address) {
                         .full_address => |full_address| {
@@ -1327,6 +1279,47 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             );
                         },
                     }
+                },
+                .hovering_case => |unfolded| {
+                    try self.cases.setUnfolded(unfolded);
+                },
+            }
+
+            // update cases & focus
+            switch (self.focus) {
+                .grabbing_case => |*grabbing| {
+                    try doGrabbingCaseFirstPass(self.mem, grabbing.address_if_released, &.{}, self.cases, delta_seconds);
+                    grabbing.address_if_released = if (self.cases.cases.items.len == 0) try self.debugMakeAddress(0) else try doGrabbingCaseSecondPass(
+                        platform.getMouse().cur.pos(camera),
+                        grabbing.address_if_released,
+                        self.mem,
+                        &.{},
+                        &self.cases,
+                    );
+                },
+                .grabbing_sexpr => |*grabbing| {
+                    if (try updateCasePositionsAndReturnMouseOverlap(
+                        self.mem,
+                        &.{},
+                        platform.getMouse().cur.pos(camera),
+                        self.cases,
+                        delta_seconds,
+                    )) |overlap| {
+                        switch (overlap) {
+                            .case => |case| {
+                                try self.cases.setUnfolded(case);
+                                grabbing.address_if_released = null;
+                            },
+                            .sexpr => |sexpr| {
+                                try self.cases.setUnfolded(sexpr.full_address.case_address);
+                                grabbing.address_if_released = sexpr.full_address;
+                            },
+                        }
+                    } else {
+                        grabbing.address_if_released = null;
+                    }
+                },
+                .nothing, .hovering_sexpr, .hovering_case => {
                     if (try updateCasePositionsAndReturnMouseOverlap(
                         self.mem,
                         &.{},
@@ -1337,7 +1330,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         switch (overlap) {
                             .case => |case| self.focus = .{ .hovering_case = case },
                             .sexpr => |sexpr| {
-                                if (!hovering.address.equals(.{ .full_address = sexpr.full_address })) {
+                                if (!(std.meta.activeTag(self.focus) == .hovering_sexpr and self.focus.hovering_sexpr.address.equals(.{ .full_address = sexpr.full_address }))) {
                                     self.focus = .{
                                         .hovering_sexpr = .{
                                             .address = .{ .full_address = sexpr.full_address },
@@ -1348,7 +1341,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             },
                         }
                     } else if (toolbar.findOverlap(platform.getMouse().cur.pos(camera))) |overlap| {
-                        if (!hovering.address.equals(.{ .toolbar = overlap.index })) {
+                        if (!(std.meta.activeTag(self.focus) == .hovering_sexpr and self.focus.hovering_sexpr.address.equals(.{ .toolbar = overlap.index }))) {
                             self.focus = .{
                                 .hovering_sexpr = .{
                                     .global_point = overlap.point,
@@ -1357,32 +1350,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     },
                                 },
                             };
-                        }
-                    } else {
-                        self.focus = .nothing;
-                    }
-                },
-                .hovering_case => |unfolded| {
-                    try self.cases.setUnfolded(unfolded);
-                    self.focus = .{ .nothing = {} };
-
-                    if (try updateCasePositionsAndReturnMouseOverlap(
-                        self.mem,
-                        &.{},
-                        platform.getMouse().cur.pos(camera),
-                        self.cases,
-                        delta_seconds,
-                    )) |overlap| {
-                        switch (overlap) {
-                            .case => |case| self.focus = .{ .hovering_case = case },
-                            .sexpr => |sexpr| {
-                                self.focus = .{
-                                    .hovering_sexpr = .{
-                                        .address = .{ .full_address = sexpr.full_address },
-                                        .global_point = try self.cases.getGlobalPointOf(.{}, sexpr.full_address),
-                                    },
-                                };
-                            },
                         }
                     } else {
                         self.focus = .nothing;
