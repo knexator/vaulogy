@@ -969,6 +969,15 @@ const SexprView = struct {
     }
 };
 
+const DIST_TO_TEMPLATE = 5;
+const FNK_NAME_OFFSET = Point{
+    .pos = .new(DIST_TO_TEMPLATE - 1, -0.75),
+    .turns = -0.25,
+    .scale = 0.5,
+};
+const SAMPLE_INPUT_POS = Point{ .pos = .new(1, 0) };
+const MAIN_FNK_POS = Point{ .pos = .new(0, -1.25), .turns = -0.25 };
+
 pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
     return struct {
         const Self = @This();
@@ -984,7 +993,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             pattern_point_relative_to_parent: Point,
         };
         const CaseGroup = struct {
-            cases: std.ArrayList(CaseState),
+            cases: std.ArrayListUnmanaged(CaseState),
             unfolded: usize,
 
             pub fn caseAt(self: CaseGroup, address: core.CaseAddress) !CaseState {
@@ -1004,19 +1013,19 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
             }
 
-            pub fn insertAt(self: *CaseGroup, address: core.CaseAddress, case: CaseState) !void {
+            pub fn insertAt(self: *CaseGroup, mem: *VeryPermamentGameStuff, address: core.CaseAddress, case: CaseState) !void {
                 if (address.len == 0) {
                     return error.BAD_INPUT;
                 } else if (address.len == 1) {
-                    try self.cases.insert(address[0], case);
+                    try self.cases.insert(mem.gpa, address[0], case);
                 } else if (self.cases.items[address[0]].next) |*next| {
-                    try next.insertAt(address[1..], case);
+                    try next.insertAt(mem, address[1..], case);
                 } else if (address.len == 2 and address[1] == 0) {
                     var new_next: CaseGroup = .{
                         .unfolded = 0,
-                        .cases = std.ArrayList(CaseState).init(platform.gpa),
+                        .cases = std.ArrayListUnmanaged(CaseState){},
                     };
-                    try new_next.cases.append(case);
+                    try new_next.cases.append(mem.gpa, case);
                     self.cases.items[address[0]].next = new_next;
                 } else {
                     return error.BAD_INPUT;
@@ -1194,14 +1203,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         } = .{ .nothing = {} },
 
         const camera = Camera{ .center = .new(10, 3), .height = 15.0 };
-        const DIST_TO_TEMPLATE = 5;
-        const FNK_NAME_OFFSET = Point{
-            .pos = .new(DIST_TO_TEMPLATE - 1, -0.75),
-            .turns = -0.25,
-            .scale = 0.5,
-        };
-        const SAMPLE_INPUT_POS = Point{ .pos = .new(1, 0) };
-        const MAIN_FNK_POS = Point{ .pos = .new(0, -1.25), .turns = -0.25 };
 
         const toolbar = struct {
             const atom_values = [_]Sexpr{
@@ -1238,15 +1239,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         };
 
-        // TODO: make these Unmanaged
-        fn makeCasesPhysical(cases: core.MatchCases) !CaseGroup {
-            var result = std.ArrayList(CaseState).init(platform.gpa);
+        fn makeCasesPhysical(mem: *VeryPermamentGameStuff, cases: core.MatchCases) !CaseGroup {
+            var result = std.ArrayListUnmanaged(CaseState){};
             for (cases.items, 0..) |case, k| {
-                try result.append(.{
+                try result.append(mem.gpa, .{
                     .fnk_name = case.fnk_name,
                     .pattern = case.pattern,
                     .template = case.template,
-                    .next = if (case.next) |next| try makeCasesPhysical(next) else null,
+                    .next = if (case.next) |next| try makeCasesPhysical(mem, next) else null,
                     .pattern_point_relative_to_parent = .{ .pos = .new(3, 2.5 + 1.5 * tof32(k)), .scale = 0.5 },
                 });
             }
@@ -1254,7 +1254,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn init(fnk: Fnk, mem: *VeryPermamentGameStuff) !Self {
-            const cases = try makeCasesPhysical(fnk.body.cases);
+            const cases = try makeCasesPhysical(mem, fnk.body.cases);
             const sample_input = try mem.storeSexpr(Sexpr.doPair(&Sexpr.nil, &Sexpr.input));
             return .{
                 .mem = mem,
@@ -1406,7 +1406,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             const global_point = grabbing.case.pattern_point_relative_to_parent;
                             const parent_point = try self.cases.getPatternGlobalPoint(.{}, address[0 .. address.len - 1]);
                             grabbing.case.pattern_point_relative_to_parent = parent_point.inverseApplyGetLocal(global_point);
-                            try self.cases.insertAt(address, grabbing.case);
+                            try self.cases.insertAt(self.mem, address, grabbing.case);
                             self.focus = .{ .hovering_case = address };
                         } else {
                             self.focus = .{ .nothing = {} };
