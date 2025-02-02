@@ -573,7 +573,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn update(self: *Self, delta_seconds: f32) !void {
-            try switch (self.state) {
+            switch (self.state) {
                 .level_select => |*ui| if (ui.update(delta_seconds)) |level_index| {
                     const fnk_name = levels[level_index].fnk_name;
                     const fnk_body = self.persistence.fnks.get(fnk_name) orelse defaultFnkBody(&self.mem);
@@ -582,8 +582,11 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         &self.mem,
                     ) };
                 },
+                .editing_fnk => |*editing| if (try editing.update(delta_seconds)) {
+                    // todo
+                },
                 inline else => |*x| x.update(delta_seconds),
-            };
+            }
         }
 
         pub fn draw(self: Self) OoM!void {
@@ -1112,20 +1115,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             sample_input: core.SexprAddress,
 
             pub fn equals(self: @This(), other: @This()) bool {
-                // TODO: use std.meta.activeTag to simplify the code
+                if (std.meta.activeTag(self) != std.meta.activeTag(other)) return false;
                 return switch (self) {
-                    .full_address => |self_full| switch (other) {
-                        .full_address => |other_full| self_full.equals(other_full),
-                        else => false,
-                    },
-                    .toolbar => |self_toolbar| switch (other) {
-                        .toolbar => |other_toolbar| self_toolbar == other_toolbar,
-                        else => false,
-                    },
-                    .sample_input => |self_local| switch (other) {
-                        .sample_input => |other_local| core.equalSexprAddress(self_local, other_local),
-                        else => false,
-                    },
+                    .full_address => |self_full| self_full.equals(other.full_address),
+                    .toolbar => |self_toolbar| self_toolbar == other.toolbar,
+                    .sample_input => |self_local| core.equalSexprAddress(self_local, other.sample_input),
                 };
             }
 
@@ -1284,7 +1278,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             return new_buf;
         }
 
-        pub fn update(self: *Self, delta_seconds: f32) !void {
+        pub fn update(self: *Self, delta_seconds: f32) !bool {
             // focus-specific updates
             switch (self.focus) {
                 .grabbing_case => |*grabbing| {
@@ -1454,6 +1448,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     },
                 }
             }
+
+            if (platform.getMouse().wasPressed(.right)) {
+                return true;
+            }
+
+            return false;
         }
 
         fn isPattern(which: @FieldType(core.FullAddress, "which")) f32 {
