@@ -428,6 +428,12 @@ pub const ExecutionThread = struct {
     pub const VisualState = union(enum) {
         just_started,
         failed_to_match: MatchCaseDefinition,
+        matched: struct {
+            tail_optimized: bool,
+            added_new_fnk_to_stack: bool,
+            case: MatchCaseDefinition,
+            old_active_value: *const Sexpr,
+        },
         TODO,
     };
 
@@ -492,27 +498,42 @@ pub const ExecutionThread = struct {
                 return null;
             }
 
+            const old_active_value = this.active_value;
             const argument = try fillTemplate(case.template, last_stack_ptr.cur_bindings, &permanent_stuff.pool_for_sexprs);
             this.active_value = argument;
 
+            var tail_optimized: bool = undefined;
             if (case.next) |next| {
                 last_stack_ptr.cur_cases = next.items;
+                tail_optimized = false;
             } else {
                 _ = this.stack.pop();
+                tail_optimized = true;
             }
 
             this.score.successful_matches += 1;
 
+            var added_new_fnk_to_stack: bool = undefined;
             const new_thing = try StackThing.init(this.active_value, case.fnk_name, scoring_run);
             switch (new_thing) {
                 .stack_thing => |x| {
                     try this.stack.append(x);
                     this.score.max_stack = @max(this.score.max_stack, this.stack.items.len);
+                    added_new_fnk_to_stack = true;
                 },
                 .builtin => |r| {
                     this.active_value = r;
+                    added_new_fnk_to_stack = false;
                 },
             }
+
+            this.last_visual_state = .{ .matched = .{
+                .tail_optimized = tail_optimized,
+                .added_new_fnk_to_stack = added_new_fnk_to_stack,
+                .case = case,
+                .old_active_value = old_active_value,
+            } };
+            std.log.debug("last visual case fnk: {any}", .{case.fnk_name});
 
             return null;
         } else {

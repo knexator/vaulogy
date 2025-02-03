@@ -1912,6 +1912,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn update(self: *Self, delta_seconds: f32) !?*const Sexpr {
+            if (platform.getMouse().wasPressed(.right)) self.anim_t = 0.99;
+
             self.anim_t += delta_seconds / if (platform.getMouse().cur.isDown(.left)) tof32(2000.0) else 2.0;
             while (self.anim_t >= 1) {
                 self.anim_t -= 1;
@@ -1945,13 +1947,14 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 return;
             }
 
+            std.log.debug("cur state: {s}", .{@tagName(self.thread.last_visual_state)});
             var it = std.mem.reverseIterator(self.thread.stack.items);
             switch (self.thread.last_visual_state) {
                 .just_started => {
-                    const active_stack: core.StackThing = it.next().?;
-                    try artist.drawSexpr(camera, parent_point.applyToLocalPoint(SAMPLE_INPUT_POS), self.thread.active_value);
-                    try artist.drawSexpr(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), active_stack.cur_fnk_name);
-                    try drawCases(true, parent_point, active_stack.cur_cases, true);
+                    // const active_stack: core.StackThing = it.next().?;
+                    // try artist.drawSexpr(camera, parent_point.applyToLocalPoint(SAMPLE_INPUT_POS), self.thread.active_value);
+                    // try artist.drawSexpr(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), active_stack.cur_fnk_name);
+                    // try drawCases(true, parent_point, active_stack.cur_cases, true);
                 },
                 .failed_to_match => |discarded_case| {
                     const active_stack: core.StackThing = it.next().?;
@@ -1988,6 +1991,83 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             try artist.drawSexpr(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), x.cur_fnk_name);
                         }
                     }
+                },
+                .matched => |matched| {
+                    if (self.anim_t < 0.5) {
+                        const t = remap(self.anim_t, 0, 0.5, 0, 1);
+                        try artist.drawSexpr(camera, parent_point.applyToLocalPoint(SAMPLE_INPUT_POS), matched.old_active_value);
+                        try artist.drawSexpr(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), matched.case.fnk_name);
+                        // const prev_stack: core.StackThing = it.next().?;
+                        // try drawCases(true, parent_point, prev_stack.cur_cases, true);
+                        // try drawCases(
+                        //     true,
+                        //     parent_point.applyToLocalPoint(.{ .pos = .new(0, lerp(1.5, 0, t)) }),
+                        //     active_stack.cur_cases,
+                        //     false,
+                        // );
+                        try drawCase(
+                            true,
+                            parent_point
+                                .applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, lerp(3, 0, t)) }),
+                            matched.case,
+                            true,
+                            true,
+                        );
+                    } else {
+                        const t = remap(self.anim_t, 0.5, 1, 0, 1);
+                        if (!matched.tail_optimized) {
+                            const active_stack: core.StackThing = it.next().?;
+                            const prev_stack: core.StackThing = it.next().?;
+                            if (matched.added_new_fnk_to_stack) {
+                                try artist.drawSexpr(
+                                    camera,
+                                    parent_point
+                                        .applyToLocalPoint(.{ .pos = .new(lerp(0, -2.1, t), 0) })
+                                        .applyToLocalPoint(MAIN_FNK_POS),
+                                    prev_stack.cur_fnk_name,
+                                );
+                                try drawCases(
+                                    false,
+                                    parent_point.applyToLocalPoint(.{
+                                        .pos = .new(lerp(DIST_TO_TEMPLATE, -2.1, t), 0),
+                                        .scale = 1 - t,
+                                    }),
+                                    prev_stack.cur_cases,
+                                    true,
+                                );
+                                try artist.drawSexpr(
+                                    camera,
+                                    parent_point
+                                        .applyToLocalPoint(Point.lerp(
+                                        (Point{ .pos = .new(DIST_TO_TEMPLATE, 0) })
+                                            .applyToLocalPoint(FNK_NAME_OFFSET),
+                                        MAIN_FNK_POS,
+                                        t,
+                                    )),
+                                    prev_stack.cur_fnk_name,
+                                );
+                                try drawCases(
+                                    false,
+                                    parent_point.applyToLocalPoint(.{
+                                        .pos = .new(lerp(DIST_TO_TEMPLATE * 2, 0, t), 0),
+                                    }),
+                                    active_stack.cur_cases,
+                                    true,
+                                );
+                            } else {
+                                try drawCases(
+                                    t > 0.5,
+                                    parent_point.applyToLocalPoint(.{ .pos = .new(lerp(5, 0, t), 0) }),
+                                    prev_stack.cur_cases,
+                                    true,
+                                );
+                            }
+                        } else {
+                            std.log.debug("TODO NOW!", .{});
+                        }
+                    }
+                    // const active_stack: core.StackThing = it.next().?;
+                    // if (matched.added_new_fnk_to_stack and !matched.tail_optimized) {}
                 },
                 else => {},
             }
@@ -2054,6 +2134,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         // TODO: remove this duplication from EditingFnk
+        // TODO: is_gen0 to be a [0..1] float
         fn drawCases(is_gen0: bool, parent_point: Point, cases: []const core.MatchCaseDefinition, first_unfolded: bool) OoM!void {
             for (cases, 0..) |case, k| {
                 const relative_pattern_point = if (first_unfolded and k == 0) Point{
