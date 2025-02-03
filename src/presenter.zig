@@ -1892,6 +1892,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         scoring_run: *core.ScoringRun,
         thread: core.ExecutionThread,
 
+        // TODO: wasm crashes without this!!
+        _padding: f32 = 0,
+        anim_t: f32,
+
         pub fn init(
             input: *const Sexpr,
             fn_name: *const Sexpr,
@@ -1900,21 +1904,36 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             return .{
                 .thread = try .init(input, fn_name, scoring_run),
                 .scoring_run = scoring_run,
+                .anim_t = 0.0,
             };
         }
 
         pub fn update(self: *Self, delta_seconds: f32) !?*const Sexpr {
-            _ = delta_seconds;
-
-            if (platform.getMouse().wasPressed(.left)) {
-                return try self.thread.advanceStep(self.scoring_run);
-            } else {
-                return null;
+            self.anim_t += delta_seconds;
+            while (self.anim_t >= 1) {
+                self.anim_t -= 1;
+                if (try self.thread.advanceStep(self.scoring_run)) |x| return x;
             }
+            return null;
+
+            // if (platform.getMouse().wasPressed(.left)) {
+            //     return try self.thread.advanceStep(self.scoring_run);
+            // } else {
+            //     return null;
+            // }
         }
 
         pub fn draw(self: Self) !void {
             drawer.clear(Color.gray(128));
+
+            if (true) try artist.drawSexpr(
+                camera,
+                .{
+                    .pos = platform.getMouse().cur.pos(camera),
+                    .scale = 1 - self.anim_t,
+                },
+                &Sexpr.input,
+            );
 
             var parent_point = Point{};
             try artist.drawSexpr(camera, parent_point.applyToLocalPoint(SAMPLE_INPUT_POS), self.thread.active_value);
