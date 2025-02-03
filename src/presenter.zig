@@ -573,7 +573,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             try player_data.fnks.put(fnk.name, fnk.body);
             try platform.setPlayerData(player_data, &result.mem);
 
-            try player_data.fnks.put(&Sexpr.doLit("default"), defaultFnkBody(&result.mem));
+            try player_data.fnks.put(try result.mem.storeSexpr(Sexpr.doLit("default")), defaultFnkBody(&result.mem));
             result.persistence = player_data;
 
             result.state = .{ .editing_fnk = try .init(Fnk{
@@ -1892,8 +1892,6 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         scoring_run: *core.ScoringRun,
         thread: core.ExecutionThread,
 
-        // TODO: wasm crashes without this!!
-        _padding: f32 = 0,
         anim_t: f32,
 
         pub fn init(
