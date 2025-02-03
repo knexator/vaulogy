@@ -389,28 +389,10 @@ pub const StackThing = struct {
     cur_cases: []const MatchCaseDefinition,
     cur_bindings: Bindings,
 
-    // TODO: disable this at comptime for cli app
-    cur_state: StackThingState,
-    pub const StackThingState = union(enum) {
-        starting,
-        failing_to_match: MatchCaseDefinition,
-        matching_and_filling_bindings: struct {
-            // TODO: new bindings
-            // new_argument: *const Sexpr,
-
-            next_fnk_name: *const Sexpr,
-        },
-        // waiting_for_child
-        TODO,
-        ended: *const Sexpr,
-    };
-
-    pub const ValueAfterInit = union(enum) {
+    pub fn init(input: *const Sexpr, fn_name: *const Sexpr, scoring_run: *ScoringRun) !union(enum) {
         builtin: *const Sexpr,
         stack_thing: StackThing,
-    };
-
-    pub fn init(input: *const Sexpr, fn_name: *const Sexpr, scoring_run: *ScoringRun) !ValueAfterInit {
+    } {
         inline for (builtin_fnks) |builtin| {
             if (builtin.name.equals(fn_name)) {
                 return .{ .builtin = builtin.fnk(input) };
@@ -423,7 +405,6 @@ pub const StackThing = struct {
             .cur_bindings = bindings,
             .cur_cases = cases,
             .cur_fnk_name = fn_name,
-            .cur_state = .starting,
         } };
     }
 
@@ -441,6 +422,14 @@ pub const ExecutionThread = struct {
         successful_matches: usize,
         max_stack: usize,
     },
+
+    // TODO: remove at comptime in cli app
+    last_visual_state: VisualState = .just_started,
+    pub const VisualState = union(enum) {
+        just_started,
+        failed_to_match: MatchCaseDefinition,
+        TODO,
+    };
 
     pub fn init(
         input: *const Sexpr,
@@ -484,6 +473,8 @@ pub const ExecutionThread = struct {
 
     // TODO: remove duplication, maybe
     pub fn advanceTinyStep(this: *ExecutionThread, scoring_run: *ScoringRun) !?*const Sexpr {
+        this.last_visual_state = .TODO;
+
         var permanent_stuff = scoring_run.mem;
         if (this.stack.items.len > 0) {
             const last_stack_ptr: *StackThing = &this.stack.items[this.stack.items.len - 1];
@@ -497,35 +488,24 @@ pub const ExecutionThread = struct {
             if (!(try generateBindings(case.pattern, this.active_value, &last_stack_ptr.cur_bindings))) {
                 undoLastBindings(&last_stack_ptr.cur_bindings, initial_bindings_count);
                 last_stack_ptr.cur_cases = rest_of_cases;
-                last_stack_ptr.cur_state = .{ .failing_to_match = case };
+                this.last_visual_state = .{ .failed_to_match = case };
                 return null;
             }
 
             const argument = try fillTemplate(case.template, last_stack_ptr.cur_bindings, &permanent_stuff.pool_for_sexprs);
             this.active_value = argument;
-            // last_stack_ptr.cur_state = .{ .matching = .{
-            //     .new_argument = argument,
-            // } };
 
             if (case.next) |next| {
                 last_stack_ptr.cur_cases = next.items;
-                last_stack_ptr.cur_state = .TODO;
             } else {
                 _ = this.stack.pop();
             }
 
             this.score.successful_matches += 1;
 
-            const new_thing = try StackThing.init(
-                argument,
-                case.fnk_name,
-                scoring_run,
-            );
-            // last_stack_ptr.cur_state = .{ .matching = new_thing };
-
+            const new_thing = try StackThing.init(this.active_value, case.fnk_name, scoring_run);
             switch (new_thing) {
                 .stack_thing => |x| {
-                    // this.active_value = x.;
                     try this.stack.append(x);
                     this.score.max_stack = @max(this.score.max_stack, this.stack.items.len);
                 },
@@ -541,8 +521,6 @@ pub const ExecutionThread = struct {
     }
 
     pub fn advanceStep(this: *ExecutionThread, scoring_run: *ScoringRun) !?*const Sexpr {
-        if (true) return try this.advanceTinyStep(scoring_run);
-
         var permanent_stuff = scoring_run.mem;
         if (this.stack.items.len > 0) {
             const last_stack_ptr: *StackThing = &this.stack.items[this.stack.items.len - 1];
