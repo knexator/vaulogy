@@ -504,14 +504,14 @@ pub const Drawer = struct {
     };
 };
 
-fn defaultFnkBody(mem: *VeryPermamentGameStuff) FnkBody {
-    _ =
-        \\default {
-        \\  true -> default: (nil . true) {
+fn defaultFnkBody1(mem: *VeryPermamentGameStuff) FnkBody {
+    const default_fnk =
+        \\default1 {
+        \\  true -> default1: (nil . true) {
         \\      false -> true;
-        \\      (true . false) -> default: false {
+        \\      @foo -> default2: false {
         \\          false -> true;
-        \\          true -> true;
+        \\          @thing -> true;
         \\      }
         \\  }
         \\  @true -> ( @true . false );
@@ -519,10 +519,16 @@ fn defaultFnkBody(mem: *VeryPermamentGameStuff) FnkBody {
         \\  (true . (true . nil)) -> true;
         \\}
     ;
+    var parser = parsing.Parser{ .remaining_text = default_fnk };
+    const fnk = parser.parseFnkNew(&mem.pool_for_sexprs, mem.arena_for_cases.allocator()) catch unreachable;
+    return fnk.body;
+}
+
+fn defaultFnkBody2(mem: *VeryPermamentGameStuff) FnkBody {
     const default_fnk =
-        \\default {
+        \\default2 {
         \\  true -> false;
-        \\  @xxx -> default: true {
+        \\  @xxx -> default2: true {
         \\      @result -> (final . @result);
         \\  }
         \\}
@@ -573,12 +579,12 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             try player_data.fnks.put(fnk.name, fnk.body);
             try platform.setPlayerData(player_data, &result.mem);
 
-            try player_data.fnks.put(try result.mem.storeSexpr(Sexpr.doLit("default")), defaultFnkBody(&result.mem));
+            try player_data.fnks.put(try result.mem.storeSexpr(Sexpr.doLit("default2")), defaultFnkBody2(&result.mem));
             result.persistence = player_data;
 
             result.state = .{ .editing_fnk = try .init(Fnk{
-                .name = try result.mem.storeSexpr(Sexpr.doLit("default")),
-                .body = defaultFnkBody(&result.mem),
+                .name = try result.mem.storeSexpr(Sexpr.doLit("default1")),
+                .body = defaultFnkBody1(&result.mem),
             }, &result.mem) };
 
             result.scoring_run = undefined;
@@ -590,7 +596,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             switch (self.state) {
                 .level_select => |*ui| if (ui.update(delta_seconds)) |level_index| {
                     const fnk_name = levels[level_index].fnk_name;
-                    const fnk_body = self.persistence.fnks.get(fnk_name) orelse defaultFnkBody(&self.mem);
+                    const fnk_body = self.persistence.fnks.get(fnk_name) orelse defaultFnkBody1(&self.mem);
                     self.state = .{ .editing_fnk = try .init(
                         Fnk{ .name = fnk_name, .body = fnk_body },
                         &self.mem,
@@ -728,7 +734,8 @@ fn Artist(platform: Platform, drawer: Drawer) type {
         }
 
         fn newAtomProfile(name: []const u8) ![]const Vec2 {
-            var rnd_state = std.Random.DefaultPrng.init(name.len);
+            const seed = std.array_hash_map.hashString(name);
+            var rnd_state = std.Random.DefaultPrng.init(seed);
             var rnd = Random{ .rnd = rnd_state.random() };
 
             const profile = try platform.gpa.alloc(Vec2, rnd.rnd.intRangeLessThan(usize, 2, 15));
@@ -745,7 +752,8 @@ fn Artist(platform: Platform, drawer: Drawer) type {
         }
 
         fn newAtomColor(name: []const u8) !Color {
-            var rnd_state = std.Random.DefaultPrng.init(name.len);
+            const seed = std.array_hash_map.hashString(name);
+            var rnd_state = std.Random.DefaultPrng.init(seed);
             var rnd = Random{ .rnd = rnd_state.random() };
             const color = rnd.color();
             return color;
@@ -772,6 +780,10 @@ fn Artist(platform: Platform, drawer: Drawer) type {
         pub fn drawOffscreenCableTo(camera: Camera, pattern: Point) void {
             // TODO: store some state to avoid cable jumps? or maybe make the cable periodic
             drawer.drawCable(camera, pattern.applyToLocalPosition(.new(-CABLE_OFFSCREEN_DIST, 0)), pattern.applyToLocalPosition(.new(-0.5, 0)), pattern.scale, -CABLE_OFFSCREEN_DIST);
+        }
+
+        pub fn drawCableTo(camera: Camera, origin: Vec2, pattern: Point) void {
+            drawer.drawCable(camera, origin, pattern.applyToLocalPosition(.new(-0.5, 0)), pattern.scale, 0);
         }
 
         pub fn drawPatternOutline(camera: Camera, world_point: Point) !void {
@@ -1239,7 +1251,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             },
         } = .{ .nothing = {} },
 
-        const camera = Camera{ .center = .new(10, 3), .height = 15.0 };
+        const camera = Camera{ .center = .new(7, 3), .height = 15.0 };
 
         const toolbar = struct {
             const atom_values = [_]Sexpr{
@@ -2061,6 +2073,14 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         const dissolving_pattern_point = parent_point
                             .applyToLocalPoint(SAMPLE_INPUT_POS)
                             .applyToLocalPoint(.{ .scale = 1 - t2 });
+                        const cable_asdf_pos = dissolving_pattern_point.applyToLocalPosition(.new(3.5, 0));
+                        drawer.drawCable(
+                            camera,
+                            .new(-CABLE_OFFSCREEN_DIST, 0),
+                            dissolving_pattern_point.applyToLocalPosition(.new(-0.5, 0)),
+                            1,
+                            t2 * 3,
+                        );
                         try artist.drawSexpr(
                             camera,
                             dissolving_pattern_point,
@@ -2074,7 +2094,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         );
                         drawer.drawCable(
                             camera,
-                            dissolving_pattern_point.applyToLocalPosition(.new(-0.5, 1)),
+                            dissolving_pattern_point.applyToLocalPosition(.new(-1, 1)),
                             dissolving_pattern_point.applyToLocalPosition(.new(3, 1)),
                             dissolving_pattern_point.scale,
                             0,
@@ -2089,7 +2109,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                 SAMPLE_INPUT_POS,
                                 t,
                             ));
-                            artist.drawOffscreenCableTo(camera, active_value_cur_pos);
+                            artist.drawCableTo(camera, cable_asdf_pos, active_value_cur_pos);
                             try artist.drawSexpr(
                                 camera,
                                 active_value_cur_pos,
@@ -2097,22 +2117,26 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             );
 
                             if (matched.added_new_fnk_to_stack) {
+                                defer parent_point = parent_point.applyToLocalPoint(.{ .pos = .new(-DIST_BETWEEN_QUEUED_FNKS * t2, 0) });
+
                                 try artist.drawSexpr(
                                     camera,
                                     parent_point
-                                        .applyToLocalPoint(.{ .pos = .new(lerp(0, -DIST_BETWEEN_QUEUED_FNKS, t), 0) })
+                                        .applyToLocalPoint(.{ .pos = .new(lerp(0, -DIST_BETWEEN_QUEUED_FNKS, t2), 0) })
                                         .applyToLocalPoint(MAIN_FNK_POS),
                                     prev_stack.cur_fnk_name,
                                 );
+                                // TODO: revise this (waiting cases should be gen0?)
                                 try drawCases(
                                     0,
                                     parent_point.applyToLocalPoint(.{
-                                        .pos = .new(lerp(DIST_TO_TEMPLATE - 1, -1 - DIST_BETWEEN_QUEUED_FNKS, t), 0),
+                                        .pos = .new(lerp(DIST_TO_TEMPLATE - 1, -1 - DIST_BETWEEN_QUEUED_FNKS, t2), 0),
                                     }),
                                     prev_stack.cur_cases,
                                     true,
-                                    t,
+                                    t2,
                                 );
+
                                 try artist.drawSexpr(
                                     camera,
                                     parent_point
@@ -2122,7 +2146,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                         MAIN_FNK_POS,
                                         t,
                                     )),
-                                    prev_stack.cur_fnk_name,
+                                    active_stack.cur_fnk_name,
                                 );
                                 try drawCases(
                                     1,
@@ -2157,6 +2181,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             );
 
                             if (!matched.added_new_fnk_to_stack) {
+                                defer parent_point = parent_point.applyToLocalPoint(.{ .pos = .new(lerp(-DIST_BETWEEN_QUEUED_FNKS, 0, t), 0) });
+
                                 if (it.next()) |prev_stack| {
                                     try artist.drawSexpr(
                                         camera,
@@ -2176,11 +2202,11 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                     );
                                 }
                                 const active_value_cur_pos = parent_point.applyToLocalPoint(Point.lerp(
-                                    .{ .pos = .new(5 + DIST_TO_TEMPLATE, 0) },
+                                    .{ .pos = .new(5 + DIST_TO_TEMPLATE - 1, 0) },
                                     SAMPLE_INPUT_POS,
                                     t,
                                 ));
-                                artist.drawOffscreenCableTo(camera, active_value_cur_pos);
+                                artist.drawCableTo(camera, cable_asdf_pos, active_value_cur_pos);
                                 try artist.drawSexpr(
                                     camera,
                                     active_value_cur_pos,
@@ -2287,6 +2313,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 };
                 const pattern_point = parent_point.applyToLocalPoint(relative_pattern_point);
 
+                // TODO: constant cable should be true except when whooshing away
+                // try drawCase(is_gen0, pattern_point, case, first_unfolded and k == 0, true, hiding_children);
                 try drawCase(is_gen0, pattern_point, case, first_unfolded and k == 0, is_gen0 > 0.5, hiding_children);
             }
         }
