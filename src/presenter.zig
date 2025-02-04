@@ -1948,8 +1948,6 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
             var parent_point = Point{};
 
-            // TODO: pop off old fnk in match
-
             // if (self.thread.stack.items.len == 0) {
             //     try artist.drawSexpr(camera, parent_point.applyToLocalPoint(SAMPLE_INPUT_POS), self.thread.active_value);
             //     std.log.debug("TODO: ending?", .{});
@@ -2022,10 +2020,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         if (!matched.tail_optimized) {
                             _ = it.next().?;
                         }
-                        // const prev_stack: core.StackThing = it.next().?;
-                        // _ = active_stack;
 
-                        const t = remap(self.anim_t, 0, 0.5, 0, 1);
+                        const t = clamp01(remap(self.anim_t, 0, 0.4, 0, 1));
+                        const t2 = clamp01(remap(self.anim_t, 0.4, 0.5, 0, 1));
+
                         artist.drawOffscreenCableTo(camera, SAMPLE_INPUT_POS);
                         try artist.drawSexpr(
                             camera,
@@ -2038,6 +2036,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             matched.old_fnk_name,
                         );
 
+                        // TODO: avoid cable appearing suddenly from the disolved pattern
                         try drawCases(
                             1,
                             parent_point.applyToLocalPoint(.{ .pos = .new(0, lerp(1.5, 0, t)) }),
@@ -2048,7 +2047,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         try drawCase(
                             1,
                             parent_point
-                                .applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, lerp(3, 0, t)) }),
+                                .applyToLocalPoint(.{ .pos = .new(lerp(DIST_TO_TEMPLATE, 4, t2), lerp(3, 0, t)) }),
                             matched.case,
                             true,
                             true,
@@ -2056,6 +2055,24 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         );
                     } else {
                         const t = remap(self.anim_t, 0.5, 1, 0, 1);
+
+                        // TODO: draw centered
+                        try artist.drawSexpr(
+                            camera,
+                            parent_point
+                                .applyToLocalPoint(SAMPLE_INPUT_POS)
+                                .applyToLocalPoint(.{ .scale = 1 - t }),
+                            matched.old_active_value,
+                        );
+                        try artist.drawPatternSexpr(
+                            camera,
+                            parent_point
+                                .applyToLocalPoint(SAMPLE_INPUT_POS)
+                                .applyToLocalPoint(.{ .scale = 1 - t })
+                                .applyToLocalPoint(.{ .pos = .new(3, 0) }),
+                            matched.case.pattern,
+                        );
+
                         if (!matched.tail_optimized) {
                             const active_stack: core.StackThing = it.next().?;
                             const prev_stack: core.StackThing = it.next().?;
