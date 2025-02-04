@@ -437,7 +437,7 @@ pub const ExecutionThread = struct {
             old_fnk_name: *const Sexpr,
             discarded_cases: []const MatchCaseDefinition,
         },
-        TODO,
+        ended: *const Sexpr,
     };
 
     pub fn init(
@@ -482,8 +482,6 @@ pub const ExecutionThread = struct {
 
     // TODO: remove duplication, maybe
     pub fn advanceTinyStep(this: *ExecutionThread, scoring_run: *ScoringRun) !?*const Sexpr {
-        this.last_visual_state = .TODO;
-
         var permanent_stuff = scoring_run.mem;
         if (this.stack.items.len > 0) {
             const last_stack_ptr: *StackThing = &this.stack.items[this.stack.items.len - 1];
@@ -541,10 +539,10 @@ pub const ExecutionThread = struct {
                 .old_fnk_name = old_fnk_name,
                 .discarded_cases = rest_of_cases,
             } };
-            std.log.debug("last visual case fnk: {any}", .{case.fnk_name});
 
             return null;
         } else {
+            this.last_visual_state = .{ .ended = this.active_value };
             return this.active_value;
         }
     }

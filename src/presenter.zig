@@ -1922,7 +1922,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             self.anim_t += delta_seconds / if (platform.getMouse().cur.isDown(.left)) tof32(2000.0) else 2.0;
             while (self.anim_t >= 1) {
                 self.anim_t -= 1;
-                if (try self.thread.advanceTinyStep(self.scoring_run)) |x| return x;
+                _ = try self.thread.advanceTinyStep(self.scoring_run);
+                // if (try self.thread.advanceTinyStep(self.scoring_run)) |x| return x;
             }
             return null;
 
@@ -2158,8 +2159,9 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     // const active_stack: core.StackThing = it.next().?;
                     // if (matched.added_new_fnk_to_stack and !matched.tail_optimized) {}
                 },
-                else => {
-                    std.log.debug("TODO NOW 3!", .{});
+                .ended => |result| {
+                    artist.drawOffscreenCableTo(camera, SAMPLE_INPUT_POS);
+                    try artist.drawSexpr(camera, parent_point.applyToLocalPoint(SAMPLE_INPUT_POS), result);
                 },
             }
             while (it.next()) |x| {
