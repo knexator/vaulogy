@@ -769,6 +769,11 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             return AtomVisualCache.init();
         }
 
+        pub fn drawOffscreenCableTo(camera: Camera, pattern: Point) void {
+            // TODO: store some state to avoid cable jumps? or maybe make the cable periodic
+            drawer.drawCable(camera, pattern.applyToLocalPosition(.new(-CABLE_OFFSCREEN_DIST, 0)), pattern.applyToLocalPosition(.new(-0.5, 0)), pattern.scale, -CABLE_OFFSCREEN_DIST);
+        }
+
         pub fn drawPatternOutline(camera: Camera, world_point: Point) !void {
             drawer.drawPatternAtomOutline(camera, world_point);
         }
@@ -1008,6 +1013,7 @@ const FNK_NAME_OFFSET = Point{
 const SAMPLE_INPUT_POS = Point{ .pos = .new(1, 0) };
 const MAIN_FNK_POS = Point{ .pos = .new(0, -1.25), .turns = -0.25 };
 const DIST_BETWEEN_QUEUED_FNKS = 3.5;
+const CABLE_OFFSCREEN_DIST = 15;
 
 const CaseState = struct {
     // TODO: generic tree type to avoid duplication
@@ -1522,6 +1528,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         pub fn draw(self: Self) !void {
             drawer.clear(Color.gray(128));
             {
+                artist.drawOffscreenCableTo(camera, SAMPLE_INPUT_POS);
                 try artist.drawSexpr(
                     camera,
                     SAMPLE_INPUT_POS,
@@ -1531,13 +1538,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     camera,
                     MAIN_FNK_POS,
                     self.fnk_name,
-                );
-                drawer.drawCable(
-                    camera,
-                    .new(-7, 0),
-                    .new(0.5, 0),
-                    1,
-                    0,
                 );
             }
 
@@ -1910,8 +1910,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             std.debug.assert(null == try result.thread.advanceTinyStep(result.scoring_run));
 
             // TODO: remove these
-            std.debug.assert(null == try result.thread.advanceTinyStep(result.scoring_run));
-            result.anim_t = 0.3;
+            // std.debug.assert(null == try result.thread.advanceTinyStep(result.scoring_run));
+            // result.anim_t = 0.3;
 
             return result;
         }
@@ -1947,6 +1947,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
             var parent_point = Point{};
 
+            // TODO: pop off old fnk in match
+
             // if (self.thread.stack.items.len == 0) {
             //     try artist.drawSexpr(camera, parent_point.applyToLocalPoint(SAMPLE_INPUT_POS), self.thread.active_value);
             //     std.log.debug("TODO: ending?", .{});
@@ -1964,19 +1966,20 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .failed_to_match => |discarded_case| {
                     const active_stack: core.StackThing = it.next().?;
+                    artist.drawOffscreenCableTo(camera, SAMPLE_INPUT_POS);
                     try artist.drawSexpr(camera, parent_point.applyToLocalPoint(SAMPLE_INPUT_POS), self.thread.active_value);
                     try artist.drawSexpr(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), active_stack.cur_fnk_name);
                     if (self.anim_t < 0.5) {
                         const t = remap(self.anim_t, 0, 0.5, 0, 1);
                         try drawCases(
-                            true,
+                            1,
                             parent_point.applyToLocalPoint(.{ .pos = .new(0, lerp(1.5, 0, t)) }),
                             active_stack.cur_cases,
                             false,
                             0,
                         );
                         try drawCase(
-                            true,
+                            1,
                             parent_point
                                 .applyToLocalPoint(.{ .pos = .new(5, lerp(3, 0, t)) }),
                             discarded_case,
@@ -1986,14 +1989,14 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         );
                     } else {
                         const t = remap(self.anim_t, 0.5, 1, 0, 1);
-                        try drawCase(true, parent_point
+                        try drawCase(1, parent_point
                             .applyToLocalPoint(Point.lerp(
                             .{ .pos = .new(5, 0) },
                             .{ .pos = .new(12, -4), .scale = 0, .turns = 0.65 },
                             t,
                         )), discarded_case, true, false, 0);
                         try drawCase(
-                            true,
+                            1,
                             parent_point
                                 .applyToLocalPoint(.{ .pos = .new(5, lerp(3.5, 3, t)), .scale = lerp(0.5, 1, t) }),
                             active_stack.cur_cases[0],
@@ -2002,7 +2005,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             0,
                         );
                         try drawCases(
-                            true,
+                            1,
                             parent_point.applyToLocalPoint(.{ .pos = .new(0, 1.5) }),
                             active_stack.cur_cases[1..],
                             false,
@@ -2022,6 +2025,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         // _ = active_stack;
 
                         const t = remap(self.anim_t, 0, 0.5, 0, 1);
+                        artist.drawOffscreenCableTo(camera, SAMPLE_INPUT_POS);
                         try artist.drawSexpr(
                             camera,
                             parent_point.applyToLocalPoint(SAMPLE_INPUT_POS),
@@ -2034,14 +2038,14 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         );
 
                         try drawCases(
-                            true,
+                            1,
                             parent_point.applyToLocalPoint(.{ .pos = .new(0, lerp(1.5, 0, t)) }),
                             matched.discarded_cases,
                             false,
                             0,
                         );
                         try drawCase(
-                            true,
+                            1,
                             parent_point
                                 .applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, lerp(3, 0, t)) }),
                             matched.case,
@@ -2055,10 +2059,15 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             const active_stack: core.StackThing = it.next().?;
                             const prev_stack: core.StackThing = it.next().?;
 
+                            const active_value_cur_pos = parent_point.applyToLocalPoint(Point.lerp(
+                                .{ .pos = .new(5 + DIST_TO_TEMPLATE, 0) },
+                                SAMPLE_INPUT_POS,
+                                t,
+                            ));
+                            artist.drawOffscreenCableTo(camera, active_value_cur_pos);
                             try artist.drawSexpr(
                                 camera,
-                                parent_point
-                                    .applyToLocalPoint(Point.lerp(.{ .pos = .new(5 + DIST_TO_TEMPLATE, 0) }, SAMPLE_INPUT_POS, t)),
+                                active_value_cur_pos,
                                 self.thread.active_value,
                             );
 
@@ -2071,7 +2080,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                     prev_stack.cur_fnk_name,
                                 );
                                 try drawCases(
-                                    false,
+                                    0,
                                     parent_point.applyToLocalPoint(.{
                                         .pos = .new(lerp(DIST_TO_TEMPLATE, -1 - DIST_BETWEEN_QUEUED_FNKS, t), 0),
                                     }),
@@ -2091,7 +2100,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                     prev_stack.cur_fnk_name,
                                 );
                                 try drawCases(
-                                    true,
+                                    1,
                                     parent_point.applyToLocalPoint(.{
                                         // TODO: this anim
                                         .pos = .new(lerp(DIST_TO_TEMPLATE * 5, 0, t), 0),
@@ -2103,7 +2112,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             } else {
                                 std.log.debug("unchecked?!", .{});
                                 try drawCases(
-                                    t > 0.5,
+                                    t,
                                     parent_point.applyToLocalPoint(.{ .pos = .new(lerp(5, 0, t), 0) }),
                                     prev_stack.cur_cases,
                                     true,
@@ -2121,7 +2130,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                         prev_stack.cur_fnk_name,
                                     );
                                     try drawCases(
-                                        t > 0.5,
+                                        t,
                                         parent_point.applyToLocalPoint(.{
                                             .pos = .new(lerp(-1 - DIST_BETWEEN_QUEUED_FNKS, 0, t), 0),
                                         }),
@@ -2130,10 +2139,15 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                         1 - t,
                                     );
                                 }
+                                const active_value_cur_pos = parent_point.applyToLocalPoint(Point.lerp(
+                                    .{ .pos = .new(5 + DIST_TO_TEMPLATE, 0) },
+                                    SAMPLE_INPUT_POS,
+                                    t,
+                                ));
+                                artist.drawOffscreenCableTo(camera, active_value_cur_pos);
                                 try artist.drawSexpr(
                                     camera,
-                                    parent_point
-                                        .applyToLocalPoint(Point.lerp(.{ .pos = .new(5 + DIST_TO_TEMPLATE, 0) }, SAMPLE_INPUT_POS, t)),
+                                    active_value_cur_pos,
                                     self.thread.active_value,
                                 );
                             } else {
@@ -2153,7 +2167,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 try artist.drawSexpr(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), x.cur_fnk_name);
 
                 try drawCases(
-                    false,
+                    0,
                     parent_point.applyToLocalPoint(.{ .pos = .new(-1, 0) }),
                     x.cur_cases,
                     true,
@@ -2225,24 +2239,23 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         // TODO: remove this duplication from EditingFnk
-        // TODO: is_gen0 to be a [0..1] float
-        fn drawCases(is_gen0: bool, parent_point: Point, cases: []const core.MatchCaseDefinition, first_unfolded: bool, hiding_children: f32) OoM!void {
+        fn drawCases(is_gen0: f32, parent_point: Point, cases: []const core.MatchCaseDefinition, first_unfolded: bool, hiding_children: f32) OoM!void {
             for (cases, 0..) |case, k| {
                 const relative_pattern_point = if (first_unfolded and k == 0) Point{
-                    .pos = .new(if (is_gen0) 5 else 4, 3),
+                    .pos = .new(lerp(4, 5, is_gen0), 3),
                     .scale = 1,
                 } else Point{
-                    .pos = .new(if (is_gen0) 5 else 4, 3.5 + tof32(k) * 1.5),
+                    .pos = .new(lerp(4, 5, is_gen0), 3.5 + tof32(k) * 1.5),
                     .scale = 0.5,
                 };
                 const pattern_point = parent_point.applyToLocalPoint(relative_pattern_point);
 
-                try drawCase(is_gen0, pattern_point, case, first_unfolded and k == 0, is_gen0, hiding_children);
+                try drawCase(is_gen0, pattern_point, case, first_unfolded and k == 0, is_gen0 > 0.5, hiding_children);
             }
         }
 
         // TODO: join with_extra and constant_cable into a single struct? so constant cable can have a default value
-        fn drawCase(is_gen0: bool, pattern_point: Point, case: core.MatchCaseDefinition, with_extra: bool, constant_cable: bool, hiding_children: f32) OoM!void {
+        fn drawCase(is_gen0: f32, pattern_point: Point, case: core.MatchCaseDefinition, with_extra: bool, constant_cable: bool, hiding_children: f32) OoM!void {
             try artist.drawPatternSexpr(
                 camera,
                 pattern_point,
@@ -2252,12 +2265,11 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 try drawCaseExtra(pattern_point.applyToLocalPoint(.{ .scale = 1 - hiding_children }), case);
             }
 
-            const cable_from = pattern_point.applyToLocalPosition(.new((if (is_gen0) tof32(-5) else -3) / if (constant_cable) pattern_point.scale else 1, 1));
+            const cable_from = pattern_point.applyToLocalPosition(.new((lerp(-3, -5, is_gen0)) / if (constant_cable) pattern_point.scale else 1, 1));
             const cable_to = pattern_point.applyToLocalPosition(.new(0, 1));
             drawer.drawCable(
                 camera,
                 cable_from,
-                // cable_to.sub(.new(if (is_gen0) 5 else 3, 0)),
                 cable_to,
                 if (constant_cable) 1 else pattern_point.scale,
                 0,
@@ -2285,7 +2297,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 0,
             );
             if (case.next) |next| {
-                try drawCases(false, pattern_point, next.items, true, 0);
+                try drawCases(0, pattern_point, next.items, true, 0);
             }
         }
     };
