@@ -87,6 +87,8 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/sdl_platform.zig"),
         .target = target,
         .optimize = optimize,
+        // .use_llvm = optimize != .Debug,
+        // .use_lld = optimize != .Debug,
     });
     const sdl_dep = b.dependency("sdl", .{
         .target = target,
@@ -209,6 +211,8 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/sdl_platform.zig"),
         .target = target,
         .optimize = optimize,
+        // .use_llvm = optimize != .Debug,
+        // .use_lld = optimize != .Debug,
     });
     sdlgame_exe_check.linkLibrary(sdl_lib);
     const check = b.step("check", "Check if the project compiles");

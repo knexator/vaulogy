@@ -433,6 +433,9 @@ pub const ExecutionThread = struct {
             added_new_fnk_to_stack: bool,
             case: MatchCaseDefinition,
             old_active_value: *const Sexpr,
+            // TODO: redundant if tail_optimized = false
+            old_fnk_name: *const Sexpr,
+            discarded_cases: []const MatchCaseDefinition,
         },
         TODO,
     };
@@ -491,6 +494,8 @@ pub const ExecutionThread = struct {
             const case = last_stack_ptr.cur_cases[0];
             const rest_of_cases = last_stack_ptr.cur_cases[1..];
 
+            std.log.debug("case fnk: {any}", .{case.fnk_name});
+
             if (!(try generateBindings(case.pattern, this.active_value, &last_stack_ptr.cur_bindings))) {
                 undoLastBindings(&last_stack_ptr.cur_bindings, initial_bindings_count);
                 last_stack_ptr.cur_cases = rest_of_cases;
@@ -498,6 +503,7 @@ pub const ExecutionThread = struct {
                 return null;
             }
 
+            const old_fnk_name = last_stack_ptr.cur_fnk_name;
             const old_active_value = this.active_value;
             const argument = try fillTemplate(case.template, last_stack_ptr.cur_bindings, &permanent_stuff.pool_for_sexprs);
             this.active_value = argument;
@@ -532,6 +538,8 @@ pub const ExecutionThread = struct {
                 .added_new_fnk_to_stack = added_new_fnk_to_stack,
                 .case = case,
                 .old_active_value = old_active_value,
+                .old_fnk_name = old_fnk_name,
+                .discarded_cases = rest_of_cases,
             } };
             std.log.debug("last visual case fnk: {any}", .{case.fnk_name});
 
