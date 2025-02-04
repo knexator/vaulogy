@@ -1919,7 +1919,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         pub fn update(self: *Self, delta_seconds: f32) !?*const Sexpr {
             if (platform.getMouse().wasPressed(.right)) self.anim_t = 0.99;
 
-            self.anim_t += delta_seconds / if (platform.getMouse().cur.isDown(.left)) tof32(2000.0) else 2.0;
+            self.anim_t += delta_seconds / if (platform.getMouse().cur.isDown(.left)) tof32(20.0) else 2.0;
             while (self.anim_t >= 1) {
                 self.anim_t -= 1;
                 _ = try self.thread.advanceTinyStep(self.scoring_run);
@@ -1937,7 +1937,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         pub fn draw(self: Self) !void {
             drawer.clear(Color.gray(128));
 
-            if (true) try artist.drawSexpr(
+            if (false) try artist.drawSexpr(
                 camera,
                 .{
                     .pos = platform.getMouse().cur.pos(camera),
@@ -2036,7 +2036,6 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             matched.old_fnk_name,
                         );
 
-                        // TODO: avoid cable appearing suddenly from the disolved pattern
                         try drawCases(
                             1,
                             parent_point.applyToLocalPoint(.{ .pos = .new(0, lerp(1.5, 0, t)) }),
@@ -2045,7 +2044,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             0,
                         );
                         try drawCase(
-                            1,
+                            1 - t2 * 0.5,
                             parent_point
                                 .applyToLocalPoint(.{ .pos = .new(lerp(DIST_TO_TEMPLATE, 4, t2), lerp(3, 0, t)) }),
                             matched.case,
@@ -2056,21 +2055,29 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     } else {
                         const t = remap(self.anim_t, 0.5, 1, 0, 1);
 
+                        // TODO: avoid cable appearing suddenly from the disolved pattern
                         // TODO: draw centered
+                        const t2 = clamp01(remap(self.anim_t, 0.5, 0.8, 0, 1));
+                        const dissolving_pattern_point = parent_point
+                            .applyToLocalPoint(SAMPLE_INPUT_POS)
+                            .applyToLocalPoint(.{ .scale = 1 - t2 });
                         try artist.drawSexpr(
                             camera,
-                            parent_point
-                                .applyToLocalPoint(SAMPLE_INPUT_POS)
-                                .applyToLocalPoint(.{ .scale = 1 - t }),
+                            dissolving_pattern_point,
                             matched.old_active_value,
                         );
                         try artist.drawPatternSexpr(
                             camera,
-                            parent_point
-                                .applyToLocalPoint(SAMPLE_INPUT_POS)
-                                .applyToLocalPoint(.{ .scale = 1 - t })
+                            dissolving_pattern_point
                                 .applyToLocalPoint(.{ .pos = .new(3, 0) }),
                             matched.case.pattern,
+                        );
+                        drawer.drawCable(
+                            camera,
+                            dissolving_pattern_point.applyToLocalPosition(.new(-0.5, 1)),
+                            dissolving_pattern_point.applyToLocalPosition(.new(3, 1)),
+                            dissolving_pattern_point.scale,
+                            0,
                         );
 
                         if (!matched.tail_optimized) {
@@ -2078,7 +2085,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             const prev_stack: core.StackThing = it.next().?;
 
                             const active_value_cur_pos = parent_point.applyToLocalPoint(Point.lerp(
-                                .{ .pos = .new(5 + DIST_TO_TEMPLATE, 0) },
+                                .{ .pos = .new(5 + DIST_TO_TEMPLATE - 1, 0) },
                                 SAMPLE_INPUT_POS,
                                 t,
                             ));
@@ -2100,7 +2107,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                 try drawCases(
                                     0,
                                     parent_point.applyToLocalPoint(.{
-                                        .pos = .new(lerp(DIST_TO_TEMPLATE, -1 - DIST_BETWEEN_QUEUED_FNKS, t), 0),
+                                        .pos = .new(lerp(DIST_TO_TEMPLATE - 1, -1 - DIST_BETWEEN_QUEUED_FNKS, t), 0),
                                     }),
                                     prev_stack.cur_cases,
                                     true,
@@ -2110,7 +2117,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                     camera,
                                     parent_point
                                         .applyToLocalPoint(Point.lerp(
-                                        (Point{ .pos = .new(DIST_TO_TEMPLATE, 0) })
+                                        (Point{ .pos = .new(DIST_TO_TEMPLATE - 1, 0) })
                                             .applyToLocalPoint(FNK_NAME_OFFSET),
                                         MAIN_FNK_POS,
                                         t,
@@ -2138,6 +2145,17 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                 );
                             }
                         } else {
+                            try artist.drawSexpr(
+                                camera,
+                                parent_point
+                                    .applyToLocalPoint(Point.lerp(
+                                    MAIN_FNK_POS,
+                                    .{ .pos = .new(4, -8), .scale = 0, .turns = -0.65 },
+                                    t,
+                                )),
+                                matched.old_fnk_name,
+                            );
+
                             if (!matched.added_new_fnk_to_stack) {
                                 if (it.next()) |prev_stack| {
                                     try artist.drawSexpr(
