@@ -507,7 +507,9 @@ pub const Drawer = struct {
 fn defaultFnkBody1(mem: *VeryPermamentGameStuff) FnkBody {
     const default_fnk =
         \\default1 {
-        \\  (nil . input) -> default1: nil;
+        \\  @asdf -> default1: (@asdf . nil) {
+        \\      @hola -> @asdf;
+        \\  }
         \\  @asdf -> nil {
         \\      nil -> nil;
         \\  }
@@ -1905,6 +1907,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
         const camera = EditingFnk(platform, drawer).camera;
 
+        // TODO: draw the variable name on bound values
+
         // TODO: remove this, probably
         scoring_run: *core.ScoringRun,
         thread: core.ExecutionThread,
@@ -2116,7 +2120,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             try artist.drawSexpr(
                                 camera,
                                 active_value_cur_pos,
-                                self.thread.active_value,
+                                // TODO: smoothly anim this, and also on the child cases
+                                if (t > 0.5) self.thread.active_value else matched.case.template,
                             );
 
                             if (matched.added_new_fnk_to_stack) {
