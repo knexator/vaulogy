@@ -2108,83 +2108,46 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             0,
                         );
 
-                        if (!matched.tail_optimized) {
-                            const active_stack: core.StackThing = it.next().?;
+                        const active_value_cur_pos = parent_point.applyToLocalPoint(Point.lerp(
+                            .{ .pos = .new(5 + DIST_TO_TEMPLATE - 1, 0) },
+                            SAMPLE_INPUT_POS,
+                            t,
+                        ));
+                        artist.drawCableTo(camera, cable_asdf_pos, active_value_cur_pos);
+                        try artist.drawSexpr(
+                            camera,
+                            active_value_cur_pos,
+                            // TODO: smoothly anim this, and also on the child cases
+                            if (t > 0.5) self.thread.active_value else matched.case.template,
+                        );
 
-                            const active_value_cur_pos = parent_point.applyToLocalPoint(Point.lerp(
-                                .{ .pos = .new(5 + DIST_TO_TEMPLATE - 1, 0) },
-                                SAMPLE_INPUT_POS,
-                                t,
-                            ));
-                            artist.drawCableTo(camera, cable_asdf_pos, active_value_cur_pos);
+                        if (matched.added_new_fnk_to_stack) {
+                            const active_stack: core.StackThing = it.next().?;
                             try artist.drawSexpr(
                                 camera,
-                                active_value_cur_pos,
-                                // TODO: smoothly anim this, and also on the child cases
-                                if (t > 0.5) self.thread.active_value else matched.case.template,
-                            );
-
-                            if (matched.added_new_fnk_to_stack) {
-                                defer parent_point = parent_point.applyToLocalPoint(.{ .pos = .new(-DIST_BETWEEN_QUEUED_FNKS * t2, 0) });
-                                const prev_stack: core.StackThing = it.next().?;
-
-                                try artist.drawSexpr(
-                                    camera,
-                                    parent_point
-                                        .applyToLocalPoint(.{ .pos = .new(lerp(0, -DIST_BETWEEN_QUEUED_FNKS, t2), 0) })
-                                        .applyToLocalPoint(MAIN_FNK_POS),
-                                    prev_stack.cur_fnk_name,
-                                );
-                                // TODO: revise this (waiting cases should be gen0?)
-                                try drawCases(
-                                    0,
-                                    parent_point.applyToLocalPoint(.{
-                                        .pos = .new(lerp(DIST_TO_TEMPLATE - 1, -1 - DIST_BETWEEN_QUEUED_FNKS, t2), 0),
-                                    }),
-                                    prev_stack.cur_cases,
-                                    true,
-                                    t2,
-                                );
-
-                                try artist.drawSexpr(
-                                    camera,
-                                    parent_point
-                                        .applyToLocalPoint(Point.lerp(
-                                        (Point{ .pos = .new(DIST_TO_TEMPLATE - 1, 0) })
-                                            .applyToLocalPoint(FNK_NAME_OFFSET),
-                                        MAIN_FNK_POS,
-                                        t,
-                                    )),
-                                    active_stack.cur_fnk_name,
-                                );
-                                try drawCases(
-                                    1,
-                                    parent_point.applyToLocalPoint(.{
-                                        // TODO: this anim
-                                        .pos = .new(lerp(DIST_TO_TEMPLATE * 5, 0, t), 0),
-                                    }),
-                                    active_stack.cur_cases,
-                                    true,
-                                    0,
-                                );
-                            } else {
-                                try artist.drawSexpr(
-                                    camera,
-                                    parent_point
-                                        .applyToLocalPoint(MAIN_FNK_POS),
-                                    active_stack.cur_fnk_name,
-                                );
-
-                                try drawCases(
+                                parent_point
+                                    .applyToLocalPoint(Point.lerp(
+                                    (Point{ .pos = .new(DIST_TO_TEMPLATE - 1, 0) })
+                                        .applyToLocalPoint(FNK_NAME_OFFSET),
+                                    MAIN_FNK_POS,
                                     t,
-                                    parent_point
-                                        .applyToLocalPoint(.{ .pos = .new(lerp(DIST_TO_TEMPLATE - 1, 0, t), 0) }),
-                                    active_stack.cur_cases,
-                                    true,
-                                    0,
-                                );
-                            }
-                        } else {
+                                )),
+                                active_stack.cur_fnk_name,
+                            );
+                            try drawCases(
+                                1,
+                                parent_point.applyToLocalPoint(.{
+                                    // TODO: this anim
+                                    .pos = .new(lerp(DIST_TO_TEMPLATE * 5, 0, t), 0),
+                                }),
+                                active_stack.cur_cases,
+                                true,
+                                0,
+                            );
+                        }
+
+                        // TODO: join the 3 prev_stack cases in 1, maybe
+                        if (matched.tail_optimized) {
                             try artist.drawSexpr(
                                 camera,
                                 parent_point
@@ -2217,50 +2180,42 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                         1 - t,
                                     );
                                 }
-                                const active_value_cur_pos = parent_point.applyToLocalPoint(Point.lerp(
-                                    .{ .pos = .new(5 + DIST_TO_TEMPLATE - 1, 0) },
-                                    SAMPLE_INPUT_POS,
-                                    t,
-                                ));
-                                artist.drawCableTo(camera, cable_asdf_pos, active_value_cur_pos);
-                                try artist.drawSexpr(
-                                    camera,
-                                    active_value_cur_pos,
-                                    self.thread.active_value,
-                                );
-                            } else {
-                                const active_stack: core.StackThing = it.next().?;
-
-                                const active_value_cur_pos = parent_point.applyToLocalPoint(Point.lerp(
-                                    .{ .pos = .new(5 + DIST_TO_TEMPLATE - 1, 0) },
-                                    SAMPLE_INPUT_POS,
-                                    t,
-                                ));
-                                artist.drawCableTo(camera, cable_asdf_pos, active_value_cur_pos);
-                                try artist.drawSexpr(
-                                    camera,
-                                    active_value_cur_pos,
-                                    self.thread.active_value,
-                                );
+                            }
+                        } else {
+                            const prev_stack: core.StackThing = it.next().?;
+                            if (matched.added_new_fnk_to_stack) {
+                                defer parent_point = parent_point.applyToLocalPoint(.{ .pos = .new(-DIST_BETWEEN_QUEUED_FNKS * t2, 0) });
 
                                 try artist.drawSexpr(
                                     camera,
                                     parent_point
-                                        .applyToLocalPoint(Point.lerp(
-                                        (Point{ .pos = .new(DIST_TO_TEMPLATE - 1, 0) })
-                                            .applyToLocalPoint(FNK_NAME_OFFSET),
-                                        MAIN_FNK_POS,
-                                        t,
-                                    )),
-                                    active_stack.cur_fnk_name,
+                                        .applyToLocalPoint(.{ .pos = .new(lerp(0, -DIST_BETWEEN_QUEUED_FNKS, t2), 0) })
+                                        .applyToLocalPoint(MAIN_FNK_POS),
+                                    prev_stack.cur_fnk_name,
                                 );
+                                // TODO: revise this (waiting cases should be gen0?)
                                 try drawCases(
-                                    1,
+                                    0,
                                     parent_point.applyToLocalPoint(.{
-                                        // TODO: this anim
-                                        .pos = .new(lerp(DIST_TO_TEMPLATE * 5, 0, t), 0),
+                                        .pos = .new(lerp(DIST_TO_TEMPLATE - 1, -1 - DIST_BETWEEN_QUEUED_FNKS, t2), 0),
                                     }),
-                                    active_stack.cur_cases,
+                                    prev_stack.cur_cases,
+                                    true,
+                                    t2,
+                                );
+                            } else {
+                                try artist.drawSexpr(
+                                    camera,
+                                    parent_point
+                                        .applyToLocalPoint(MAIN_FNK_POS),
+                                    prev_stack.cur_fnk_name,
+                                );
+
+                                try drawCases(
+                                    t,
+                                    parent_point
+                                        .applyToLocalPoint(.{ .pos = .new(lerp(DIST_TO_TEMPLATE - 1, 0, t), 0) }),
+                                    prev_stack.cur_cases,
                                     true,
                                     0,
                                 );
