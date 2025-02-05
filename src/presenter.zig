@@ -507,6 +507,9 @@ pub const Drawer = struct {
 fn defaultFnkBody1(mem: *VeryPermamentGameStuff) FnkBody {
     const default_fnk =
         \\default1 {
+        \\  @asdf -> nil {
+        \\      nil -> nil;
+        \\  }
         \\  true -> default1: (nil . true) {
         \\      false -> true;
         \\      @foo -> default2: false {
@@ -2102,7 +2105,6 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
                         if (!matched.tail_optimized) {
                             const active_stack: core.StackThing = it.next().?;
-                            const prev_stack: core.StackThing = it.next().?;
 
                             const active_value_cur_pos = parent_point.applyToLocalPoint(Point.lerp(
                                 .{ .pos = .new(5 + DIST_TO_TEMPLATE - 1, 0) },
@@ -2118,6 +2120,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
                             if (matched.added_new_fnk_to_stack) {
                                 defer parent_point = parent_point.applyToLocalPoint(.{ .pos = .new(-DIST_BETWEEN_QUEUED_FNKS * t2, 0) });
+                                const prev_stack: core.StackThing = it.next().?;
 
                                 try artist.drawSexpr(
                                     camera,
@@ -2159,11 +2162,11 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                     0,
                                 );
                             } else {
-                                std.log.debug("unchecked?!", .{});
                                 try drawCases(
                                     t,
-                                    parent_point.applyToLocalPoint(.{ .pos = .new(lerp(5, 0, t), 0) }),
-                                    prev_stack.cur_cases,
+                                    parent_point
+                                        .applyToLocalPoint(.{ .pos = .new(lerp(DIST_TO_TEMPLATE - 1, 0, t), 0) }),
+                                    active_stack.cur_cases,
                                     true,
                                     0,
                                 );
