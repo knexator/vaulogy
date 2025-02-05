@@ -507,6 +507,7 @@ pub const Drawer = struct {
 fn defaultFnkBody1(mem: *VeryPermamentGameStuff) FnkBody {
     const default_fnk =
         \\default1 {
+        \\  (nil . input) -> default1: nil;
         \\  @asdf -> nil {
         \\      nil -> nil;
         \\  }
@@ -2071,7 +2072,6 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     } else {
                         const t = remap(self.anim_t, 0.5, 1, 0, 1);
 
-                        // TODO: avoid cable appearing suddenly from the disolved pattern
                         // TODO: draw centered
                         const t2 = clamp01(remap(self.anim_t, 0.5, 0.8, 0, 1));
                         const dissolving_pattern_point = parent_point
@@ -2224,12 +2224,44 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                     self.thread.active_value,
                                 );
                             } else {
-                                std.log.debug("TODO NOW!", .{});
+                                const active_stack: core.StackThing = it.next().?;
+
+                                const active_value_cur_pos = parent_point.applyToLocalPoint(Point.lerp(
+                                    .{ .pos = .new(5 + DIST_TO_TEMPLATE - 1, 0) },
+                                    SAMPLE_INPUT_POS,
+                                    t,
+                                ));
+                                artist.drawCableTo(camera, cable_asdf_pos, active_value_cur_pos);
+                                try artist.drawSexpr(
+                                    camera,
+                                    active_value_cur_pos,
+                                    self.thread.active_value,
+                                );
+
+                                try artist.drawSexpr(
+                                    camera,
+                                    parent_point
+                                        .applyToLocalPoint(Point.lerp(
+                                        (Point{ .pos = .new(DIST_TO_TEMPLATE - 1, 0) })
+                                            .applyToLocalPoint(FNK_NAME_OFFSET),
+                                        MAIN_FNK_POS,
+                                        t,
+                                    )),
+                                    active_stack.cur_fnk_name,
+                                );
+                                try drawCases(
+                                    1,
+                                    parent_point.applyToLocalPoint(.{
+                                        // TODO: this anim
+                                        .pos = .new(lerp(DIST_TO_TEMPLATE * 5, 0, t), 0),
+                                    }),
+                                    active_stack.cur_cases,
+                                    true,
+                                    0,
+                                );
                             }
                         }
                     }
-                    // const active_stack: core.StackThing = it.next().?;
-                    // if (matched.added_new_fnk_to_stack and !matched.tail_optimized) {}
                 },
                 .ended => |result| {
                     artist.drawOffscreenCableTo(camera, SAMPLE_INPUT_POS);
