@@ -1984,7 +1984,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     try artist.drawSexpr(camera, parent_point.applyToLocalPoint(SAMPLE_INPUT_POS), self.thread.active_value);
                     try artist.drawSexpr(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), active_stack.cur_fnk_name);
                     if (self.anim_t < 0.5) {
-                        const t = remap(self.anim_t, 0, 0.5, 0, 1);
+                        const t = clamp01(remap(self.anim_t, 0, 0.4, 0, 1));
+                        const t2 = clamp01(remap(self.anim_t, 0.4, 0.5, 0, 1));
                         try drawCases(
                             1,
                             parent_point.applyToLocalPoint(.{ .pos = .new(0, lerp(1.5, 0, t)) }),
@@ -1993,9 +1994,9 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             0,
                         );
                         try drawCase(
-                            1,
+                            1 - t2 * 0.5,
                             parent_point
-                                .applyToLocalPoint(.{ .pos = .new(5, lerp(3, 0, t)) }),
+                                .applyToLocalPoint(.{ .pos = .new(lerp(DIST_TO_TEMPLATE, 4, t2), lerp(3, 0, t)) }),
                             discarded_case,
                             true,
                             true,
@@ -2003,10 +2004,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         );
                     } else {
                         const t = remap(self.anim_t, 0.5, 1, 0, 1);
-                        try drawCase(1, parent_point
+                        try drawCase(0.5, parent_point
                             .applyToLocalPoint(Point.lerp(
-                            .{ .pos = .new(5, 0) },
-                            .{ .pos = .new(12, -4), .scale = 0, .turns = 0.65 },
+                            .{ .pos = .new(4, 0) },
+                            .{ .pos = .new(12, -4), .scale = 0, .turns = -0.65 },
                             t,
                         )), discarded_case, true, false, 0);
                         try drawCase(
