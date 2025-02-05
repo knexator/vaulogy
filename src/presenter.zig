@@ -2162,6 +2162,13 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                     0,
                                 );
                             } else {
+                                try artist.drawSexpr(
+                                    camera,
+                                    parent_point
+                                        .applyToLocalPoint(MAIN_FNK_POS),
+                                    active_stack.cur_fnk_name,
+                                );
+
                                 try drawCases(
                                     t,
                                     parent_point
