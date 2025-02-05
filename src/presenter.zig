@@ -507,6 +507,14 @@ pub const Drawer = struct {
 fn defaultFnkBody1(mem: *VeryPermamentGameStuff) FnkBody {
     const default_fnk =
         \\default1 {
+        \\  (nil . true) -> false;
+        \\  @true -> default1: (nil . true) {
+        \\      false -> true;
+        \\      @foo -> default2: false {
+        \\          false -> true;
+        \\          @thing -> true;
+        \\      }
+        \\  }
         \\  @asdf -> default1: (@asdf . nil) {
         \\      @hola -> @asdf;
         \\  }
@@ -2159,6 +2167,20 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                 matched.old_fnk_name,
                             );
 
+                            // THINKING
+                            // const maybe_prev_stack = it.next();
+                            // const how_unfolded_is_prev_stack: f32 = if (matched.tail_optimized and !matched.added_new_fnk_to_stack)
+                            //     t
+                            // else if (!matched.tail_optimized and matched.added_new_fnk_to_stack)
+                            //     1 - t2
+                            // else if (!matched.tail_optimized and !matched.added_new_fnk_to_stack)
+                            //     0.0
+                            // else blk: {
+                            //     // this case is just nothing
+                            //     std.log.debug("hhmmm", .{});
+                            //     break :blk 0.0;
+                            // };
+
                             if (!matched.added_new_fnk_to_stack) {
                                 defer parent_point = parent_point.applyToLocalPoint(.{ .pos = .new(lerp(-DIST_BETWEEN_QUEUED_FNKS, 0, t), 0) });
 
@@ -2240,68 +2262,6 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     1,
                 );
             }
-
-            if (false) switch (self.cur_event) {
-                .failed_to_match => |discarded_case| {
-                    const active_stack: core.StackThing = it.next().?;
-                    try artist.drawSexpr(camera, parent_point.applyToLocalPoint(SAMPLE_INPUT_POS), self.thread.active_value);
-                    try artist.drawSexpr(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), active_stack.cur_fnk_name);
-                    if (self.anim_t < 0.5) {
-                        const t = remap(self.anim_t, 0, 0.5, 0, 1);
-                        try drawCases(
-                            true,
-                            parent_point.applyToLocalPoint(.{ .pos = .new(0, lerp(1.5, 0, t)) }),
-                            active_stack.cur_cases,
-                            false,
-                            0,
-                        );
-                        try drawCase(true, parent_point
-                            .applyToLocalPoint(.{ .pos = .new(5, lerp(3, 0, t)) }), discarded_case, true, true);
-                    } else {
-                        const t = remap(self.anim_t, 0.5, 1, 0, 1);
-                        try drawCase(true, parent_point
-                            .applyToLocalPoint(Point.lerp(
-                            .{ .pos = .new(5, 0) },
-                            .{ .pos = .new(12, -4), .scale = 0, .turns = 0.65 },
-                            t,
-                        )), discarded_case, true, false);
-                        try drawCase(true, parent_point
-                            .applyToLocalPoint(.{ .pos = .new(5, lerp(3.5, 3, t)), .scale = lerp(0.5, 1, t) }), active_stack.cur_cases[0], true, true);
-                        try drawCases(
-                            true,
-                            parent_point.applyToLocalPoint(.{ .pos = .new(0, 1.5) }),
-                            active_stack.cur_cases[1..],
-                            false,
-                            0,
-                        );
-                        while (it.next()) |x| {
-                            parent_point = parent_point.applyToLocalPoint(.{ .pos = .new(-DIST_BETWEEN_QUEUED_FNKS, 0) });
-                            try artist.drawSexpr(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), x.cur_fnk_name);
-                        }
-                    }
-                },
-                // .starting => {
-                //     const prev_stack = it.next().?;
-                //     defer parent_point = parent_point.applyToLocalPoint(.{ .pos = .new(-DIST_BETWEEN_QUEUED_FNKS, 0) });
-                //     const t = self.anim_t;
-                //     // try artist.drawSexpr(camera, parent_point.applyToLocalPoint(SAMPLE_INPUT_POS), self.thread.active_value);
-                //     try artist.drawSexpr(
-                //         camera,
-                //         parent_point
-                //             .applyToLocalPoint(.{ .pos = .new(lerp(0, -DIST_BETWEEN_QUEUED_FNKS, t), 0) })
-                //             .applyToLocalPoint(MAIN_FNK_POS),
-                //         prev_stack.cur_fnk_name,
-                //     );
-                //     try artist.drawSexpr(
-                //         camera,
-                //         parent_point
-                //             .applyToLocalPoint(.{ .pos = .new(lerp(0, -DIST_BETWEEN_QUEUED_FNKS, t), 0) })
-                //             .applyToLocalPoint(MAIN_FNK_POS),
-                //         active_stack.cur_fnk_name,
-                //     );
-                // },
-                else => {},
-            };
         }
 
         // TODO: remove this duplication from EditingFnk
