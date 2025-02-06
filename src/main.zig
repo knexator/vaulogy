@@ -35,12 +35,18 @@ pub const Sexpr = union(enum) {
     pub const @"false" = Sexpr.doLit("false");
     pub const input = Sexpr.doLit("input");
 
+    pub const var_v1 = Sexpr.doVar("v1");
+
     pub fn doPair(a: *const Sexpr, b: *const Sexpr) Sexpr {
         return .{ .pair = .{ .left = a, .right = b } };
     }
 
     pub fn doLit(v: []const u8) Sexpr {
         return .{ .atom_lit = .{ .value = v } };
+    }
+
+    pub fn doVar(v: []const u8) Sexpr {
+        return .{ .atom_var = .{ .value = v } };
     }
 
     pub fn isFullyResolved(x: *const Sexpr) bool {

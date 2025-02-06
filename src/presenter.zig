@@ -1268,6 +1268,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         focus: union(enum) {
             nothing,
+            hovering_special_case: f32,
             hovering_case: core.CaseAddress,
             grabbing_case: struct {
                 case: CaseState,
@@ -1306,6 +1307,23 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 break :blk xx;
             };
 
+            const special_case_point = Point{ .pos = .new(9, -2.5), .scale = 0.5 };
+            const special_case_value = CaseState{
+                .fnk_name = &Sexpr.identity,
+                .pattern = &Sexpr.var_v1,
+                .template = &Sexpr.var_v1,
+                .next = null,
+                .pattern_point_relative_to_parent = special_case_point,
+            };
+
+            pub fn overlapsWithSpecialCase(mouse_pos: Vec2) bool {
+                const local_point = special_case_point
+                    .applyToLocalPoint(.{ .pos = .new(2, 0) })
+                    .inverseApplyGetLocalPosition(mouse_pos);
+
+                return local_point.mag() < 2;
+            }
+
             pub fn findOverlap(mouse_pos: Vec2) ?std.meta.Elem(@TypeOf(things)) {
                 for (things) |thing| {
                     if (SexprView.overlapsAtom(thing.point, mouse_pos, .atom)) {
@@ -1319,6 +1337,19 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 for (things) |thing| {
                     try artist.drawSexpr(camera, thing.point, thing.value);
                 }
+
+                try artist.drawPatternSexpr(camera, special_case_point
+                    .applyToLocalPoint(.{ .pos = .new(1, 0) }), special_case_value.pattern);
+                try artist.drawSexpr(camera, special_case_point
+                    .applyToLocalPoint(.{ .pos = .new(3, 0) }), special_case_value.template);
+                // TODO: artist.drawCableBetween(camera, pattern_pos, template_pos);
+                drawer.drawCable(
+                    camera,
+                    special_case_point.applyToLocalPosition(.new(1.5, 0)),
+                    special_case_point.applyToLocalPosition(.new(2.5, 0)),
+                    special_case_point.scale,
+                    0,
+                );
             }
         };
 
@@ -1430,6 +1461,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         delta_seconds,
                     );
                 },
+                .hovering_special_case => |*hot| {
+                    // _ = hot;
+                    // lerp_towards_float(&self.focus.hovering_special_case, 1, 0.6, delta_seconds);
+                    lerp_towards_float(hot, 1, 0.6, delta_seconds);
+                    std.log.debug("asdf", .{});
+                },
                 .hovering_case => |unfolded| {
                     try self.cases.setUnfolded(unfolded);
                 },
@@ -1448,6 +1485,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             } else {
                 const mouse_pos = platform.getMouse().cur.pos(camera);
                 const maybe_overlapped: ?union(enum) {
+                    special_case,
                     case: core.CaseAddress,
                     sexpr: SexprPlace,
                 } = if (try updateCasePositionsAndReturnMouseOverlap(
@@ -1467,6 +1505,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .{ .sample_input = overlap } }
                 else if (try SexprView.overlapsSexpr(self.mem.gpa, self.fnk_name, MAIN_FNK_POS, mouse_pos)) |overlap|
                     .{ .sexpr = .{ .main_fnk_name = overlap } }
+                else if (toolbar.overlapsWithSpecialCase(mouse_pos))
+                    .special_case
                 else
                     null;
 
@@ -1474,6 +1514,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .grabbing_case => unreachable,
                     .grabbing_sexpr => |*grabbing| if (maybe_overlapped) |overlapped|
                         switch (overlapped) {
+                            .special_case => grabbing.address_if_released = null,
                             .case => |case| {
                                 try self.cases.setUnfolded(case);
                                 grabbing.address_if_released = null;
@@ -1488,8 +1529,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     else {
                         grabbing.address_if_released = null;
                     },
-                    .nothing, .hovering_sexpr, .hovering_case => if (maybe_overlapped) |overlapped| {
+                    .nothing, .hovering_sexpr, .hovering_case, .hovering_special_case => if (maybe_overlapped) |overlapped| {
                         switch (overlapped) {
+                            .special_case => if (!(std.meta.activeTag(self.focus) == .hovering_special_case)) {
+                                self.focus = .{ .hovering_special_case = 0 };
+                            },
                             .case => |case| self.focus = .{ .hovering_case = case },
                             .sexpr => |place| {
                                 if (!(std.meta.activeTag(self.focus) == .hovering_sexpr and self.focus.hovering_sexpr.address.equals(place))) {
@@ -1532,6 +1576,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         } else {
                             self.focus = .{ .nothing = {} };
                         }
+                    },
+                    .hovering_special_case => {
+                        self.focus = .{ .grabbing_case = .{
+                            .case = toolbar.special_case_value,
+                            .address_if_released = null,
+                        } };
                     },
                     .hovering_case => |unfolded| {
                         const global_point = try self.cases.getPatternGlobalPoint(.{}, unfolded);
@@ -1592,6 +1642,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             switch (self.focus) {
                 .nothing => {},
+                .hovering_special_case => |hot| {
+                    // TODO: cooler
+                    drawer.drawCaseHolder(camera, toolbar.special_case_point
+                        .applyToLocalPoint(.{ .scale = hot }));
+                },
                 .hovering_case => |unfolded| {
                     const pattern_point = try self.cases.getPatternGlobalPoint(.{}, unfolded);
                     drawer.drawCaseHolder(camera, .{
