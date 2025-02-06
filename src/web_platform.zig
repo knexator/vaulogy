@@ -123,6 +123,15 @@ const js_better = struct {
             js.canvas.closePath();
         }
 
+        pub fn path(all_positions: []const Vec2) void {
+            if (all_positions.len < 2) programmerError();
+            js.canvas.beginPath();
+            moveTo(all_positions[0]);
+            for (all_positions[1..]) |pos| {
+                lineTo(pos);
+            }
+        }
+
         pub fn circle(center: Vec2, radius: f32) void {
             js.canvas.arc(center.x, center.y, radius, 0, std.math.tau, false);
         }
@@ -464,6 +473,22 @@ const WebDrawer = struct {
         js.canvas.stroke();
     }
 
+    pub fn drawFnkHolder(camera: Camera, world_point: Point) void {
+        const screen_point = screenFromWorld(camera, world_point);
+
+        js_better.canvas.setStrokeColor(Color.black);
+        js.canvas.beginPath();
+        js_better.canvas.circle(screen_point.pos, screen_point.scale * 0.5);
+        js.canvas.stroke();
+
+        js.canvas.beginPath();
+        js_better.canvas.path(&.{
+            screen_point.applyToLocalPosition(.new(0, -0.5)),
+            screen_point.applyToLocalPosition(.new(0, -1.5)),
+        });
+        js.canvas.stroke();
+    }
+
     pub fn drawAsdfDevice(camera: Camera, world_point: Point) void {
         const screen_point = screenFromWorld(camera, world_point);
 
@@ -522,6 +547,7 @@ const web_drawer = presenter.Drawer{
     .drawPatternAtomDebug = WebDrawer.drawPatternAtomDebug,
     .drawCable = WebDrawer.drawCable,
     .drawCaseHolder = WebDrawer.drawCaseHolder,
+    .drawFnkHolder = WebDrawer.drawFnkHolder,
 };
 
 var game: presenter.Presenter(web_platform, web_drawer) = undefined;

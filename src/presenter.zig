@@ -457,6 +457,7 @@ pub const Drawer = struct {
     drawPatternAtom: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
     drawCable: fn (camera: Camera, world_from: Vec2, world_to: Vec2, world_scale: f32, offset: f32) void,
     drawCaseHolder: fn (camera: Camera, world_point: Point) void,
+    drawFnkHolder: fn (camera: Camera, world_point: Point) void,
     drawVariable: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
     drawPatternVariable: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
 
@@ -487,6 +488,7 @@ pub const Drawer = struct {
         .drawPatternVariable = dummySignatures.camera_point_visuals,
         .drawPatternAtomDebug = undefined,
         .drawCaseHolder = dummySignatures.camera_point,
+        .drawFnkHolder = dummySignatures.camera_point,
         .drawPairHolder = dummySignatures.camera_point,
         .drawPatternPairHolder = dummySignatures.camera_point,
         .drawPatternAtom = dummySignatures.camera_point_visuals,
@@ -1567,6 +1569,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     SAMPLE_INPUT_POS,
                     self.sample_input,
                 );
+                // TODO: also draw these while executing
+                drawer.drawFnkHolder(camera, MAIN_FNK_POS
+                    .applyToLocalPoint(.{ .scale = 0.5 })
+                    .applyToLocalPoint(.{ .pos = .new(-2.5, 0), .turns = 0.25 }));
                 try artist.drawSexpr(
                     camera,
                     MAIN_FNK_POS,
@@ -1649,6 +1655,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
                 case.template,
             );
+            drawer.drawFnkHolder(camera, pattern_point
+                .applyToLocalPoint(FNK_NAME_OFFSET)
+                .applyToLocalPoint(.{ .pos = .new(-1.5, 0), .turns = 0.25 }));
             if (!case.fnk_name.equals(&Sexpr.identity)) {
                 try artist.drawSexpr(
                     camera,

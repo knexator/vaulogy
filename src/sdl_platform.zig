@@ -338,6 +338,12 @@ const SdlDrawer = struct {
         panickify(c.SDL_RenderLine(sdl_renderer, screen_from.x, screen_from.y, screen_to.x, screen_to.y));
     }
 
+    pub fn drawFnkHolder(camera: Camera, world_point: Point) void {
+        const screen_point = screenFromWorld(camera, world_point);
+        _ = screen_point;
+        std.log.err("TODO: drawFnkHolder", .{});
+    }
+
     pub fn drawCaseHolder(camera: Camera, world_point: Point) void {
         const screen_point = screenFromWorld(camera, world_point);
 
@@ -416,6 +422,7 @@ const sdl_drawer = presenter.Drawer{
     .drawPatternAtomDebug = SdlDrawer.drawPatternAtomDebug,
     .drawCable = SdlDrawer.drawCable,
     .drawCaseHolder = SdlDrawer.drawCaseHolder,
+    .drawFnkHolder = SdlDrawer.drawFnkHolder,
 };
 
 const window_size = Vec2.new(1280, 720);
