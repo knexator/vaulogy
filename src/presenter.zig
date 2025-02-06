@@ -1462,10 +1462,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     );
                 },
                 .hovering_special_case => |*hot| {
-                    // _ = hot;
-                    // lerp_towards_float(&self.focus.hovering_special_case, 1, 0.6, delta_seconds);
                     lerp_towards_float(hot, 1, 0.6, delta_seconds);
-                    std.log.debug("asdf", .{});
                 },
                 .hovering_case => |unfolded| {
                     try self.cases.setUnfolded(unfolded);
