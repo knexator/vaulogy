@@ -1185,6 +1185,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             full_address: core.FullAddress,
             toolbar: usize,
             sample_input: core.SexprAddress,
+            main_fnk_name: core.SexprAddress,
 
             pub fn equals(self: @This(), other: @This()) bool {
                 if (std.meta.activeTag(self) != std.meta.activeTag(other)) return false;
@@ -1192,6 +1193,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .full_address => |self_full| self_full.equals(other.full_address),
                     .toolbar => |self_toolbar| self_toolbar == other.toolbar,
                     .sample_input => |self_local| core.equalSexprAddress(self_local, other.sample_input),
+                    .main_fnk_name => |self_local| core.equalSexprAddress(self_local, other.main_fnk_name),
                 };
             }
 
@@ -1203,6 +1205,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     ),
                     .toolbar => |index| toolbar.things[index].point,
                     .sample_input => |local| SexprView.sexprChildView(SAMPLE_INPUT_POS, local),
+                    .main_fnk_name => |local| SexprView.sexprChildView(MAIN_FNK_POS, local),
                 };
             }
 
@@ -1211,6 +1214,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .full_address => |full_address| try self.cases.getSexprAt(full_address),
                     .toolbar => |index| toolbar.things[index].value,
                     .sample_input => |local| self.sample_input.getAt(local).?,
+                    .main_fnk_name => |local| self.fnk_name.getAt(local).?,
                 };
             }
 
@@ -1220,7 +1224,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .sample_input => |local_address| {
                         self.sample_input = try self.sample_input.setAt(self.mem, local_address, value);
                     },
-                    .toolbar => unreachable,
+                    .toolbar, .main_fnk_name => unreachable,
                 }
             }
 
@@ -1234,6 +1238,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             pub fn acceptsDrop(address: @This()) bool {
                 return switch (address) {
                     .toolbar => false,
+                    .main_fnk_name => false,
                     .full_address => true,
                     .sample_input => true,
                 };
@@ -1386,7 +1391,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 .fnk_name => .{ .turns = 0.02, .pos = .new(0.5, 0) },
                             },
                             .sample_input => .{ .turns = -0.02, .pos = .new(0.5, 0) },
-                            .toolbar => unreachable,
+                            .toolbar, .main_fnk_name => unreachable,
                         })
                     else
                         Point{
@@ -1445,6 +1450,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .{ .toolbar = overlap.index } }
                 else if (try SexprView.overlapsSexpr(self.mem.gpa, self.sample_input, SAMPLE_INPUT_POS, mouse_pos)) |overlap|
                     .{ .sexpr = .{ .sample_input = overlap } }
+                else if (try SexprView.overlapsSexpr(self.mem.gpa, self.fnk_name, MAIN_FNK_POS, mouse_pos)) |overlap|
+                    .{ .sexpr = .{ .main_fnk_name = overlap } }
                 else
                     null;
 
@@ -1605,28 +1612,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         if (hovering.address.isPattern()) 1 else 0,
                         try hovering.address.getSexpr(self),
                     );
-                    switch (hovering.address) {
-                        .full_address => |full_address| {
-                            try artist.drawBothSexpr(
-                                camera,
-                                hovering.global_point,
-                                if (full_address.which == .pattern) 1 else 0,
-                                try self.cases.getSexprAt(full_address),
-                            );
-                        },
-                        .toolbar => |index| {
-                            try artist.drawSexpr(
-                                camera,
-                                hovering.global_point,
-                                toolbar.things[index].value,
-                            );
-                        },
-                        .sample_input => |local| try artist.drawSexpr(
-                            camera,
-                            hovering.global_point,
-                            self.sample_input.getAt(local).?,
-                        ),
-                    }
                     // try artist.drawPatternOutline(camera, artist.sexprPatternChildView(
                     //     case.pattern_point,
                     //     full_address.sexpr_address,
