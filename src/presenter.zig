@@ -793,6 +793,19 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             return AtomVisualCache.init();
         }
 
+        pub fn drawHoldedFnk(camera: Camera, fnk_point: Point, is_main: f32, value: *const Sexpr) !void {
+            drawer.drawFnkHolder(camera, fnk_point
+                .applyToLocalPoint(.{ .scale = lerp(1, 0.5, is_main) })
+                .applyToLocalPoint(.{ .pos = .new(lerp(-1.5, -2.5, is_main), 0), .turns = 0.25 }));
+            if (!value.equals(&Sexpr.identity)) {
+                try drawSexpr(
+                    camera,
+                    fnk_point,
+                    value,
+                );
+            }
+        }
+
         pub fn drawOffscreenCableTo(camera: Camera, pattern: Point) void {
             // TODO: store some state to avoid cable jumps? or maybe make the cable periodic
             drawer.drawCable(camera, pattern.applyToLocalPosition(.new(-CABLE_OFFSCREEN_DIST, 0)), pattern.applyToLocalPosition(.new(-0.5, 0)), pattern.scale, -CABLE_OFFSCREEN_DIST);
@@ -1570,14 +1583,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     self.sample_input,
                 );
                 // TODO: also draw these while executing
-                drawer.drawFnkHolder(camera, MAIN_FNK_POS
-                    .applyToLocalPoint(.{ .scale = 0.5 })
-                    .applyToLocalPoint(.{ .pos = .new(-2.5, 0), .turns = 0.25 }));
-                try artist.drawSexpr(
-                    camera,
-                    MAIN_FNK_POS,
-                    self.fnk_name,
-                );
+                try artist.drawHoldedFnk(camera, MAIN_FNK_POS, 1, self.fnk_name);
             }
 
             try drawCases(true, .{}, self.cases);
@@ -1655,16 +1661,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
                 case.template,
             );
-            drawer.drawFnkHolder(camera, pattern_point
-                .applyToLocalPoint(FNK_NAME_OFFSET)
-                .applyToLocalPoint(.{ .pos = .new(-1.5, 0), .turns = 0.25 }));
-            if (!case.fnk_name.equals(&Sexpr.identity)) {
-                try artist.drawSexpr(
-                    camera,
-                    pattern_point.applyToLocalPoint(FNK_NAME_OFFSET),
-                    case.fnk_name,
-                );
-            }
+            try artist.drawHoldedFnk(camera, pattern_point.applyToLocalPoint(FNK_NAME_OFFSET), 0, case.fnk_name);
             drawer.drawCable(
                 camera,
                 pattern_point.applyToLocalPosition(.new(0.5, 0)),
