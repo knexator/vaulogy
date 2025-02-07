@@ -1117,7 +1117,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             const sample_input = try mem.storeSexpr(Sexpr.doPair(&Sexpr.nil, &Sexpr.input));
 
             const ui_state = UI.State{ .buttons = try platform.gpa.dupe(UI.Button, &.{
-                .{ .pos = Rect{ .top_left = .new(1, 2), .size = .one } },
+                .{ .pos = Rect{ .top_left = .new(2, 2), .size = .one } },
             }) };
 
             return .{
@@ -1713,8 +1713,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         scoring_run: *core.ScoringRun,
         thread: core.ExecutionThread,
         camera: Camera,
+        ui_state: UI.State,
 
         anim_t: f32,
+        anim_speed: f32 = 1.0,
 
         pub fn init(
             input: *const Sexpr,
@@ -1727,6 +1729,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 .scoring_run = scoring_run,
                 .anim_t = 0.0,
                 .camera = camera,
+                .ui_state = .{ .buttons = try platform.gpa.dupe(UI.Button, &.{
+                    .{ .pos = Rect{ .top_left = .new(1, 2), .size = .one } },
+                    .{ .pos = Rect{ .top_left = .new(3, 2), .size = .one } },
+                }) },
             };
 
             // for now, skip the "start" anim
@@ -1742,6 +1748,13 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         pub fn update(self: *Self, delta_seconds: f32) !?*const Sexpr {
             if (platform.getMouse().wasPressed(.right)) self.anim_t = 0.99;
 
+            if (self.ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button|
+                switch (pressed_button) {
+                    0 => self.anim_speed /= 2,
+                    1 => self.anim_speed *= 2,
+                    else => return error.TODO,
+                };
+
             // move camera
             inline for (.{
                 .{ KeyboardButton.left, Vec2.new(-1, 0) },
@@ -1754,7 +1767,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 }
             }
 
-            self.anim_t += delta_seconds / if (platform.getMouse().cur.isDown(.left)) tof32(20.0) else 2.0;
+            self.anim_t += self.anim_speed * delta_seconds / 2.0;
             while (self.anim_t >= 1) {
                 self.anim_t -= 1;
                 _ = try self.thread.advanceTinyStep(self.scoring_run);
@@ -1773,6 +1786,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             const camera = self.camera;
 
             drawer.clear(Color.gray(128));
+
+            self.ui_state.draw(drawer);
 
             if (false) try artist.drawSexpr(
                 camera,
