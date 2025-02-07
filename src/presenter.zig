@@ -2155,6 +2155,47 @@ const UI = struct {
         pub fn isActive(self: State, k: usize) bool {
             return if (self.active) |active| active == k else false;
         }
+
+        pub fn update(self: *State, mouse: Mouse, delta_seconds: f32) ?usize {
+            self.hot = null;
+            var result: ?usize = null;
+
+            for (self.buttons, 0..) |button, k| {
+                if (button.pos.contains(mouse.cur.pos(UI.cam))) {
+                    self.hot = k;
+                    if (self.active == null and mouse.cur.isDown(.left)) {
+                        self.active = k;
+                    }
+                }
+
+                if (self.isActive(k) and self.isHot(k) and !mouse.cur.isDown(.left)) {
+                    result = k;
+                }
+            }
+            if (!mouse.cur.isDown(.left)) {
+                if (self.active) |_| {
+                    self.active = null;
+                }
+            } else if (self.active == null) {
+                // TODO: better
+                self.active = self.buttons.len + 999;
+            }
+            for (self.buttons, 0..) |*button, k| {
+                math.lerp_towards(
+                    &button.hot_t,
+                    if (self.isHot(k)) 1 else 0,
+                    0.6,
+                    delta_seconds,
+                );
+                math.lerp_towards(
+                    &button.active_t,
+                    if (self.isActive(k)) 1 else 0,
+                    0.6,
+                    delta_seconds,
+                );
+            }
+            return result;
+        }
     };
 
     pub const Button = struct {
@@ -2187,42 +2228,7 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
 
         pub fn update(self: *Self, delta_seconds: f32) ?usize {
             const mouse = platform.getMouse();
-            self.ui_state.hot = null;
-            for (self.ui_state.buttons, 0..) |button, k| {
-                if (button.pos.contains(mouse.cur.pos(UI.cam))) {
-                    self.ui_state.hot = k;
-                    if (self.ui_state.active == null and mouse.cur.isDown(.left)) {
-                        self.ui_state.active = k;
-                    }
-                }
-
-                if (self.ui_state.isActive(k) and self.ui_state.isHot(k) and !mouse.cur.isDown(.left)) {
-                    return k;
-                }
-            }
-            if (!mouse.cur.isDown(.left)) {
-                if (self.ui_state.active) |_| {
-                    self.ui_state.active = null;
-                }
-            } else if (self.ui_state.active == null) {
-                // TODO: better
-                self.ui_state.active = 999;
-            }
-            for (self.ui_state.buttons, 0..) |*button, k| {
-                math.lerp_towards(
-                    &button.hot_t,
-                    if (self.ui_state.isHot(k)) 1 else 0,
-                    0.6,
-                    delta_seconds,
-                );
-                math.lerp_towards(
-                    &button.active_t,
-                    if (self.ui_state.isActive(k)) 1 else 0,
-                    0.6,
-                    delta_seconds,
-                );
-            }
-            return null;
+            return self.ui_state.update(mouse, delta_seconds);
         }
 
         pub fn draw(self: Self) OoM!void {
