@@ -2,6 +2,21 @@
 
 const std = @import("std");
 
+const math = @import("kommon/math.zig");
+pub const Vec2 = math.Vec2;
+pub const Rect = math.Rect;
+pub const Camera = math.Camera;
+pub const Color = math.Color;
+pub const Point = math.Point;
+const Random = math.Random;
+const tof32 = math.tof32;
+const lerp = math.lerp;
+const in01 = math.in01;
+const clamp = math.clamp;
+const clamp01 = math.clamp01;
+const remap = math.remap;
+const inRange = math.inRange;
+
 const core = @import("main.zig");
 const Atom = core.Atom;
 const Pair = core.Pair;
@@ -170,299 +185,6 @@ pub const PlayerData = struct {
         defer sut2.deinit(&mem);
 
         try std.testing.expectEqual(2, sut2.fnks.count());
-    }
-};
-
-pub const Vec2 = struct {
-    pub const Scalar = f32;
-
-    x: Scalar,
-    y: Scalar,
-
-    const Self = @This();
-
-    pub const zero = new(0, 0);
-    pub const one = new(1, 1);
-    pub const half = new(0.5, 0.5);
-    pub const e1 = new(1, 0);
-    pub const e2 = new(0, 1);
-
-    pub fn new(x: Scalar, y: Scalar) Self {
-        return .{ .x = x, .y = y };
-    }
-
-    pub fn add(a: Self, b: Self) Self {
-        return new(a.x + b.x, a.y + b.y);
-    }
-
-    pub fn sub(a: Self, b: Self) Self {
-        return new(a.x - b.x, a.y - b.y);
-    }
-
-    pub fn scale(v: Self, s: Scalar) Self {
-        return new(v.x * s, v.y * s);
-    }
-
-    pub fn mul(a: Self, b: Self) Self {
-        return new(a.x * b.x, a.y * b.y);
-    }
-
-    pub fn addX(a: Self, b: f32) Self {
-        return new(a.x + b, a.y);
-    }
-
-    pub fn addY(a: Self, b: f32) Self {
-        return new(a.x, a.y + b);
-    }
-
-    pub fn perpCW(v: Self) Self {
-        return new(-v.y, v.x);
-    }
-
-    pub fn rotate(v: Self, turns: f32) Self {
-        const c = @cos(turns * std.math.tau);
-        const s = @sin(turns * std.math.tau);
-        return new(
-            v.x * c - v.y * s,
-            v.x * s + v.y * c,
-        );
-    }
-
-    test "rotate" {
-        try Vec2.expectApproxEqAbs(Vec2.e2, rotate(Vec2.e1, 0.25), 0.001);
-    }
-
-    pub fn normalized(v: Self) Self {
-        return v.scale(1 / v.mag());
-    }
-
-    pub fn mag(v: Self) Scalar {
-        return @sqrt(v.magSq());
-    }
-
-    pub fn magSq(v: Self) Scalar {
-        return dot(v, v);
-    }
-
-    pub fn dot(a: Self, b: Self) Scalar {
-        return a.x * b.x + a.y * b.y;
-    }
-
-    pub fn lerp(a: Self, b: Self, t: f32) Self {
-        return new(
-            std.math.lerp(a.x, b.x, t),
-            std.math.lerp(a.y, b.y, t),
-        );
-    }
-
-    pub fn expectApproxEqRel(expected: Vec2, actual: Vec2, tolerance: anytype) !void {
-        try std.testing.expectApproxEqRel(expected.x, actual.x, tolerance);
-        try std.testing.expectApproxEqRel(expected.y, actual.y, tolerance);
-    }
-
-    pub fn expectApproxEqAbs(expected: Vec2, actual: Vec2, tolerance: anytype) !void {
-        try std.testing.expectApproxEqAbs(expected.x, actual.x, tolerance);
-        try std.testing.expectApproxEqAbs(expected.y, actual.y, tolerance);
-    }
-};
-
-fn inRange(value: f32, min_inclusive: f32, max_exclusive: f32) bool {
-    return min_inclusive <= value and value < max_exclusive;
-}
-
-fn in01(value: f32) bool {
-    return 0 <= value and value <= 1;
-}
-
-fn inverse_lerp(min: f32, max: f32, value: f32) f32 {
-    return (value - min) / (max - min);
-}
-
-fn remap(value: f32, old_min: f32, old_max: f32, new_min: f32, new_max: f32) f32 {
-    return lerp(new_min, new_max, inverse_lerp(old_min, old_max, value));
-}
-
-fn towards(v: *f32, goal: f32, max_delta: f32) void {
-    if (@abs(v.* - goal) <= max_delta) {
-        v.* = goal;
-    } else if (v.* < goal) {
-        v.* += max_delta;
-    } else {
-        v.* -= max_delta;
-    }
-}
-
-const lerp_towards_float = lerp_towards;
-fn lerp_towards(v: *f32, goal: f32, ratio: f32, delta_seconds: f32) void {
-    // TODO: make this framerate independent
-    _ = delta_seconds;
-    v.* = std.math.lerp(v.*, goal, ratio);
-}
-
-const clamp = std.math.clamp;
-const lerp = std.math.lerp;
-
-fn clamp01(value: anytype) @TypeOf(value, 0.0) {
-    return std.math.clamp(value, 0.0, 1.0);
-}
-
-fn smoothstep(x: anytype, edge0: anytype, edge1: anytype) @TypeOf(x, edge0, edge1) {
-    const y = std.math.clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
-    return y * y * (3.0 - 2.0 * y);
-}
-
-fn tof32(value: anytype) f32 {
-    const T = @TypeOf(value);
-    return switch (@typeInfo(T)) {
-        .float, .comptime_float => value,
-        .int, .comptime_int => @floatFromInt(value),
-        else => @compileError("Expected an int, float or vector of one, found " ++ @typeName(T)),
-    };
-}
-
-pub const Rect = struct {
-    top_left: Vec2,
-    size: Vec2,
-
-    pub fn contains(self: Rect, p: Vec2) bool {
-        return inRange(p.x, self.top_left.x, self.top_left.x + self.size.x) and
-            inRange(p.y, self.top_left.y, self.top_left.y + self.size.y);
-    }
-};
-
-pub const Color = struct {
-    r: u8,
-    g: u8,
-    b: u8,
-
-    pub const white = new(255, 255, 255);
-    pub const black = new(0, 0, 0);
-    pub const cyan = new(0, 255, 255);
-
-    pub fn new(r: u8, g: u8, b: u8) Color {
-        return .{ .r = r, .g = g, .b = b };
-    }
-
-    pub fn from01(r: f32, g: f32, b: f32) Color {
-        return Color.new(
-            @intFromFloat(r * 255),
-            @intFromFloat(g * 255),
-            @intFromFloat(b * 255),
-        );
-    }
-
-    pub fn gray(v: u8) Color {
-        return new(v, v, v);
-    }
-};
-
-pub const Point = struct {
-    pos: Vec2 = .zero,
-    scale: f32 = 1,
-    turns: f32 = 0,
-
-    pub fn lerp(a: Point, b: Point, t: f32) Point {
-        // TODO: properly handle rotation
-        return .{
-            .pos = Vec2.lerp(a.pos, b.pos, t),
-            .scale = std.math.lerp(a.scale, b.scale, t),
-            .turns = std.math.lerp(a.turns, b.turns, t),
-        };
-    }
-
-    pub fn lerp_towards(self: *Point, goal: Point, ratio: f32, delta_seconds: f32) void {
-        lerp_towards_float(&self.pos.x, goal.pos.x, ratio, delta_seconds);
-        lerp_towards_float(&self.pos.y, goal.pos.y, ratio, delta_seconds);
-        lerp_towards_float(&self.turns, goal.turns, ratio, delta_seconds);
-        lerp_towards_float(&self.scale, goal.scale, ratio, delta_seconds);
-    }
-
-    pub fn applyToLocalPosition(parent: Point, local: Vec2) Vec2 {
-        return local.scale(parent.scale).rotate(parent.turns).add(parent.pos);
-    }
-
-    pub fn applyToLocalPoint(parent: Point, local: Point) Point {
-        return .{
-            .pos = parent.applyToLocalPosition(local.pos),
-            .scale = parent.scale * local.scale,
-            .turns = parent.turns + local.turns,
-        };
-    }
-
-    pub fn expectApproxEqRel(expected: Point, actual: Point, tolerance: anytype) !void {
-        try std.testing.expectApproxEqRel(expected.scale, actual.scale, tolerance);
-        try std.testing.expectApproxEqRel(expected.turns, actual.turns, tolerance);
-        try Vec2.expectApproxEqRel(expected.pos, actual.pos, tolerance);
-    }
-
-    pub fn expectApproxEqAbs(expected: Point, actual: Point, tolerance: anytype) !void {
-        try std.testing.expectApproxEqAbs(expected.scale, actual.scale, tolerance);
-        try std.testing.expectApproxEqAbs(expected.turns, actual.turns, tolerance);
-        try Vec2.expectApproxEqAbs(expected.pos, actual.pos, tolerance);
-    }
-
-    pub fn inverseApplyToLocalPoint(applied: Point, local: Point) Point {
-        const scale = applied.scale / local.scale;
-        const turns = applied.turns - local.turns;
-        return .{
-            .pos = applied.pos.sub(local.pos.scale(scale).rotate(turns)),
-            .scale = scale,
-            .turns = turns,
-        };
-    }
-
-    pub fn inverseApplyGetLocal(parent: Point, applied: Point) Point {
-        return .{
-            .pos = applied.pos.sub(parent.pos).rotate(-parent.turns).scale(1 / parent.scale),
-            .scale = applied.scale / parent.scale,
-            .turns = applied.turns - parent.turns,
-        };
-    }
-
-    test "inverse apply" {
-        const parent: Point = .{ .pos = .zero, .scale = 2, .turns = 0.25 };
-        const local: Point = .{ .pos = .e1 };
-        const applied = parent.applyToLocalPoint(local);
-        try expectApproxEqAbs(.{ .pos = .new(0, 2), .scale = 2, .turns = 0.25 }, applied, 0.0001);
-        try expectApproxEqAbs(parent, applied.inverseApplyToLocalPoint(local), 0.0001);
-        try expectApproxEqAbs(local, parent.inverseApplyGetLocal(applied), 0.0001);
-    }
-
-    pub fn inverseApplyGetLocalPosition(parent: Point, applied: Vec2) Vec2 {
-        return inverseApplyGetLocal(parent, .{ .pos = applied }).pos;
-    }
-};
-
-pub const Camera = struct {
-    const aspect_ratio: f32 = 16.0 / 9.0;
-
-    center: Vec2,
-    /// how many world units fit between the top and bottom of the camera view
-    height: f32,
-
-    pub fn fromTopleftAndHeight(top_left: Vec2, height: f32) Camera {
-        return .{ .center = top_left.add(
-            Vec2.new(aspect_ratio, 1).scale(height).scale(0.5),
-        ), .height = height };
-    }
-
-    pub fn toRect(self: Camera) Rect {
-        const size = Vec2.new(self.height * aspect_ratio, self.height);
-        const top_left = self.center.sub(size.scale(0.5));
-        return Rect{ .top_left = top_left, .size = size };
-    }
-
-    pub fn lerp(a: Camera, b: Camera, t: f32) Camera {
-        return Camera{
-            .center = Vec2.lerp(a.center, b.center, t),
-            .height = std.math.lerp(a.height, b.height, t),
-        };
-    }
-
-    /// screen_pos is in ([0..aspect_ratio], [0..1])
-    pub fn worldFromScreen(self: Camera, screen_pos: Vec2) Vec2 {
-        const rect = self.toRect();
-        return rect.top_left.add(screen_pos.scale(self.height));
     }
 };
 
@@ -687,37 +409,6 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
         }
     };
 }
-
-const Random = struct {
-    rnd: std.Random,
-
-    fn between(this: Random, at_least: f32, less_than: f32) f32 {
-        return this.rnd.float(f32) * (less_than - at_least) + at_least;
-    }
-
-    fn inRect(this: Random, rect: Rect) Vec2 {
-        return Vec2.new(
-            this.between(rect.top_left.x, rect.top_left.x + rect.size.x),
-            this.between(rect.top_left.y, rect.top_left.y + rect.size.y),
-        );
-    }
-
-    fn around0(this: Random, radius: f32) f32 {
-        return this.between(-radius, radius);
-    }
-
-    fn direction(this: Random) Vec2 {
-        return Vec2.e1.rotate(this.rnd.float(f32));
-    }
-
-    fn color(this: Random) Color {
-        return Color.new(
-            this.rnd.int(u8),
-            this.rnd.int(u8),
-            this.rnd.int(u8),
-        );
-    }
-};
 
 // pub fn Template(platform: Platform, drawer: Drawer) type {
 //     _ = platform;
@@ -1484,7 +1175,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             .pos = platform.getMouse().cur.pos(global_camera),
                             .scale = 1,
                         }, 0.6, delta_seconds);
-                    lerp_towards(&grabbing.is_pattern, if (grabbing.address_if_released) |goal|
+                    math.lerp_towards(&grabbing.is_pattern, if (grabbing.address_if_released) |goal|
                         if (goal.isPattern()) 1 else 0
                     else
                         @round(grabbing.is_pattern), 0.6, delta_seconds);
@@ -1502,7 +1193,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     );
                 },
                 .hovering_special_case => |*hot| {
-                    lerp_towards_float(hot, 1, 0.6, delta_seconds);
+                    math.lerp_towards(hot, 1, 0.6, delta_seconds);
                 },
                 .hovering_case => |unfolded| {
                     try self.cases.setUnfolded(unfolded);
@@ -2486,13 +2177,13 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
                 self.ui_state.active = 999;
             }
             for (self.ui_state.buttons, 0..) |*button, k| {
-                lerp_towards(
+                math.lerp_towards(
                     &button.hot_t,
                     if (self.ui_state.isHot(k)) 1 else 0,
                     0.6,
                     delta_seconds,
                 );
-                lerp_towards(
+                math.lerp_towards(
                     &button.active_t,
                     if (self.ui_state.isActive(k)) 1 else 0,
                     0.6,
@@ -2585,7 +2276,7 @@ pub fn IntroSequence(platform: Platform, drawer: Drawer) type {
             const camera = Camera.lerp(
                 initial_camera,
                 second_camera,
-                smoothstep(self.t, 2, 6),
+                math.smoothstep(self.t, 2, 6),
             );
             for (self.background_atoms) |atom| {
                 drawer.drawAtomDebug(camera, atom.cur);
@@ -2616,7 +2307,7 @@ pub fn IntroSequence(platform: Platform, drawer: Drawer) type {
                     53.5,
                 );
             } else {
-                const pull = smoothstep(self.t, 8.3, 12) * 6.8;
+                const pull = math.smoothstep(self.t, 8.3, 12) * 6.8;
                 drawer.drawCable(camera, .new(-50, 0), .new(6.3 - pull, 0), 1, pull);
                 drawer.drawAtomDebug(camera, snap.pos.applyToLocalPoint(.{ .pos = .new(3.8 - pull, 0) }));
 
