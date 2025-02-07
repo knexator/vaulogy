@@ -164,6 +164,10 @@ const WebPlatform = struct {
     pub fn getMouse() presenter.Mouse {
         return mouse;
     }
+
+    pub fn getKeyboard() presenter.Keyboard {
+        return keyboard;
+    }
 };
 
 const Camera = presenter.Camera;
@@ -532,6 +536,7 @@ const web_platform = presenter.Platform{
     .getPlayerData = WebPlatform.getPlayerData,
     .setPlayerData = WebPlatform.setPlayerData,
     .getMouse = WebPlatform.getMouse,
+    .getKeyboard = WebPlatform.getKeyboard,
 };
 const web_drawer = presenter.Drawer{
     .clear = js_better.canvas.clear,
@@ -559,11 +564,6 @@ export fn init() void {
     };
 }
 
-const KeyCode = @import("./tools/generate_keycodes_js.zig").KeyCode;
-export fn keydown(code: KeyCode) void {
-    if (code == .KeyA) paused = !paused;
-}
-
 var paused = false;
 export fn frame(delta_seconds: f32) void {
     if (paused) return;
@@ -573,6 +573,7 @@ export fn frame(delta_seconds: f32) void {
         else => programmerError(),
     };
     mouse.prev = mouse.cur;
+    keyboard.prev = keyboard.cur;
 }
 
 export fn draw() void {
@@ -583,9 +584,25 @@ export fn draw() void {
     };
 }
 
-const MouseState = presenter.MouseState;
-var mouse = presenter.Mouse{ .cur = .init, .prev = .init };
+var keyboard = presenter.Keyboard{ .cur = .init, .prev = .init };
+const KeyCode = @import("./tools/generate_keycodes_js.zig").KeyCode;
+export fn keydown(code: KeyCode) void {
+    keychanged(code, true);
+}
+export fn keyup(code: KeyCode) void {
+    keychanged(code, false);
+}
 
+fn keychanged(key: KeyCode, is_pressed: bool) void {
+    switch (key) {
+        .KeyD, .ArrowRight => keyboard.cur.right = is_pressed,
+        .KeyA, .ArrowLeft => keyboard.cur.left = is_pressed,
+        .KeyW, .ArrowUp => keyboard.cur.up = is_pressed,
+        .KeyS, .ArrowDown => keyboard.cur.down = is_pressed,
+    }
+}
+
+var mouse = presenter.Mouse{ .cur = .init, .prev = .init };
 export fn pointermove(x: f32, y: f32) void {
     mouse.cur.clientX = x / js_better.canvas.getSize().y;
     mouse.cur.clientY = y / js_better.canvas.getSize().y;

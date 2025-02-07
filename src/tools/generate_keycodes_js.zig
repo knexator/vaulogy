@@ -4,6 +4,10 @@ pub const KeyCode = enum(u32) {
     KeyS,
     KeyA,
     KeyD,
+    ArrowLeft,
+    ArrowRight,
+    ArrowUp,
+    ArrowDown,
 };
 
 pub fn main() !void {

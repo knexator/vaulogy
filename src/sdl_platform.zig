@@ -17,6 +17,10 @@ const SdlPlatform = struct {
     pub fn getMouse() presenter.Mouse {
         return mouse;
     }
+
+    pub fn getKeyboard() presenter.Keyboard {
+        return keyboard;
+    }
 };
 
 var sdl_renderer: *c.SDL_Renderer = undefined;
@@ -407,6 +411,7 @@ const sdl_platform = presenter.Platform{
     .getPlayerData = SdlPlatform.getPlayerData,
     .setPlayerData = SdlPlatform.setPlayerData,
     .getMouse = SdlPlatform.getMouse,
+    .getKeyboard = SdlPlatform.getKeyboard,
 };
 const sdl_drawer = presenter.Drawer{
     .clear = SdlDrawer.clear,
@@ -428,6 +433,7 @@ const sdl_drawer = presenter.Drawer{
 const window_size = Vec2.new(1280, 720);
 const MouseState = presenter.MouseState;
 var mouse = presenter.Mouse{ .cur = .init, .prev = .init };
+var keyboard = presenter.Keyboard{ .cur = .init, .prev = .init };
 var game: presenter.Presenter(sdl_platform, sdl_drawer) = undefined;
 
 const c = @cImport({
@@ -509,16 +515,27 @@ pub fn main() !void {
                         break :main_loop;
                     },
                     c.SDL_EVENT_MOUSE_BUTTON_DOWN, c.SDL_EVENT_MOUSE_BUTTON_UP => {
+                        const is_pressed = event.button.down;
                         switch (event.button.button) {
-                            c.SDL_BUTTON_LEFT => mouse.cur.buttons.left = event.button.down,
-                            c.SDL_BUTTON_RIGHT => mouse.cur.buttons.right = event.button.down,
-                            c.SDL_BUTTON_MIDDLE => mouse.cur.buttons.middle = event.button.down,
+                            c.SDL_BUTTON_LEFT => mouse.cur.buttons.left = is_pressed,
+                            c.SDL_BUTTON_RIGHT => mouse.cur.buttons.right = is_pressed,
+                            c.SDL_BUTTON_MIDDLE => mouse.cur.buttons.middle = is_pressed,
                             else => {},
                         }
                     },
                     c.SDL_EVENT_MOUSE_MOTION => {
                         mouse.cur.clientX = event.motion.x / window_size.y;
                         mouse.cur.clientY = event.motion.y / window_size.y;
+                    },
+                    c.SDL_EVENT_KEY_DOWN, c.SDL_EVENT_KEY_UP => {
+                        const is_pressed = event.type == c.SDL_EVENT_KEY_DOWN;
+                        switch (event.key.scancode) {
+                            c.SDLK_D, c.SDLK_RIGHT => keyboard.cur.right = is_pressed,
+                            c.SDLK_A, c.SDLK_LEFT => keyboard.cur.left = is_pressed,
+                            c.SDLK_W, c.SDLK_UP => keyboard.cur.up = is_pressed,
+                            c.SDLK_S, c.SDLK_DOWN => keyboard.cur.down = is_pressed,
+                            else => {},
+                        }
                     },
                     else => {},
                 }
@@ -530,6 +547,7 @@ pub fn main() !void {
             // frame logic
             try game.update(1.0 / 60.0);
             mouse.prev = mouse.cur;
+            keyboard.prev = keyboard.cur;
         }
 
         // Draw

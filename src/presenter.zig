@@ -14,6 +14,31 @@ const parsing = @import("parsing.zig");
 
 const OoM = error{ OutOfMemory, TODO, BAD_INPUT };
 
+pub const KeyboardButton = std.meta.FieldEnum(KeyboardState);
+pub const KeyboardState = struct {
+    left: bool,
+    right: bool,
+    up: bool,
+    down: bool,
+
+    pub const init: KeyboardState = std.mem.zeroes(KeyboardState);
+};
+
+pub const Keyboard = struct {
+    cur: KeyboardState,
+    prev: KeyboardState,
+
+    pub fn isDown(self: Keyboard, button: KeyboardButton) bool {
+        return switch (button) {
+            inline else => |x| @field(self.cur, @tagName(x)),
+        };
+    }
+
+    pub fn wasPressed(self: Keyboard, button: KeyboardButton) bool {
+        return self.cur.isDown(button) and !self.prev.isDown(button);
+    }
+};
+
 const MouseButton = enum { left, right, middle };
 pub const MouseState = struct {
     // TODO: rename these, make into a Vec2
@@ -62,6 +87,7 @@ pub const Platform = struct {
     getPlayerData: fn (mem: *VeryPermamentGameStuff) OoM!?PlayerData,
     setPlayerData: fn (player_data: PlayerData, mem: *VeryPermamentGameStuff) OoM!void,
     getMouse: fn () Mouse,
+    getKeyboard: fn () Keyboard,
 };
 
 pub const PlayerData = struct {

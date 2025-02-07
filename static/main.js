@@ -161,6 +161,15 @@ document.addEventListener("keydown", (ev) => {
   }
 });
 
+document.addEventListener("keyup", (ev) => {
+  if (ev.repeat) return;
+  const key_num = keys[ev.code];
+  if (key_num !== undefined) {
+    wasm_exports.keyup(key_num);
+  }
+});
+
+
 document.addEventListener("pointermove", (ev) => {
   const rect = canvas.getBoundingClientRect();
   wasm_exports.pointermove(ev.clientX - rect.left, ev.clientY - rect.top);
