@@ -1,5 +1,7 @@
 //! This should be unchanged regardless of platform
 
+// TODO: maybe combine Editing & Executing (they both share Camera and some UI)
+
 const std = @import("std");
 
 const math = @import("kommon/math.zig");
@@ -359,17 +361,6 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn update(self: *Self, delta_seconds: f32) !void {
-            inline for (.{
-                .{ KeyboardButton.left, Vec2.new(-1, 0) },
-                .{ KeyboardButton.right, Vec2.new(1, 0) },
-                .{ KeyboardButton.up, Vec2.new(0, -1) },
-                .{ KeyboardButton.down, Vec2.new(0, 1) },
-            }) |key_dir| {
-                if (platform.getKeyboard().isDown(key_dir[0])) {
-                    global_camera.center = global_camera.center.add(key_dir[1].scale(delta_seconds * 20));
-                }
-            }
-
             switch (self.state) {
                 .level_select => |*ui| if (ui.update(delta_seconds)) |level_index| {
                     const fnk_name = levels[level_index].fnk_name;
@@ -391,6 +382,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         editing.sample_input,
                         fnk.name,
                         &self.scoring_run,
+                        editing.camera,
                     ) };
                 },
                 // TODO
@@ -921,9 +913,6 @@ const CaseGroup = struct {
     }
 };
 
-// TODO: this shouldn't be a global
-var global_camera = Camera{ .center = .new(7, 3), .height = 15.0 };
-
 pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
     return struct {
         const Self = @This();
@@ -994,6 +983,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         };
 
         mem: *VeryPermamentGameStuff,
+        camera: Camera = Camera{ .center = .new(7, 3), .height = 15.0 },
 
         fnk_name: *const Sexpr,
         cases: CaseGroup,
@@ -1064,18 +1054,18 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 return null;
             }
 
-            pub fn draw() !void {
+            pub fn draw(camera: Camera) !void {
                 for (things) |thing| {
-                    try artist.drawSexpr(global_camera, thing.point, thing.value);
+                    try artist.drawSexpr(camera, thing.point, thing.value);
                 }
 
-                try artist.drawPatternSexpr(global_camera, special_case_point
+                try artist.drawPatternSexpr(camera, special_case_point
                     .applyToLocalPoint(.{ .pos = .new(1, 0) }), special_case_value.pattern);
-                try artist.drawSexpr(global_camera, special_case_point
+                try artist.drawSexpr(camera, special_case_point
                     .applyToLocalPoint(.{ .pos = .new(3, 0) }), special_case_value.template);
                 // TODO: artist.drawCableBetween(camera, pattern_pos, template_pos);
                 drawer.drawCable(
-                    global_camera,
+                    camera,
                     special_case_point.applyToLocalPosition(.new(1.5, 0)),
                     special_case_point.applyToLocalPosition(.new(2.5, 0)),
                     special_case_point.scale,
@@ -1149,12 +1139,25 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn update(self: *Self, delta_seconds: f32) !bool {
+            // move camera
+            inline for (.{
+                .{ KeyboardButton.left, Vec2.new(-1, 0) },
+                .{ KeyboardButton.right, Vec2.new(1, 0) },
+                .{ KeyboardButton.up, Vec2.new(0, -1) },
+                .{ KeyboardButton.down, Vec2.new(0, 1) },
+            }) |key_dir| {
+                if (platform.getKeyboard().isDown(key_dir[0])) {
+                    self.camera.center = self.camera.center.add(key_dir[1].scale(delta_seconds * 20));
+                }
+            }
+            const camera = self.camera;
+
             // focus-specific updates
             switch (self.focus) {
                 .grabbing_case => |*grabbing| {
                     // grabbing case parent is the nothing!
                     grabbing.case.pattern_point_relative_to_parent.lerp_towards((Point{
-                        .pos = platform.getMouse().cur.pos(global_camera),
+                        .pos = platform.getMouse().cur.pos(camera),
                         .scale = if (grabbing.address_if_released == null) 0.5 else 1,
                     }).applyToLocalPoint(.{ .pos = .new(3, 0) }), 0.6, delta_seconds);
                 },
@@ -1172,7 +1175,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         })
                     else
                         Point{
-                            .pos = platform.getMouse().cur.pos(global_camera),
+                            .pos = platform.getMouse().cur.pos(camera),
                             .scale = 1,
                         }, 0.6, delta_seconds);
                     math.lerp_towards(&grabbing.is_pattern, if (grabbing.address_if_released) |goal|
@@ -1204,14 +1207,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             if (std.meta.activeTag(self.focus) == .grabbing_case) {
                 try doGrabbingCaseFirstPass(self.mem, self.focus.grabbing_case.address_if_released, &.{}, self.cases, delta_seconds);
                 self.focus.grabbing_case.address_if_released = if (self.cases.cases.items.len == 0) try self.debugMakeAddress(0) else try doGrabbingCaseSecondPass(
-                    platform.getMouse().cur.pos(global_camera),
+                    platform.getMouse().cur.pos(camera),
                     self.focus.grabbing_case.address_if_released,
                     self.mem,
                     &.{},
                     &self.cases,
                 );
             } else {
-                const mouse_pos = platform.getMouse().cur.pos(global_camera);
+                const mouse_pos = platform.getMouse().cur.pos(camera);
                 const maybe_overlapped: ?union(enum) {
                     special_case,
                     case: core.CaseAddress,
@@ -1352,39 +1355,40 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn draw(self: Self) !void {
+            const camera = self.camera;
             drawer.clear(Color.gray(128));
             {
-                artist.drawOffscreenCableTo(global_camera, SAMPLE_INPUT_POS);
+                artist.drawOffscreenCableTo(camera, SAMPLE_INPUT_POS);
                 try artist.drawSexpr(
-                    global_camera,
+                    camera,
                     SAMPLE_INPUT_POS,
                     self.sample_input,
                 );
                 // TODO: also draw these while executing
-                try artist.drawHoldedFnk(global_camera, MAIN_FNK_POS, 1, self.fnk_name);
+                try artist.drawHoldedFnk(camera, MAIN_FNK_POS, 1, self.fnk_name);
             }
 
-            try drawCases(true, .{}, self.cases);
+            try drawCases(camera, true, .{}, self.cases);
 
-            try toolbar.draw();
+            try toolbar.draw(camera);
 
             switch (self.focus) {
                 .nothing => {},
                 .hovering_special_case => |hot| {
                     // TODO: cooler
-                    drawer.drawCaseHolder(global_camera, toolbar.special_case_point
+                    drawer.drawCaseHolder(camera, toolbar.special_case_point
                         .applyToLocalPoint(.{ .scale = hot }));
                 },
                 .hovering_case => |unfolded| {
                     const pattern_point = try self.cases.getPatternGlobalPoint(.{}, unfolded);
-                    drawer.drawCaseHolder(global_camera, .{
+                    drawer.drawCaseHolder(camera, .{
                         .pos = pattern_point.pos.sub(.new(3, 0)),
                         .scale = pattern_point.scale,
                     });
                 },
                 .grabbing_sexpr => |grabbing| {
                     try artist.drawBothSexpr(
-                        global_camera,
+                        camera,
                         grabbing.point,
                         grabbing.is_pattern,
                         grabbing.sexpr,
@@ -1394,15 +1398,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     // grabbing case parent is the nothing!
                     const pattern_point = grabbing.case.pattern_point_relative_to_parent;
                     try artist.drawPatternSexpr(
-                        global_camera,
+                        camera,
                         pattern_point,
                         grabbing.case.pattern,
                     );
-                    try drawCaseExtra(pattern_point, grabbing.case);
+                    try drawCaseExtra(camera, pattern_point, grabbing.case);
                 },
                 .hovering_sexpr => |hovering| {
                     try artist.drawBothSexpr(
-                        global_camera,
+                        camera,
                         hovering.global_point,
                         if (hovering.address.isPattern()) 1 else 0,
                         try hovering.address.getSexpr(self),
@@ -1415,21 +1419,21 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         }
 
-        fn drawCases(is_first: bool, parent_point: Point, group: CaseGroup) OoM!void {
+        fn drawCases(camera: Camera, is_first: bool, parent_point: Point, group: CaseGroup) OoM!void {
             for (group.cases.items) |case| {
                 const pattern_point = parent_point.applyToLocalPoint(case.pattern_point_relative_to_parent);
                 try artist.drawPatternSexpr(
-                    global_camera,
+                    camera,
                     pattern_point,
                     case.pattern,
                 );
                 if (case.pattern_point_relative_to_parent.scale >= 0.9) {
-                    try drawCaseExtra(pattern_point, case);
+                    try drawCaseExtra(camera, pattern_point, case);
                 }
 
                 const pos = pattern_point.applyToLocalPosition(.new(0, 1));
                 drawer.drawCable(
-                    global_camera,
+                    camera,
                     pos.sub(.new(if (is_first) 5 else 3, 0)),
                     pos,
                     1,
@@ -1438,22 +1442,22 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         }
 
-        fn drawCaseExtra(pattern_point: Point, case: CaseState) !void {
+        fn drawCaseExtra(camera: Camera, pattern_point: Point, case: CaseState) !void {
             try artist.drawSexpr(
-                global_camera,
+                camera,
                 pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
                 case.template,
             );
-            try artist.drawHoldedFnk(global_camera, pattern_point.applyToLocalPoint(FNK_NAME_OFFSET), 0, case.fnk_name);
+            try artist.drawHoldedFnk(camera, pattern_point.applyToLocalPoint(FNK_NAME_OFFSET), 0, case.fnk_name);
             drawer.drawCable(
-                global_camera,
+                camera,
                 pattern_point.applyToLocalPosition(.new(0.5, 0)),
                 pattern_point.applyToLocalPosition(.new(DIST_TO_TEMPLATE - 0.5, 0)),
                 pattern_point.scale,
                 0,
             );
             if (case.next) |next| {
-                try drawCases(false, pattern_point, next);
+                try drawCases(camera, false, pattern_point, next);
             }
         }
 
@@ -1692,6 +1696,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         // TODO: remove this, probably
         scoring_run: *core.ScoringRun,
         thread: core.ExecutionThread,
+        camera: Camera,
 
         anim_t: f32,
 
@@ -1699,11 +1704,13 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             input: *const Sexpr,
             fn_name: *const Sexpr,
             scoring_run: *core.ScoringRun,
+            camera: Camera,
         ) !Self {
             var result = Self{
                 .thread = try .init(input, fn_name, scoring_run),
                 .scoring_run = scoring_run,
                 .anim_t = 0.0,
+                .camera = camera,
             };
 
             // for now, skip the "start" anim
@@ -1718,6 +1725,18 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
         pub fn update(self: *Self, delta_seconds: f32) !?*const Sexpr {
             if (platform.getMouse().wasPressed(.right)) self.anim_t = 0.99;
+
+            // move camera
+            inline for (.{
+                .{ KeyboardButton.left, Vec2.new(-1, 0) },
+                .{ KeyboardButton.right, Vec2.new(1, 0) },
+                .{ KeyboardButton.up, Vec2.new(0, -1) },
+                .{ KeyboardButton.down, Vec2.new(0, 1) },
+            }) |key_dir| {
+                if (platform.getKeyboard().isDown(key_dir[0])) {
+                    self.camera.center = self.camera.center.add(key_dir[1].scale(delta_seconds * 20));
+                }
+            }
 
             self.anim_t += delta_seconds / if (platform.getMouse().cur.isDown(.left)) tof32(20.0) else 2.0;
             while (self.anim_t >= 1) {
@@ -1735,12 +1754,14 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn draw(self: Self) !void {
+            const camera = self.camera;
+
             drawer.clear(Color.gray(128));
 
             if (false) try artist.drawSexpr(
-                global_camera,
+                camera,
                 .{
-                    .pos = platform.getMouse().cur.pos(global_camera),
+                    .pos = platform.getMouse().cur.pos(camera),
                     .scale = 1 - self.anim_t,
                 },
                 &Sexpr.input,
@@ -1765,13 +1786,14 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .failed_to_match => |discarded_case| {
                     const active_stack: core.StackThing = it.next().?;
-                    artist.drawOffscreenCableTo(global_camera, SAMPLE_INPUT_POS);
-                    try artist.drawSexpr(global_camera, parent_point.applyToLocalPoint(SAMPLE_INPUT_POS), self.thread.active_value);
-                    try artist.drawHoldedFnk(global_camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), 1, active_stack.cur_fnk_name);
+                    artist.drawOffscreenCableTo(camera, SAMPLE_INPUT_POS);
+                    try artist.drawSexpr(camera, parent_point.applyToLocalPoint(SAMPLE_INPUT_POS), self.thread.active_value);
+                    try artist.drawHoldedFnk(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), 1, active_stack.cur_fnk_name);
                     if (self.anim_t < 0.5) {
                         const t = clamp01(remap(self.anim_t, 0, 0.4, 0, 1));
                         const t2 = clamp01(remap(self.anim_t, 0.4, 0.5, 0, 1));
                         try drawCases(
+                            camera,
                             1,
                             parent_point.applyToLocalPoint(.{ .pos = .new(0, lerp(1.5, 0, t)) }),
                             active_stack.cur_cases,
@@ -1779,6 +1801,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             0,
                         );
                         try drawCase(
+                            camera,
                             1 - t2 * 0.5,
                             parent_point
                                 .applyToLocalPoint(.{ .pos = .new(lerp(DIST_TO_TEMPLATE, 4, t2), lerp(3, 0, t)) }),
@@ -1789,13 +1812,14 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         );
                     } else {
                         const t = remap(self.anim_t, 0.5, 1, 0, 1);
-                        try drawCase(0.5, parent_point
+                        try drawCase(camera, 0.5, parent_point
                             .applyToLocalPoint(Point.lerp(
                             .{ .pos = .new(4, 0) },
                             .{ .pos = .new(12, -4), .scale = 0, .turns = -0.65 },
                             t,
                         )), discarded_case, true, false, 0);
                         try drawCase(
+                            camera,
                             1,
                             parent_point
                                 .applyToLocalPoint(.{ .pos = .new(5, lerp(3.5, 3, t)), .scale = lerp(0.5, 1, t) }),
@@ -1805,6 +1829,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             0,
                         );
                         try drawCases(
+                            camera,
                             1,
                             parent_point.applyToLocalPoint(.{ .pos = .new(0, 1.5) }),
                             active_stack.cur_cases[1..],
@@ -1825,15 +1850,16 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         const t = clamp01(remap(self.anim_t, 0, 0.4, 0, 1));
                         const t2 = clamp01(remap(self.anim_t, 0.4, 0.5, 0, 1));
 
-                        artist.drawOffscreenCableTo(global_camera, SAMPLE_INPUT_POS);
+                        artist.drawOffscreenCableTo(camera, SAMPLE_INPUT_POS);
                         try artist.drawSexpr(
-                            global_camera,
+                            camera,
                             parent_point.applyToLocalPoint(SAMPLE_INPUT_POS),
                             matched.old_active_value,
                         );
-                        try artist.drawHoldedFnk(global_camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), 1, matched.old_fnk_name);
+                        try artist.drawHoldedFnk(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), 1, matched.old_fnk_name);
 
                         try drawCases(
+                            camera,
                             1,
                             parent_point.applyToLocalPoint(.{ .pos = .new(0, lerp(1.5, 0, t)) }),
                             matched.discarded_cases,
@@ -1841,6 +1867,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             0,
                         );
                         try drawCase(
+                            camera,
                             1 - t2 * 0.5,
                             parent_point
                                 .applyToLocalPoint(.{ .pos = .new(lerp(DIST_TO_TEMPLATE, 4, t2), lerp(3, 0, t)) }),
@@ -1859,25 +1886,25 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             .applyToLocalPoint(.{ .scale = 1 - t2 });
                         const cable_asdf_pos = dissolving_pattern_point.applyToLocalPosition(.new(3.5, 0));
                         drawer.drawCable(
-                            global_camera,
+                            camera,
                             .new(-CABLE_OFFSCREEN_DIST, 0),
                             dissolving_pattern_point.applyToLocalPosition(.new(-0.5, 0)),
                             1,
                             t2 * 3,
                         );
                         try artist.drawSexpr(
-                            global_camera,
+                            camera,
                             dissolving_pattern_point,
                             matched.old_active_value,
                         );
                         try artist.drawPatternSexpr(
-                            global_camera,
+                            camera,
                             dissolving_pattern_point
                                 .applyToLocalPoint(.{ .pos = .new(3, 0) }),
                             matched.case.pattern,
                         );
                         drawer.drawCable(
-                            global_camera,
+                            camera,
                             dissolving_pattern_point.applyToLocalPosition(.new(-1, 1)),
                             dissolving_pattern_point.applyToLocalPosition(.new(3, 1)),
                             dissolving_pattern_point.scale,
@@ -1889,9 +1916,9 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             SAMPLE_INPUT_POS,
                             t,
                         ));
-                        artist.drawCableTo(global_camera, cable_asdf_pos, active_value_cur_pos);
+                        artist.drawCableTo(camera, cable_asdf_pos, active_value_cur_pos);
                         try artist.drawSexpr(
-                            global_camera,
+                            camera,
                             active_value_cur_pos,
                             // TODO: smoothly anim this, and also on the child cases
                             if (t > 0.5) self.thread.active_value else matched.case.template,
@@ -1899,7 +1926,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
                         if (matched.added_new_fnk_to_stack) {
                             const active_stack: core.StackThing = it.next().?;
-                            try artist.drawHoldedFnk(global_camera, parent_point
+                            try artist.drawHoldedFnk(camera, parent_point
                                 .applyToLocalPoint(Point.lerp(
                                 (Point{ .pos = .new(DIST_TO_TEMPLATE - 1, 0) })
                                     .applyToLocalPoint(FNK_NAME_OFFSET),
@@ -1907,6 +1934,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                 t,
                             )), t, active_stack.cur_fnk_name);
                             try drawCases(
+                                camera,
                                 1,
                                 parent_point.applyToLocalPoint(.{
                                     // TODO: this anim
@@ -1921,7 +1949,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         // TODO: join the 3 prev_stack cases in 1, maybe
                         if (matched.tail_optimized) {
                             try artist.drawHoldedFnk(
-                                global_camera,
+                                camera,
                                 parent_point
                                     .applyToLocalPoint(Point.lerp(
                                     MAIN_FNK_POS,
@@ -1951,7 +1979,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
                                 if (it.next()) |prev_stack| {
                                     try artist.drawHoldedFnk(
-                                        global_camera,
+                                        camera,
                                         parent_point
                                             .applyToLocalPoint(.{ .pos = .new(lerp(-DIST_BETWEEN_QUEUED_FNKS, 0, t), 0) })
                                             .applyToLocalPoint(MAIN_FNK_POS),
@@ -1959,6 +1987,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                         prev_stack.cur_fnk_name,
                                     );
                                     try drawCases(
+                                        camera,
                                         t,
                                         parent_point.applyToLocalPoint(.{
                                             .pos = .new(lerp(-1 - DIST_BETWEEN_QUEUED_FNKS, 0, t), 0),
@@ -1975,7 +2004,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                 defer parent_point = parent_point.applyToLocalPoint(.{ .pos = .new(-DIST_BETWEEN_QUEUED_FNKS * t2, 0) });
 
                                 try artist.drawHoldedFnk(
-                                    global_camera,
+                                    camera,
                                     parent_point
                                         .applyToLocalPoint(.{ .pos = .new(lerp(0, -DIST_BETWEEN_QUEUED_FNKS, t2), 0) })
                                         .applyToLocalPoint(MAIN_FNK_POS),
@@ -1984,6 +2013,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                 );
                                 // TODO: revise this (waiting cases should be gen0?)
                                 try drawCases(
+                                    camera,
                                     0,
                                     parent_point.applyToLocalPoint(.{
                                         .pos = .new(lerp(DIST_TO_TEMPLATE - 1, -1 - DIST_BETWEEN_QUEUED_FNKS, t2), 0),
@@ -1994,7 +2024,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                 );
                             } else {
                                 try artist.drawHoldedFnk(
-                                    global_camera,
+                                    camera,
                                     parent_point
                                         .applyToLocalPoint(MAIN_FNK_POS),
                                     1,
@@ -2002,6 +2032,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                 );
 
                                 try drawCases(
+                                    camera,
                                     t,
                                     parent_point
                                         .applyToLocalPoint(.{ .pos = .new(lerp(DIST_TO_TEMPLATE - 1, 0, t), 0) }),
@@ -2014,15 +2045,16 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     }
                 },
                 .ended => |result| {
-                    artist.drawOffscreenCableTo(global_camera, SAMPLE_INPUT_POS);
-                    try artist.drawSexpr(global_camera, parent_point.applyToLocalPoint(SAMPLE_INPUT_POS), result);
+                    artist.drawOffscreenCableTo(camera, SAMPLE_INPUT_POS);
+                    try artist.drawSexpr(camera, parent_point.applyToLocalPoint(SAMPLE_INPUT_POS), result);
                 },
             }
             while (it.next()) |x| {
                 parent_point = parent_point.applyToLocalPoint(.{ .pos = .new(-DIST_BETWEEN_QUEUED_FNKS, 0) });
-                try artist.drawHoldedFnk(global_camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), 1, x.cur_fnk_name);
+                try artist.drawHoldedFnk(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), 1, x.cur_fnk_name);
 
                 try drawCases(
+                    camera,
                     0,
                     parent_point.applyToLocalPoint(.{ .pos = .new(-1, 0) }),
                     x.cur_cases,
@@ -2033,7 +2065,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         // TODO: remove this duplication from EditingFnk
-        fn drawCases(is_gen0: f32, parent_point: Point, cases: []const core.MatchCaseDefinition, first_unfolded: bool, hiding_children: f32) OoM!void {
+        fn drawCases(camera: Camera, is_gen0: f32, parent_point: Point, cases: []const core.MatchCaseDefinition, first_unfolded: bool, hiding_children: f32) OoM!void {
             for (cases, 0..) |case, k| {
                 const relative_pattern_point = if (first_unfolded and k == 0) Point{
                     .pos = .new(lerp(4, 5, is_gen0), 3),
@@ -2046,25 +2078,25 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
                 // TODO: constant cable should be true except when whooshing away
                 // try drawCase(is_gen0, pattern_point, case, first_unfolded and k == 0, true, hiding_children);
-                try drawCase(is_gen0, pattern_point, case, first_unfolded and k == 0, is_gen0 > 0.5, hiding_children);
+                try drawCase(camera, is_gen0, pattern_point, case, first_unfolded and k == 0, is_gen0 > 0.5, hiding_children);
             }
         }
 
         // TODO: join with_extra and constant_cable into a single struct? so constant cable can have a default value
-        fn drawCase(is_gen0: f32, pattern_point: Point, case: core.MatchCaseDefinition, with_extra: bool, constant_cable: bool, hiding_children: f32) OoM!void {
+        fn drawCase(camera: Camera, is_gen0: f32, pattern_point: Point, case: core.MatchCaseDefinition, with_extra: bool, constant_cable: bool, hiding_children: f32) OoM!void {
             try artist.drawPatternSexpr(
-                global_camera,
+                camera,
                 pattern_point,
                 case.pattern,
             );
             if (with_extra) {
-                try drawCaseExtra(pattern_point.applyToLocalPoint(.{ .scale = 1 - hiding_children }), case);
+                try drawCaseExtra(camera, pattern_point.applyToLocalPoint(.{ .scale = 1 - hiding_children }), case);
             }
 
             const cable_from = pattern_point.applyToLocalPosition(.new((lerp(-3, -5, is_gen0)) / if (constant_cable) pattern_point.scale else 1, 1));
             const cable_to = pattern_point.applyToLocalPosition(.new(0, 1));
             drawer.drawCable(
-                global_camera,
+                camera,
                 cable_from,
                 cable_to,
                 if (constant_cable) 1 else pattern_point.scale,
@@ -2072,22 +2104,22 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             );
         }
 
-        fn drawCaseExtra(pattern_point: Point, case: core.MatchCaseDefinition) !void {
+        fn drawCaseExtra(camera: Camera, pattern_point: Point, case: core.MatchCaseDefinition) !void {
             try artist.drawSexpr(
-                global_camera,
+                camera,
                 pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
                 case.template,
             );
-            try artist.drawHoldedFnk(global_camera, pattern_point.applyToLocalPoint(FNK_NAME_OFFSET), 0, case.fnk_name);
+            try artist.drawHoldedFnk(camera, pattern_point.applyToLocalPoint(FNK_NAME_OFFSET), 0, case.fnk_name);
             drawer.drawCable(
-                global_camera,
+                camera,
                 pattern_point.applyToLocalPosition(.new(0.5, 0)),
                 pattern_point.applyToLocalPosition(.new(DIST_TO_TEMPLATE - 0.5, 0)),
                 pattern_point.scale,
                 0,
             );
             if (case.next) |next| {
-                try drawCases(0, pattern_point, next.items, true, 0);
+                try drawCases(camera, 0, pattern_point, next.items, true, 0);
             }
         }
     };
