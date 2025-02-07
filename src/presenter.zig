@@ -984,6 +984,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         mem: *VeryPermamentGameStuff,
         camera: Camera = Camera{ .center = .new(7, 3), .height = 15.0 },
+        ui_state: UI.State,
 
         fnk_name: *const Sexpr,
         cases: CaseGroup,
@@ -1114,12 +1115,18 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         pub fn init(fnk: Fnk, mem: *VeryPermamentGameStuff) !Self {
             const cases = try makeCasesPhysical(mem, fnk.body.cases);
             const sample_input = try mem.storeSexpr(Sexpr.doPair(&Sexpr.nil, &Sexpr.input));
+
+            const ui_state = UI.State{ .buttons = try platform.gpa.dupe(UI.Button, &.{
+                .{ .pos = Rect{ .top_left = .new(1, 2), .size = .one } },
+            }) };
+
             return .{
                 .mem = mem,
                 .fnk_name = fnk.name,
                 .cases = cases,
                 // .sample_input = &Sexpr.true,
                 .sample_input = sample_input,
+                .ui_state = ui_state,
             };
         }
 
@@ -1183,7 +1190,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     else
                         @round(grabbing.is_pattern), 0.6, delta_seconds);
                 },
-                .nothing => {},
+                .nothing => {
+                    if (self.ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button| {
+                        switch (pressed_button) {
+                            0 => return true,
+                            else => @panic("oops"),
+                        }
+                    }
+                },
                 .hovering_sexpr => |*hovering| {
                     if (std.meta.activeTag(hovering.address) == .full_address) {
                         const unfolded = hovering.address.full_address.case_address;
@@ -1371,6 +1385,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             try drawCases(camera, true, .{}, self.cases);
 
             try toolbar.draw(camera);
+
+            self.ui_state.draw(drawer);
 
             switch (self.focus) {
                 .nothing => {},
@@ -2195,6 +2211,14 @@ const UI = struct {
                 );
             }
             return result;
+        }
+
+        pub fn draw(self: State, comptime drawer: Drawer) void {
+            for (self.buttons) |button| {
+                drawer.drawRect(UI.cam, button.pos.plusMargin(
+                    clamp01(button.hot_t - button.active_t) * 0.1,
+                ));
+            }
         }
     };
 

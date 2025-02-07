@@ -155,6 +155,10 @@ pub const Rect = struct {
         return inRange(p.x, self.top_left.x, self.top_left.x + self.size.x) and
             inRange(p.y, self.top_left.y, self.top_left.y + self.size.y);
     }
+
+    pub fn plusMargin(self: Rect, v: f32) Rect {
+        return .{ .top_left = self.top_left.sub(.new(v, v)), .size = self.size.add(Vec2.new(v, v).scale(2)) };
+    }
 };
 
 pub const Color = struct {
