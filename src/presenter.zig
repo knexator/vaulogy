@@ -80,7 +80,7 @@ pub const MouseState = struct {
     };
 
     pub fn pos(self: MouseState, camera: Camera) Vec2 {
-        return camera.worldFromScreen(Vec2.new(self.clientX, self.clientY));
+        return camera.worldFromScreenPosition(Vec2.new(self.clientX, self.clientY));
     }
 
     pub fn isDown(self: MouseState, button: MouseButton) bool {
@@ -230,11 +230,16 @@ pub const Drawer = struct {
             _ = world_point;
             unreachable;
         }
+        pub fn camera_rect(camera: Camera, rect: Rect) void {
+            _ = camera;
+            _ = rect;
+            unreachable;
+        }
     };
     // TODO: all should be unreachable
     pub const dummy = Drawer{
         .clear = dummySignatures.color,
-        .drawRect = undefined,
+        .drawRect = dummySignatures.camera_rect,
         .drawAtomDebug = undefined,
         .drawAtom = dummySignatures.camera_point_visuals,
         .drawVariable = dummySignatures.camera_point_visuals,
@@ -258,6 +263,26 @@ pub const Drawer = struct {
         }.anon,
     };
 };
+
+fn moveCamera(camera: *Camera, delta_seconds: f32, keyboard: Keyboard, mouse: Mouse) void {
+    const mouse_pos = mouse.cur.pos(camera.*);
+    camera.* = camera.zoom(mouse_pos, camera.height * switch (mouse.cur.scrolled) {
+        .none => tof32(1.0),
+        .down => 1.1,
+        .up => 0.9,
+    });
+
+    inline for (.{
+        .{ KeyboardButton.left, Vec2.new(-1, 0) },
+        .{ KeyboardButton.right, Vec2.new(1, 0) },
+        .{ KeyboardButton.up, Vec2.new(0, -1) },
+        .{ KeyboardButton.down, Vec2.new(0, 1) },
+    }) |key_dir| {
+        if (keyboard.isDown(key_dir[0])) {
+            camera.center = camera.center.add(key_dir[1].scale(delta_seconds * camera.height));
+        }
+    }
+}
 
 fn defaultFnkBody1(mem: *VeryPermamentGameStuff) FnkBody {
     const default_fnk =
@@ -364,7 +389,8 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn update(self: *Self, delta_seconds: f32) !void {
-            // std.log.debug("{any}", .{platform.getMouse().cur.scrolled});
+            // TODO NOW: why does FPS go lower when zooming in?
+            std.log.err("FPS: {d}", .{1.0 / delta_seconds});
             switch (self.state) {
                 .level_select => |*ui| if (ui.update(delta_seconds)) |level_index| {
                     const fnk_name = levels[level_index].fnk_name;
@@ -1176,17 +1202,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn update(self: *Self, delta_seconds: f32) !bool {
-            // move camera
-            inline for (.{
-                .{ KeyboardButton.left, Vec2.new(-1, 0) },
-                .{ KeyboardButton.right, Vec2.new(1, 0) },
-                .{ KeyboardButton.up, Vec2.new(0, -1) },
-                .{ KeyboardButton.down, Vec2.new(0, 1) },
-            }) |key_dir| {
-                if (platform.getKeyboard().isDown(key_dir[0])) {
-                    self.camera.center = self.camera.center.add(key_dir[1].scale(delta_seconds * 20));
-                }
-            }
+            moveCamera(&self.camera, delta_seconds, platform.getKeyboard(), platform.getMouse());
+
             const camera = self.camera;
 
             // focus-specific updates
@@ -1800,16 +1817,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 };
 
             // move camera
-            inline for (.{
-                .{ KeyboardButton.left, Vec2.new(-1, 0) },
-                .{ KeyboardButton.right, Vec2.new(1, 0) },
-                .{ KeyboardButton.up, Vec2.new(0, -1) },
-                .{ KeyboardButton.down, Vec2.new(0, 1) },
-            }) |key_dir| {
-                if (platform.getKeyboard().isDown(key_dir[0])) {
-                    self.camera.center = self.camera.center.add(key_dir[1].scale(delta_seconds * 20));
-                }
-            }
+            moveCamera(&self.camera, delta_seconds, platform.getKeyboard(), platform.getMouse());
 
             self.anim_t += self.anim_speed * delta_seconds / 2.0;
             while (self.anim_t >= 1) {
@@ -2205,6 +2213,11 @@ test {
         .gpa = std.testing.allocator,
         .getMouse = struct {
             pub fn anon() Mouse {
+                unreachable;
+            }
+        }.anon,
+        .getKeyboard = struct {
+            pub fn anon() Keyboard {
                 unreachable;
             }
         }.anon,

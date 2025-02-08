@@ -175,6 +175,7 @@ const Point = presenter.Point;
 const Vec2 = presenter.Vec2;
 const Color = presenter.Color;
 const Rect = presenter.Rect;
+const optimization_dont_draw_tiny = false;
 const WebDrawer = struct {
     fn screenFromWorld(camera: Camera, world_point: Point) Point {
         const rect = camera.toRect();
@@ -288,7 +289,7 @@ const WebDrawer = struct {
     pub fn drawAtom(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {
         const profile = visuals.profile;
         const screen_point = screenFromWorld(camera, world_point);
-        if (screen_point.scale < 0.1) return;
+        if (optimization_dont_draw_tiny and screen_point.scale < 0.1) return;
         const local_positions = [_]Vec2{
             Vec2.new(2, -1),
             Vec2.new(0, -1),
@@ -321,7 +322,7 @@ const WebDrawer = struct {
     pub fn drawPatternAtom(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {
         const profile = visuals.profile;
         const screen_point = screenFromWorld(camera, world_point);
-        if (screen_point.scale < 0.1) return;
+        if (optimization_dont_draw_tiny and screen_point.scale < 0.1) return;
         const local_positions = [_]Vec2{
             Vec2.new(-1, -1),
             Vec2.new(0, -1),
@@ -353,7 +354,7 @@ const WebDrawer = struct {
 
     pub fn drawPairHolder(camera: Camera, world_point: Point) void {
         const screen_point = screenFromWorld(camera, world_point);
-        if (screen_point.scale < 0.1) return;
+        if (optimization_dont_draw_tiny and screen_point.scale < 0.1) return;
         const local_positions = [_]Vec2{
             Vec2.new(-0.5, 0),
             Vec2.new(0, 1),
@@ -378,7 +379,7 @@ const WebDrawer = struct {
 
     pub fn drawPatternPairHolder(camera: Camera, world_point: Point) void {
         const screen_point = screenFromWorld(camera, world_point);
-        if (screen_point.scale < 0.1) return;
+        if (optimization_dont_draw_tiny and screen_point.scale < 0.1) return;
         const local_positions = [_]Vec2{
             Vec2.new(0.5, 0),
             Vec2.new(0, 1),
@@ -634,7 +635,7 @@ export fn pointerdown(button: MouseButton) void {
     }
 }
 
-export fn wheel(delta_y: i8) void {
+export fn wheel(delta_y: i32) void {
     mouse.cur.scrolled = if (delta_y == 0)
         .none
     else if (delta_y > 0)

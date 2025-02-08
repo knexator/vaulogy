@@ -345,7 +345,7 @@ const SdlDrawer = struct {
     pub fn drawFnkHolder(camera: Camera, world_point: Point) void {
         const screen_point = screenFromWorld(camera, world_point);
         _ = screen_point;
-        std.log.err("TODO: drawFnkHolder", .{});
+        std.log.warn("TODO: drawFnkHolder", .{});
     }
 
     pub fn drawCaseHolder(camera: Camera, world_point: Point) void {

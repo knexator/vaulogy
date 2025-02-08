@@ -72,6 +72,10 @@ pub const Vec2 = struct {
         return .{ .x = x, .y = y };
     }
 
+    pub fn both(v: Scalar) Self {
+        return new(v, v);
+    }
+
     pub fn add(a: Self, b: Self) Self {
         return new(a.x + b.x, a.y + b.y);
     }
@@ -232,6 +236,7 @@ pub const Point = struct {
         try Vec2.expectApproxEqAbs(expected.pos, actual.pos, tolerance);
     }
 
+    // TODO: document these
     pub fn inverseApplyToLocalPoint(applied: Point, local: Point) Point {
         const scale = applied.scale / local.scale;
         const turns = applied.turns - local.turns;
@@ -283,6 +288,11 @@ pub const Camera = struct {
         return Rect{ .top_left = top_left, .size = size };
     }
 
+    pub fn fromRect(rect: Rect) Camera {
+        std.debug.assert(std.math.approxEqRel(f32, rect.size.y, rect.size.x * aspect_ratio, 0.001));
+        return fromTopleftAndHeight(rect.top_left, rect.size.y);
+    }
+
     pub fn lerp(a: Camera, b: Camera, t: f32) Camera {
         return Camera{
             .center = Vec2.lerp(a.center, b.center, t),
@@ -290,15 +300,129 @@ pub const Camera = struct {
         };
     }
 
-    /// screen_pos is in ([0..aspect_ratio], [0..1])
-    pub fn worldFromScreen(self: Camera, screen_pos: Vec2) Vec2 {
+    /// relative_screen_pos is in ([0..aspect_ratio], [0..1])
+    pub fn worldFromScreenPosition(self: Camera, relative_screen_pos: Vec2) Vec2 {
         const rect = self.toRect();
-        return rect.top_left.add(screen_pos.scale(self.height));
+        return rect.top_left.add(relative_screen_pos.scale(self.height));
+    }
+
+    /// assumes the screen as a height of 1
+    fn screenFromWorld(camera: Camera, world_point: Point) Point {
+        const window_height = 1;
+        const rect = camera.toRect();
+        const local = Point.inverseApplyGetLocal(Point{
+            .pos = rect.top_left,
+            .scale = rect.size.y,
+        }, world_point);
+        const screen = Point{ .pos = .zero, .scale = window_height };
+        return screen.applyToLocalPoint(local);
+    }
+
+    fn screenFromWorldPosition(camera: Camera, world_position: Vec2) Vec2 {
+        return screenFromWorld(camera, .{ .pos = world_position }).pos;
+    }
+
+    test "convert between screen and world" {
+        // TODO: maybe change to fuzz
+        var rnd_state = std.Random.DefaultPrng.init(std.testing.random_seed);
+        var rnd = Random.init(rnd_state.random());
+
+        const big_rect = Rect{ .top_left = .both(1000), .size = .both(2000) };
+
+        const camera = Camera.fromTopleftAndHeight(
+            rnd.inRect(big_rect),
+            rnd.between(0.01, 100),
+        );
+
+        const world_pos = rnd.inRect(big_rect);
+        try Vec2.expectApproxEqAbs(
+            world_pos,
+            camera.worldFromScreenPosition(camera.screenFromWorldPosition(world_pos)),
+            0.001,
+        );
+
+        const screen_pos = rnd.inRect(big_rect);
+        try Vec2.expectApproxEqAbs(
+            screen_pos,
+            camera.screenFromWorldPosition(camera.worldFromScreenPosition(screen_pos)),
+            0.001,
+        );
+    }
+
+    pub fn zoom(original: Camera, fixed_world_pos: Vec2, new_height: f32) Camera {
+        const fixed_screen_pos = original.screenFromWorldPosition(fixed_world_pos);
+        return Camera.fromMapping(
+            .{ .pos = fixed_world_pos, .scale = 1.0 },
+            .{ .pos = fixed_screen_pos, .scale = 1.0 / new_height },
+        );
+    }
+
+    pub fn fromMapping(source_world_point: Point, target_screen_point: Point) Camera {
+        const camera_height = source_world_point.scale / target_screen_point.scale;
+        const camera_top_left = source_world_point.pos.sub(target_screen_point.pos.scale(camera_height));
+
+        return Camera.fromTopleftAndHeight(
+            camera_top_left,
+            camera_height,
+        );
+    }
+
+    test "fromMapping" {
+        // TODO: maybe change to fuzz
+        var rnd_state = std.Random.DefaultPrng.init(std.testing.random_seed);
+        var rnd = Random.init(rnd_state.random());
+
+        const big_rect = Rect{ .top_left = .both(1000), .size = .both(2000) };
+
+        const world_point = Point{
+            .pos = rnd.inRect(big_rect),
+            .scale = rnd.between(0.01, 100),
+        };
+        const screen_point = Point{
+            .pos = rnd.inRect(big_rect),
+            .scale = rnd.between(0.01, 100),
+        };
+
+        const camera = Camera.fromMapping(world_point, screen_point);
+
+        try Point.expectApproxEqAbs(
+            screen_point,
+            camera.screenFromWorld(world_point),
+            0.001,
+        );
+    }
+
+    test "zoom" {
+        var rnd_state = std.Random.DefaultPrng.init(std.testing.random_seed);
+        var rnd = Random.init(rnd_state.random());
+
+        const big_rect = Rect{ .top_left = .both(1000), .size = .both(2000) };
+
+        const original_camera = Camera.fromTopleftAndHeight(
+            rnd.inRect(big_rect),
+            rnd.between(0.01, 100),
+        );
+        const fixed_world_position = rnd.inRect(big_rect);
+        const new_height = rnd.between(0.01, 100);
+
+        const new_camera = original_camera.zoom(fixed_world_position, new_height);
+
+        try Vec2.expectApproxEqAbs(
+            original_camera.screenFromWorldPosition(fixed_world_position),
+            new_camera.screenFromWorldPosition(fixed_world_position),
+            0.001,
+        );
+
+        try std.testing.expectApproxEqAbs(new_height, new_camera.height, 0.001);
     }
 };
 
 pub const Random = struct {
     rnd: std.Random,
+
+    pub fn init(rnd: std.Random) Random {
+        return .{ .rnd = rnd };
+    }
 
     pub fn between(this: Random, at_least: f32, less_than: f32) f32 {
         return this.rnd.float(f32) * (less_than - at_least) + at_least;
