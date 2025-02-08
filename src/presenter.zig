@@ -389,8 +389,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn update(self: *Self, delta_seconds: f32) !void {
-            // TODO NOW: why does FPS go lower when zooming in?
-            std.log.err("FPS: {d}", .{1.0 / delta_seconds});
+            // std.log.info("FPS: {d}", .{1.0 / delta_seconds});
             switch (self.state) {
                 .level_select => |*ui| if (ui.update(delta_seconds)) |level_index| {
                     const fnk_name = levels[level_index].fnk_name;

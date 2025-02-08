@@ -455,6 +455,8 @@ const WebDrawer = struct {
         js_better.canvas.lineTo(screen_to);
         js.canvas.stroke();
 
+        // TODO: only draw in visible bounds to avoid arbitrarily big cost on zoom
+        if (true) return;
         js.canvas.setLineWidth(scale * 0.02);
         js.canvas.beginPath();
         const delta = screen_to.sub(screen_from);
