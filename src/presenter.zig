@@ -31,6 +31,10 @@ const parsing = @import("parsing.zig");
 
 const OoM = error{ OutOfMemory, TODO, BAD_INPUT };
 
+fn defaultValue(comptime field_info: std.builtin.Type.StructField) ?*const field_info.type {
+    return @as(?*const field_info.type, @ptrCast(@alignCast(field_info.default_value)));
+}
+
 pub const KeyboardButton = std.meta.FieldEnum(KeyboardState);
 pub const KeyboardState = struct {
     left: bool,
@@ -447,6 +451,10 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
 //     };
 // }
 
+// const Level = struct {
+//     fnk_name: *const Sexpr,
+//     solution: fn (input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr,
+// };
 const Level = struct { fnk_name: *const Sexpr };
 const levels: []const Level = &.{
     .{ .fnk_name = &Sexpr.doLit("default") },
@@ -1227,9 +1235,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             .toolbar, .main_fnk_name, .toolbar_special_var => unreachable,
                         })
                     else
+                        // TODO: it would be nice to have the scale instantly correct when the camera zooms
                         Point{
                             .pos = platform.getMouse().cur.pos(camera),
-                            .scale = 1,
+                            .scale = camera.height / defaultValue(std.meta.fieldInfo(Self, .camera)).?.height,
                         }, 0.6, delta_seconds);
                     math.lerp_towards(&grabbing.is_pattern, if (grabbing.address_if_released) |goal|
                         if (goal.isPattern()) 1 else 0
