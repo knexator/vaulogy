@@ -1297,6 +1297,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
             }
 
+            // Mouse interaction
             if (platform.getMouse().wasPressed(.left)) {
                 switch (self.focus) {
                     .nothing => {},
@@ -1355,7 +1356,16 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             if (platform.getMouse().wasPressed(.right)) {
-                return true;
+                switch (self.focus) {
+                    .hovering_sexpr => |hovering| {
+                        if (hovering.address.acceptsDrop()) {
+                            const old_value = try hovering.address.getSexpr(self.*);
+                            const new_value = try self.mem.storeSexpr(Sexpr.doPair(old_value, &Sexpr.nil));
+                            try hovering.address.setSexpr(self, new_value);
+                        }
+                    },
+                    else => {},
+                }
             }
 
             return false;
