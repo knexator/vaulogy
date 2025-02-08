@@ -1172,13 +1172,38 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         };
 
         const examples_reel = struct {
-            const screen_rect: Rect = .{ .top_left = .new(1, 1), .size = .new(4, 6) };
+            const top_left: Point = .{ .pos = .new(-6, 0.25), .scale = 0.75 };
             var scroll: f32 = 0;
 
             // TODO NOW
-            // pub fn draw(camera: Camera) void {
-            //     for ()
+            // fn getPoint(k: usize, which: enum { input, output }) Point {
+            //     const y = 1.25 + tof32(k) * 2.5;
+            //     return top_left.applyToLocalPoint(.{ .pos = .new(s) })
             // }
+
+            pub fn draw(camera: Camera, samples: []const Sample) !void {
+                drawer.drawRect(
+                    camera,
+                    Rect{ .top_left = top_left.pos, .size = Vec2.new(7, 7.5).scale(top_left.scale) },
+                );
+                for (samples, 0..) |sample, k| {
+                    const y = 1.25 + tof32(k) * 2.5;
+                    try artist.drawSexpr(
+                        camera,
+                        top_left.applyToLocalPoint(.{ .pos = .new(0.75, y) }),
+                        sample.input,
+                    );
+                    if (sample.output) |output| {
+                        try artist.drawSexpr(
+                            camera,
+                            top_left.applyToLocalPoint(.{ .pos = .new(4.5, y) }),
+                            output,
+                        );
+                    } else {
+                        return error.TODO;
+                    }
+                }
+            }
         };
 
         fn makeCasesPhysical(mem: *VeryPermamentGameStuff, cases: core.MatchCases) !CaseGroup {
@@ -1497,6 +1522,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             try drawCases(camera, true, .{}, self.cases);
 
             try toolbar.draw(camera);
+
+            try examples_reel.draw(camera, self.level.manual_samples);
 
             self.ui_state.draw(drawer);
 
