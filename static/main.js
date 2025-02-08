@@ -169,7 +169,6 @@ document.addEventListener("keyup", (ev) => {
   }
 });
 
-
 document.addEventListener("pointermove", (ev) => {
   const rect = canvas.getBoundingClientRect();
   wasm_exports.pointermove(ev.clientX - rect.left, ev.clientY - rect.top);
@@ -177,6 +176,10 @@ document.addEventListener("pointermove", (ev) => {
 
 document.addEventListener("pointerup", (ev) => {
   wasm_exports.pointerup(ev.button);
+});
+
+document.addEventListener("wheel", (ev) => {
+  wasm_exports.wheel(ev.deltaY);
 });
 
 document.addEventListener("pointerdown", (ev) => {

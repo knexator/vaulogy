@@ -61,6 +61,7 @@ pub const MouseState = struct {
     // TODO: rename these, make into a Vec2
     clientX: f32,
     clientY: f32,
+    scrolled: enum { up, down, none },
     buttons: struct {
         left: bool,
         middle: bool,
@@ -70,6 +71,7 @@ pub const MouseState = struct {
     pub const init: MouseState = .{
         .clientX = 0,
         .clientY = 0,
+        .scrolled = .none,
         .buttons = .{
             .left = false,
             .middle = false,
@@ -362,6 +364,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn update(self: *Self, delta_seconds: f32) !void {
+            // std.log.debug("{any}", .{platform.getMouse().cur.scrolled});
             switch (self.state) {
                 .level_select => |*ui| if (ui.update(delta_seconds)) |level_index| {
                     const fnk_name = levels[level_index].fnk_name;

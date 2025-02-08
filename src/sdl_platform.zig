@@ -527,6 +527,14 @@ pub fn main() !void {
                         mouse.cur.clientX = event.motion.x / window_size.y;
                         mouse.cur.clientY = event.motion.y / window_size.y;
                     },
+                    c.SDL_EVENT_MOUSE_WHEEL => {
+                        mouse.cur.scrolled = if (event.wheel.y == 0)
+                            .none
+                        else if (event.wheel.y < 0)
+                            .down
+                        else
+                            .up;
+                    },
                     c.SDL_EVENT_KEY_DOWN, c.SDL_EVENT_KEY_UP => {
                         const is_pressed = event.type == c.SDL_EVENT_KEY_DOWN;
                         switch (event.key.scancode) {
@@ -547,6 +555,7 @@ pub fn main() !void {
             // frame logic
             try game.update(1.0 / 60.0);
             mouse.prev = mouse.cur;
+            mouse.cur.scrolled = .none;
             keyboard.prev = keyboard.cur;
         }
 

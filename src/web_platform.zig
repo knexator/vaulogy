@@ -573,6 +573,7 @@ export fn frame(delta_seconds: f32) void {
         else => programmerError(),
     };
     mouse.prev = mouse.cur;
+    mouse.cur.scrolled = .none;
     keyboard.prev = keyboard.cur;
 }
 
@@ -631,6 +632,15 @@ export fn pointerdown(button: MouseButton) void {
         .right => mouse.cur.buttons.right = true,
         _ => {},
     }
+}
+
+export fn wheel(delta_y: i8) void {
+    mouse.cur.scrolled = if (delta_y == 0)
+        .none
+    else if (delta_y > 0)
+        .down
+    else
+        .up;
 }
 
 fn programmerError() noreturn {
