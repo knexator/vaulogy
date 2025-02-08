@@ -382,10 +382,9 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             try player_data.fnks.put(try result.mem.storeSexpr(Sexpr.doLit("default2")), defaultFnkBody2(&result.mem));
             result.persistence = player_data;
 
-            result.state = .{ .editing_fnk = try .init(Fnk{
-                .name = try result.mem.storeSexpr(Sexpr.doLit("default1")),
-                .body = defaultFnkBody1(&result.mem),
-            }, &result.mem) };
+            result.state = .{
+                .editing_fnk = try .init(&levels[0], defaultFnkBody1(&result.mem), &result.mem),
+            };
 
             result.scoring_run = undefined;
 
@@ -399,7 +398,8 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                     const fnk_name = levels[level_index].fnk_name;
                     const fnk_body = self.persistence.fnks.get(fnk_name) orelse defaultFnkBody1(&self.mem);
                     self.state = .{ .editing_fnk = try .init(
-                        Fnk{ .name = fnk_name, .body = fnk_body },
+                        &levels[level_index],
+                        fnk_body,
                         &self.mem,
                     ) };
                 },
@@ -451,16 +451,24 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
 //     };
 // }
 
-// const Level = struct {
-//     fnk_name: *const Sexpr,
-//     solution: fn (input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr,
-// };
-const Level = struct { fnk_name: *const Sexpr };
+const Level = struct {
+    fnk_name: *const Sexpr,
+    solution: *const fn (input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr,
+    sample_inputs: []const *const Sexpr,
+};
 const levels: []const Level = &.{
-    .{ .fnk_name = &Sexpr.doLit("default") },
-    .{ .fnk_name = &Sexpr.doLit("planetFromOlympian") },
-    .{ .fnk_name = &Sexpr.doPair(&Sexpr.nil, &Sexpr.doLit("input")) },
-    .{ .fnk_name = &Sexpr.doPair(&Sexpr.doLit("foo"), &Sexpr.doPair(&Sexpr.doLit("input"), &Sexpr.nil)) },
+    .{ .fnk_name = &Sexpr.doLit("default1"), .solution = struct {
+        fn anon(input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr {
+            _ = mem;
+            return input;
+        }
+    }.anon, .sample_inputs = &.{ &Sexpr.true, &Sexpr.false, &Sexpr.nil } },
+    .{ .fnk_name = &Sexpr.doLit("planetFromOlympian"), .solution = struct {
+        fn anon(input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr {
+            _ = mem;
+            return input;
+        }
+    }.anon, .sample_inputs = &.{&Sexpr.doLit("Hermes")} },
 };
 
 /// Like Drawer, but higher level
@@ -992,7 +1000,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .full_address => |full_address| try self.cases.getSexprAt(full_address),
                     .toolbar => |index| toolbar.things[index].value,
                     .sample_input => |local| self.sample_input.getAt(local).?,
-                    .main_fnk_name => |local| self.fnk_name.getAt(local).?,
+                    .main_fnk_name => |local| self.level.fnk_name.getAt(local).?,
                     .toolbar_special_var => toolbar.special_var_state.next_value,
                 };
             }
@@ -1031,7 +1039,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         camera: Camera = Camera{ .center = .new(7, 3), .height = 15.0 },
         ui_state: UI.State,
 
-        fnk_name: *const Sexpr,
+        level: *const Level,
         cases: CaseGroup,
         sample_input: *const Sexpr,
 
@@ -1154,7 +1162,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         pub fn getFnk(self: Self) !Fnk {
             return Fnk{
-                .name = self.fnk_name,
+                .name = self.level.fnk_name,
                 .body = .{ .cases = try getMatchCases(self.mem, self.cases) },
             };
         }
@@ -1175,8 +1183,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             return result;
         }
 
-        pub fn init(fnk: Fnk, mem: *VeryPermamentGameStuff) !Self {
-            const cases = try makeCasesPhysical(mem, fnk.body.cases);
+        pub fn init(level: *const Level, fnk_body: core.FnkBody, mem: *VeryPermamentGameStuff) !Self {
+            const cases = try makeCasesPhysical(mem, fnk_body.cases);
             const sample_input = try mem.storeSexpr(Sexpr.doPair(&Sexpr.nil, &Sexpr.input));
 
             const ui_state = UI.State{ .buttons = try platform.gpa.dupe(UI.Button, &.{
@@ -1185,7 +1193,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             return .{
                 .mem = mem,
-                .fnk_name = fnk.name,
+                .level = level,
                 .cases = cases,
                 // .sample_input = &Sexpr.true,
                 .sample_input = sample_input,
@@ -1305,7 +1313,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .toolbar_special_var }
                 else if (try SexprView.overlapsSexpr(self.mem.gpa, self.sample_input, SAMPLE_INPUT_POS, mouse_pos)) |overlap|
                     .{ .sexpr = .{ .sample_input = overlap } }
-                else if (try SexprView.overlapsSexpr(self.mem.gpa, self.fnk_name, MAIN_FNK_POS, mouse_pos)) |overlap|
+                else if (try SexprView.overlapsSexpr(self.mem.gpa, self.level.fnk_name, MAIN_FNK_POS, mouse_pos)) |overlap|
                     .{ .sexpr = .{ .main_fnk_name = overlap } }
                 else if (toolbar.overlapsWithSpecialCase(mouse_pos))
                     .special_case
@@ -1448,7 +1456,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     self.sample_input,
                 );
                 // TODO: also draw these while executing
-                try artist.drawHoldedFnk(camera, MAIN_FNK_POS, 1, self.fnk_name);
+                try artist.drawHoldedFnk(camera, MAIN_FNK_POS, 1, self.level.fnk_name);
             }
 
             try drawCases(camera, true, .{}, self.cases);
