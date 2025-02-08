@@ -451,24 +451,49 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
 //     };
 // }
 
+const Sample = struct {
+    input: *const Sexpr,
+    output: ?*const Sexpr,
+};
 const Level = struct {
     fnk_name: *const Sexpr,
     solution: *const fn (input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr,
-    sample_inputs: []const *const Sexpr,
+    manual_samples: []const Sample,
+
+    // TODO: have a comptime pool of Sexprs so this works for solutions that actually use mem
+    pub fn init(
+        fnk_name: *const Sexpr,
+        solution: *const fn (input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr,
+        comptime manual_inputs: []const *const Sexpr,
+    ) Level {
+        var manual_samples: [manual_inputs.len]Sample = undefined;
+        for (manual_inputs, &manual_samples) |input, *sample| {
+            sample.input = input;
+            sample.output = solution(input, undefined);
+        }
+        const manual_samples_done = manual_samples;
+        return Level{
+            .fnk_name = fnk_name,
+            .solution = solution,
+            .manual_samples = &manual_samples_done,
+        };
+    }
 };
 const levels: []const Level = &.{
-    .{ .fnk_name = &Sexpr.doLit("default1"), .solution = struct {
+    .init(&Sexpr.doLit("default1"), struct {
         fn anon(input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr {
             _ = mem;
             return input;
         }
-    }.anon, .sample_inputs = &.{ &Sexpr.true, &Sexpr.false, &Sexpr.nil } },
+    }.anon, &.{ &Sexpr.true, &Sexpr.false, &Sexpr.nil }),
     .{ .fnk_name = &Sexpr.doLit("planetFromOlympian"), .solution = struct {
         fn anon(input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr {
             _ = mem;
             return input;
         }
-    }.anon, .sample_inputs = &.{&Sexpr.doLit("Hermes")} },
+    }.anon, .manual_samples = &.{
+        .{ .input = &Sexpr.doLit("Hermes"), .output = &Sexpr.doLit("Mercury") },
+    } },
 };
 
 /// Like Drawer, but higher level
@@ -1144,6 +1169,16 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     0,
                 );
             }
+        };
+
+        const examples_reel = struct {
+            const screen_rect: Rect = .{ .top_left = .new(1, 1), .size = .new(4, 6) };
+            var scroll: f32 = 0;
+
+            // TODO NOW
+            // pub fn draw(camera: Camera) void {
+            //     for ()
+            // }
         };
 
         fn makeCasesPhysical(mem: *VeryPermamentGameStuff, cases: core.MatchCases) !CaseGroup {
