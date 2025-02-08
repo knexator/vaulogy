@@ -537,7 +537,7 @@ pub fn main() !void {
                     },
                     c.SDL_EVENT_KEY_DOWN, c.SDL_EVENT_KEY_UP => {
                         const is_pressed = event.type == c.SDL_EVENT_KEY_DOWN;
-                        switch (event.key.scancode) {
+                        switch (event.key.key) {
                             c.SDLK_D, c.SDLK_RIGHT => keyboard.cur.right = is_pressed,
                             c.SDLK_A, c.SDLK_LEFT => keyboard.cur.left = is_pressed,
                             c.SDLK_W, c.SDLK_UP => keyboard.cur.up = is_pressed,
