@@ -135,6 +135,20 @@ pub const Sexpr = union(enum) {
         }
     }
 
+    pub fn changeAllVariablesToNil(self: *const Sexpr, mem: *VeryPermamentGameStuff) !*const Sexpr {
+        return switch (self.*) {
+            .atom_lit => self,
+            .atom_var => &Sexpr.nil,
+            .pair => |p| if (p.left.isFullyResolved() and p.right.isFullyResolved())
+                self
+            else
+                try mem.storeSexpr(Sexpr.doPair(
+                    try p.left.changeAllVariablesToNil(mem),
+                    try p.right.changeAllVariablesToNil(mem),
+                )),
+        };
+    }
+
     pub fn format(value: *const Sexpr, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: std.io.AnyWriter) !void {
         std.debug.assert(std.mem.eql(u8, fmt, ""));
         std.debug.assert(std.meta.eql(options, .{}));

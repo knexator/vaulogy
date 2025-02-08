@@ -208,6 +208,7 @@ pub const Drawer = struct {
     drawCable: fn (camera: Camera, world_from: Vec2, world_to: Vec2, world_scale: f32, offset: f32) void,
     drawCaseHolder: fn (camera: Camera, world_point: Point) void,
     drawFnkHolder: fn (camera: Camera, world_point: Point) void,
+    // TODO: think how to use the visuals when drawing a variable
     drawVariable: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
     drawPatternVariable: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
 
@@ -959,7 +960,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 switch (address) {
                     .full_address => |full_address| try self.cases.setSexprAt(self.mem, full_address, value),
                     .sample_input => |local_address| {
-                        self.sample_input = try self.sample_input.setAt(self.mem, local_address, value);
+                        const value_without_variables = try value.changeAllVariablesToNil(self.mem);
+                        self.sample_input = try self.sample_input.setAt(self.mem, local_address, value_without_variables);
                     },
                     .toolbar, .main_fnk_name => unreachable,
                 }
