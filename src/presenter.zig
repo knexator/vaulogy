@@ -638,6 +638,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
 }
 
 const SexprView = struct {
+    // TODO: this should take a "kind: enum { atom, pair })" param
     pub fn overlapsPatternAtom(atom_point: Point, needle_pos: Vec2) bool {
         const p = atom_point.inverseApplyGetLocal(.{ .pos = needle_pos }).pos;
         return inRange(p.y, -1, 1) and
@@ -922,6 +923,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         const SexprPlace = union(enum) {
             full_address: core.FullAddress,
             toolbar: usize,
+            toolbar_special_var,
             sample_input: core.SexprAddress,
             main_fnk_name: core.SexprAddress,
 
@@ -932,6 +934,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .toolbar => |self_toolbar| self_toolbar == other.toolbar,
                     .sample_input => |self_local| core.equalSexprAddress(self_local, other.sample_input),
                     .main_fnk_name => |self_local| core.equalSexprAddress(self_local, other.main_fnk_name),
+                    .toolbar_special_var => true,
                 };
             }
 
@@ -944,6 +947,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .toolbar => |index| toolbar.things[index].point,
                     .sample_input => |local| SexprView.sexprChildView(SAMPLE_INPUT_POS, local),
                     .main_fnk_name => |local| SexprView.sexprChildView(MAIN_FNK_POS, local),
+                    .toolbar_special_var => toolbar.special_var_point,
                 };
             }
 
@@ -953,6 +957,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .toolbar => |index| toolbar.things[index].value,
                     .sample_input => |local| self.sample_input.getAt(local).?,
                     .main_fnk_name => |local| self.fnk_name.getAt(local).?,
+                    .toolbar_special_var => toolbar.special_var_state.next_value,
                 };
             }
 
@@ -963,13 +968,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         const value_without_variables = try value.changeAllVariablesToNil(self.mem);
                         self.sample_input = try self.sample_input.setAt(self.mem, local_address, value_without_variables);
                     },
-                    .toolbar, .main_fnk_name => unreachable,
+                    .toolbar, .main_fnk_name, .toolbar_special_var => unreachable,
                 }
             }
 
             pub fn isPattern(address: @This()) bool {
                 return switch (address) {
                     .full_address => |full_address| full_address.which == .pattern,
+                    .toolbar_special_var => true,
                     else => false,
                 };
             }
@@ -978,6 +984,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 return switch (address) {
                     .toolbar => false,
                     .main_fnk_name => false,
+                    .toolbar_special_var => false,
                     .full_address => true,
                     .sample_input => true,
                 };
@@ -1023,7 +1030,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 var result: [atom_values.len]struct { value: *const Sexpr, point: Point, index: usize } = undefined;
                 for (&atom_values, 0..) |*atom, k| {
                     result[k] = .{ .value = atom, .point = .{
-                        .pos = .new(tof32(k) * 1.6 + 2.5, -2.5),
+                        .pos = .new(tof32(k) * 1.6 + 3.5, -2.5),
                         .scale = 0.5,
                     }, .index = k };
                 }
@@ -1031,7 +1038,19 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 break :blk xx;
             };
 
-            const special_case_point = Point{ .pos = .new(9, -2.5), .scale = 0.5 };
+            const special_var_point = Point{ .pos = .new(2.5, -2.5), .scale = 0.5 };
+            var special_var_state: struct {
+                random_instance: std.Random.DefaultPrng = std.Random.DefaultPrng.init(0),
+                next_value: *const Sexpr = &Sexpr.doVar("first_var"),
+
+                pub fn next(self: *@This(), mem: *VeryPermamentGameStuff) !void {
+                    const new_name = try mem.gpa.alloc(u8, 10);
+                    self.random_instance.random().bytes(new_name);
+                    self.next_value = try mem.storeSexpr(Sexpr.doVar(new_name));
+                }
+            } = .{};
+
+            const special_case_point = Point{ .pos = .new(10, -2.5), .scale = 0.5 };
             const special_case_value = CaseState{
                 .fnk_name = &Sexpr.identity,
                 .pattern = &Sexpr.var_v1,
@@ -1039,6 +1058,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .next = null,
                 .pattern_point_relative_to_parent = special_case_point,
             };
+
+            pub fn overlapsWithSpecialVar(mouse_pos: Vec2) bool {
+                return SexprView.overlapsPatternAtom(special_var_point, mouse_pos);
+            }
 
             pub fn overlapsWithSpecialCase(mouse_pos: Vec2) bool {
                 const local_point = special_case_point
@@ -1058,6 +1081,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             pub fn draw(camera: Camera) !void {
+                try artist.drawPatternSexpr(camera, special_var_point, special_var_state.next_value);
+
                 for (things) |thing| {
                     try artist.drawSexpr(camera, thing.point, thing.value);
                 }
@@ -1180,7 +1205,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 .fnk_name => .{ .turns = 0.02, .pos = .new(0.5, 0) },
                             },
                             .sample_input => .{ .turns = -0.02, .pos = .new(0.5, 0) },
-                            .toolbar, .main_fnk_name => unreachable,
+                            .toolbar, .main_fnk_name, .toolbar_special_var => unreachable,
                         })
                     else
                         Point{
@@ -1248,6 +1273,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     }
                 else if (toolbar.findOverlap(mouse_pos)) |overlap|
                     .{ .sexpr = .{ .toolbar = overlap.index } }
+                else if (toolbar.overlapsWithSpecialVar(mouse_pos))
+                    .{ .sexpr = .toolbar_special_var }
                 else if (try SexprView.overlapsSexpr(self.mem.gpa, self.sample_input, SAMPLE_INPUT_POS, mouse_pos)) |overlap|
                     .{ .sexpr = .{ .sample_input = overlap } }
                 else if (try SexprView.overlapsSexpr(self.mem.gpa, self.fnk_name, MAIN_FNK_POS, mouse_pos)) |overlap|
@@ -1352,6 +1379,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
                         if (std.meta.activeTag(hovering.address) == .full_address and hovering.address.full_address.which == .fnk_name) {
                             (try self.cases.caseRefAt(hovering.address.full_address.case_address)).fnk_name = &Sexpr.identity;
+                        } else if (std.meta.activeTag(hovering.address) == .toolbar_special_var) {
+                            try toolbar.special_var_state.next(self.mem);
                         }
                     },
                 }
