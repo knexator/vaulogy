@@ -37,6 +37,8 @@ pub const Sexpr = union(enum) {
 
     pub const var_v1 = Sexpr.doVar("v1");
 
+    pub const pair_nil_nil = Sexpr.doPair(&Sexpr.nil, &Sexpr.nil);
+
     pub fn doPair(a: *const Sexpr, b: *const Sexpr) Sexpr {
         return .{ .pair = .{ .left = a, .right = b } };
     }

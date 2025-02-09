@@ -454,6 +454,19 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
 const Sample = struct {
     input: *const Sexpr,
     output: ?*const Sexpr,
+
+    const Part = enum { input, output };
+    const Address = struct {
+        index: usize,
+        which: Sample.Part,
+        local: core.SexprAddress,
+    };
+    fn get(self: Sample, which: Part) ?*const Sexpr {
+        return switch (which) {
+            .input => self.input,
+            .output => self.output,
+        };
+    }
 };
 const Level = struct {
     fnk_name: *const Sexpr,
@@ -485,7 +498,7 @@ const levels: []const Level = &.{
             _ = mem;
             return input;
         }
-    }.anon, &.{ &Sexpr.true, &Sexpr.false, &Sexpr.nil }),
+    }.anon, &.{ &Sexpr.true, &Sexpr.false, &Sexpr.pair_nil_nil }),
     .{ .fnk_name = &Sexpr.doLit("planetFromOlympian"), .solution = struct {
         fn anon(input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr {
             _ = mem;
@@ -995,6 +1008,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             toolbar_special_var,
             main_input: core.SexprAddress,
             main_fnk_name: core.SexprAddress,
+            sample: Sample.Address,
 
             pub fn equals(self: @This(), other: @This()) bool {
                 if (std.meta.activeTag(self) != std.meta.activeTag(other)) return false;
@@ -1003,6 +1017,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .toolbar => |self_toolbar| self_toolbar == other.toolbar,
                     .main_input => |self_local| core.equalSexprAddress(self_local, other.main_input),
                     .main_fnk_name => |self_local| core.equalSexprAddress(self_local, other.main_fnk_name),
+                    .sample => |self_sample| self_sample.index == other.sample.index and
+                        self_sample.which == other.sample.which and
+                        core.equalSexprAddress(self_sample.local, other.sample.local),
                     .toolbar_special_var => true,
                 };
             }
@@ -1017,6 +1034,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .main_input => |local| SexprView.sexprChildView(MAIN_INPUT_POS, local),
                     .main_fnk_name => |local| SexprView.sexprChildView(MAIN_FNK_POS, local),
                     .toolbar_special_var => toolbar.special_var_point,
+                    .sample => |sample| SexprView.sexprChildView(examples_reel.getPoint(sample.index, sample.which), sample.local),
                 };
             }
 
@@ -1027,6 +1045,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .main_input => |local| self.main_input.getAt(local).?,
                     .main_fnk_name => |local| self.level.fnk_name.getAt(local).?,
                     .toolbar_special_var => toolbar.special_var_state.next_value,
+                    .sample => |sample| self.level.manual_samples[sample.index].get(sample.which).?.getAt(sample.local).?,
+                    // examples_reel.getPoint(sample.index, sample.which), sample.local),
+                    // .main_input => |local| self.main_input.getAt(local).?,
                 };
             }
 
@@ -1037,7 +1058,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         const value_without_variables = try value.changeAllVariablesToNil(self.mem);
                         self.main_input = try self.main_input.setAt(self.mem, local_address, value_without_variables);
                     },
-                    .toolbar, .main_fnk_name, .toolbar_special_var => unreachable,
+                    .toolbar, .main_fnk_name, .toolbar_special_var, .sample => unreachable,
                 }
             }
 
@@ -1054,6 +1075,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .toolbar => false,
                     .main_fnk_name => false,
                     .toolbar_special_var => false,
+                    .sample => false,
                     .full_address => true,
                     .main_input => true,
                 };
@@ -1090,7 +1112,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         const toolbar = struct {
             const atom_values = [_]Sexpr{
-                Sexpr.doPair(&Sexpr.nil, &Sexpr.nil),
+                Sexpr.pair_nil_nil,
                 Sexpr.nil,
                 Sexpr.true,
                 Sexpr.false,
@@ -1171,16 +1193,41 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         };
 
+        // TODO NOW: change to 'samples reel'
         const examples_reel = struct {
             const top_left: Point = .{ .pos = .new(-6, 0.25), .scale = 0.75 };
             var scroll: f32 = 0;
 
-            fn getPoint(k: usize, which: enum { input, output }) Point {
+            fn getPoint(k: usize, which: Sample.Part) Point {
                 const y = 1.25 + tof32(k) * 2.5;
                 return top_left.applyToLocalPoint(.{ .pos = .new(switch (which) {
                     .input => 0.75,
                     .output => 4.5,
                 }, y) });
+            }
+
+            pub fn findOverlap(mouse_pos: Vec2, samples: []const Sample) !?Sample.Address {
+                for (samples, 0..) |sample, k| {
+                    if (try SexprView.overlapsSexpr(
+                        platform.gpa,
+                        sample.input,
+                        getPoint(k, .input),
+                        mouse_pos,
+                    )) |local| {
+                        return Sample.Address{ .index = k, .local = local, .which = .input };
+                    }
+                    if (sample.output) |output| {
+                        if (try SexprView.overlapsSexpr(
+                            platform.gpa,
+                            output,
+                            getPoint(k, .output),
+                            mouse_pos,
+                        )) |local| {
+                            return Sample.Address{ .index = k, .local = local, .which = .output };
+                        }
+                    }
+                }
+                return null;
             }
 
             pub fn draw(camera: Camera, samples: []const Sample) !void {
@@ -1301,7 +1348,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 .fnk_name => .{ .turns = 0.02, .pos = .new(0.5, 0) },
                             },
                             .main_input => .{ .turns = -0.02, .pos = .new(0.5, 0) },
-                            .toolbar, .main_fnk_name, .toolbar_special_var => unreachable,
+                            .toolbar, .main_fnk_name, .toolbar_special_var, .sample => unreachable,
                         })
                     else
                         // TODO: it would be nice to have the scale instantly correct when the camera zooms
@@ -1370,6 +1417,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     }
                 else if (toolbar.findOverlap(mouse_pos)) |overlap|
                     .{ .sexpr = .{ .toolbar = overlap.index } }
+                else if (try examples_reel.findOverlap(mouse_pos, self.level.manual_samples)) |overlap|
+                    .{ .sexpr = .{ .sample = overlap } }
                 else if (toolbar.overlapsWithSpecialVar(mouse_pos))
                     .{ .sexpr = .toolbar_special_var }
                 else if (try SexprView.overlapsSexpr(self.mem.gpa, self.main_input, MAIN_INPUT_POS, mouse_pos)) |overlap|
