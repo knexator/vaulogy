@@ -33,6 +33,15 @@ pub fn lerp_towards(v: *f32, goal: f32, ratio: f32, delta_seconds: f32) void {
     v.* = std.math.lerp(v.*, goal, ratio);
 }
 
+pub fn lerp_towards_range(v: *f32, min: f32, max: f32, ratio: f32, delta_seconds: f32) void {
+    std.debug.assert(min <= max);
+    if (v.* < min) {
+        lerp_towards(v, min, ratio, delta_seconds);
+    } else if (v.* > max) {
+        lerp_towards(v, max, ratio, delta_seconds);
+    }
+}
+
 pub const clamp = std.math.clamp;
 pub const lerp = std.math.lerp;
 

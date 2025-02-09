@@ -65,7 +65,19 @@ pub const MouseState = struct {
     // TODO: rename these, make into a Vec2
     clientX: f32,
     clientY: f32,
-    scrolled: enum { up, down, none },
+    scrolled: enum {
+        up,
+        down,
+        none,
+
+        pub fn toNumber(self: @This()) f32 {
+            return switch (self) {
+                .none => 0,
+                .up => 1,
+                .down => -1,
+            };
+        }
+    },
     buttons: struct {
         left: bool,
         middle: bool,
@@ -498,7 +510,7 @@ const levels: []const Level = &.{
             _ = mem;
             return input;
         }
-    }.anon, &.{ &Sexpr.true, &Sexpr.false, &Sexpr.pair_nil_nil }),
+    }.anon, &.{ &Sexpr.true, &Sexpr.false, &Sexpr.pair_nil_nil, &Sexpr.nil }),
     .{ .fnk_name = &Sexpr.doLit("planetFromOlympian"), .solution = struct {
         fn anon(input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr {
             _ = mem;
@@ -1198,12 +1210,19 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             const top_left: Point = .{ .pos = .new(-6, 0.25), .scale = 0.75 };
             var scroll: f32 = 0;
 
+            const rect: Rect = .{ .top_left = top_left.pos, .size = Vec2.new(7, 7.5).scale(top_left.scale) };
+
             fn getPoint(k: usize, which: Sample.Part) Point {
-                const y = 1.25 + tof32(k) * 2.5;
+                const index: f32 = tof32(k) - scroll;
+                const y = 1.25 + index * 2.5;
+                const scale = @min(
+                    math.smoothstep(index, -0.5, 0),
+                    math.smoothstep(index, 2.5, 2),
+                );
                 return top_left.applyToLocalPoint(.{ .pos = .new(switch (which) {
                     .input => 0.75,
                     .output => 4.5,
-                }, y) });
+                }, y), .scale = scale });
             }
 
             pub fn findOverlap(mouse_pos: Vec2, samples: []const Sample) !?Sample.Address {
@@ -1231,10 +1250,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             pub fn draw(camera: Camera, samples: []const Sample) !void {
-                drawer.drawRect(
-                    camera,
-                    Rect{ .top_left = top_left.pos, .size = Vec2.new(7, 7.5).scale(top_left.scale) },
-                );
+                drawer.drawRect(camera, rect);
                 for (samples, 0..) |sample, k| {
                     try artist.drawSexpr(
                         camera,
@@ -1325,7 +1341,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn update(self: *Self, delta_seconds: f32) !bool {
-            moveCamera(&self.camera, delta_seconds, platform.getKeyboard(), platform.getMouse());
+            var mouse = platform.getMouse();
+            if (examples_reel.rect.contains(mouse.cur.pos(self.camera))) {
+                examples_reel.scroll -= delta_seconds * 10 * mouse.cur.scrolled.toNumber();
+                mouse.cur.scrolled = .none;
+            }
+            // TODO: remove this line
+            if (self.level.manual_samples.len < 3) return error.TODO;
+            math.lerp_towards_range(&examples_reel.scroll, 0, tof32(self.level.manual_samples.len - 3), 0.1, delta_seconds);
+            moveCamera(&self.camera, delta_seconds, platform.getKeyboard(), mouse);
 
             const camera = self.camera;
 
