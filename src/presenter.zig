@@ -1175,11 +1175,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             const top_left: Point = .{ .pos = .new(-6, 0.25), .scale = 0.75 };
             var scroll: f32 = 0;
 
-            // TODO NOW
-            // fn getPoint(k: usize, which: enum { input, output }) Point {
-            //     const y = 1.25 + tof32(k) * 2.5;
-            //     return top_left.applyToLocalPoint(.{ .pos = .new(s) })
-            // }
+            fn getPoint(k: usize, which: enum { input, output }) Point {
+                const y = 1.25 + tof32(k) * 2.5;
+                return top_left.applyToLocalPoint(.{ .pos = .new(switch (which) {
+                    .input => 0.75,
+                    .output => 4.5,
+                }, y) });
+            }
 
             pub fn draw(camera: Camera, samples: []const Sample) !void {
                 drawer.drawRect(
@@ -1187,16 +1189,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     Rect{ .top_left = top_left.pos, .size = Vec2.new(7, 7.5).scale(top_left.scale) },
                 );
                 for (samples, 0..) |sample, k| {
-                    const y = 1.25 + tof32(k) * 2.5;
                     try artist.drawSexpr(
                         camera,
-                        top_left.applyToLocalPoint(.{ .pos = .new(0.75, y) }),
+                        getPoint(k, .input),
                         sample.input,
                     );
                     if (sample.output) |output| {
                         try artist.drawSexpr(
                             camera,
-                            top_left.applyToLocalPoint(.{ .pos = .new(4.5, y) }),
+                            getPoint(k, .output),
                             output,
                         );
                     } else {
