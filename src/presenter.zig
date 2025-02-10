@@ -1659,7 +1659,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     MAIN_INPUT_POS,
                     self.main_input,
                 );
-                // TODO: also draw these while executing
                 try artist.drawHoldedFnk(camera, MAIN_FNK_POS, 1, self.level.fnk_name);
             }
 
@@ -2022,10 +2021,6 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             // for now, skip the "start" anim
             std.debug.assert(null == try result.thread.advanceTinyStep(result.scoring_run));
 
-            // TODO: remove these
-            // std.debug.assert(null == try result.thread.advanceTinyStep(result.scoring_run));
-            // result.anim_t = 0.3;
-
             return result;
         }
 
@@ -2074,12 +2069,6 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             );
 
             var parent_point = Point{};
-
-            // if (self.thread.stack.items.len == 0) {
-            //     try artist.drawSexpr(camera, parent_point.applyToLocalPoint(MAIN_INPUT_POS), self.thread.active_value);
-            //     std.log.debug("TODO: ending?", .{});
-            //     return;
-            // }
 
             // std.log.debug("cur state: {s}", .{@tagName(self.thread.last_visual_state)});
             var it = std.mem.reverseIterator(self.thread.stack.items);
