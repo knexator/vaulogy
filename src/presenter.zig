@@ -740,11 +740,12 @@ fn Artist(platform: Platform, drawer: Drawer) type {
 }
 
 const SexprView = struct {
-    // TODO: this should take a "kind: enum { atom, pair })" param
-    pub fn overlapsPatternAtom(atom_point: Point, needle_pos: Vec2) bool {
+    pub fn overlapsPatternAtom(atom_point: Point, needle_pos: Vec2, kind: enum { atom, pair }) bool {
         const p = atom_point.inverseApplyGetLocal(.{ .pos = needle_pos }).pos;
-        return inRange(p.y, -1, 1) and
-            inRange(p.x, -1, 0.5 * (1 - @abs(p.y)));
+        return inRange(p.y, -1, 1) and switch (kind) {
+            .atom => inRange(p.x, -1, 0.5 * (1 - @abs(p.y))),
+            .pair => inRange(p.x, -1 + 0.25 * (1 - @abs(@abs(p.y) - 0.5) / 0.5), 0.5 * (1 - @abs(p.y))),
+        };
     }
 
     pub fn overlapsSexpr(alloc: std.mem.Allocator, sexpr: *const Sexpr, sexpr_pos: Point, needle_pos: Vec2) !?core.SexprAddress {
@@ -800,7 +801,7 @@ const SexprView = struct {
         while (true) {
             switch (cur_sexpr.*) {
                 .atom_lit, .atom_var => {
-                    if (overlapsPatternAtom(cur_sexpr_pos, needle_pos)) {
+                    if (overlapsPatternAtom(cur_sexpr_pos, needle_pos, .atom)) {
                         return try result.toOwnedSlice();
                     } else {
                         return null;
@@ -809,7 +810,7 @@ const SexprView = struct {
                 .pair => |pair| {
                     const p = cur_sexpr_pos.inverseApplyGetLocal(.{ .pos = needle_pos }).pos;
 
-                    if (overlapsPatternAtom(cur_sexpr_pos, needle_pos)) {
+                    if (overlapsPatternAtom(cur_sexpr_pos, needle_pos, .pair)) {
                         return try result.toOwnedSlice();
                     } else if (inRange(p.y, -1, 0)) {
                         try result.append(.left);
@@ -835,11 +836,10 @@ const SexprView = struct {
 
     pub fn overlapsAtom(atom_point: Point, needle_pos: Vec2, kind: enum { atom, pair }) bool {
         const p = atom_point.inverseApplyGetLocal(.{ .pos = needle_pos }).pos;
-        return inRange(p.y, -1, 1) and
-            if (kind == .pair)
-            inRange(p.x, -0.5 * (1 - @abs(p.y)), 0.5 - 0.25 * (1 - @abs(@abs(p.y) - 0.5) / 0.5))
-        else
-            inRange(p.x, -0.5 * (1 - @abs(p.y)), 2);
+        return inRange(p.y, -1, 1) and switch (kind) {
+            .pair => inRange(p.x, -0.5 * (1 - @abs(p.y)), 0.5 - 0.25 * (1 - @abs(@abs(p.y) - 0.5) / 0.5)),
+            .atom => inRange(p.x, -0.5 * (1 - @abs(p.y)), 2),
+        };
     }
 
     pub fn sexprPatternChildView(parent: Point, address: core.SexprAddress) Point {
@@ -1182,7 +1182,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             };
 
             pub fn overlapsWithSpecialVar(mouse_pos: Vec2) bool {
-                return SexprView.overlapsPatternAtom(special_var_point, mouse_pos);
+                return SexprView.overlapsPatternAtom(special_var_point, mouse_pos, .atom);
             }
 
             pub fn overlapsWithSpecialCase(mouse_pos: Vec2) bool {
