@@ -612,8 +612,7 @@ fn keychanged(key: KeyCode, is_pressed: bool) void {
 
 var mouse = presenter.Mouse{ .cur = .init, .prev = .init };
 export fn pointermove(x: f32, y: f32) void {
-    mouse.cur.clientX = x / js_better.canvas.getSize().y;
-    mouse.cur.clientY = y / js_better.canvas.getSize().y;
+    mouse.cur.client_pos = Vec2.new(x, y).scale(1.0 / js_better.canvas.getSize().y);
 }
 
 const MouseButton = enum(u8) {

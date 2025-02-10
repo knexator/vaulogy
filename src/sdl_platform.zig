@@ -528,8 +528,7 @@ pub fn main() !void {
                         }
                     },
                     c.SDL_EVENT_MOUSE_MOTION => {
-                        mouse.cur.clientX = event.motion.x / window_size.y;
-                        mouse.cur.clientY = event.motion.y / window_size.y;
+                        mouse.cur.client_pos = Vec2.new(event.motion.x, event.motion.y).scale(1.0 / window_size.y);
                     },
                     c.SDL_EVENT_MOUSE_WHEEL => {
                         mouse.cur.scrolled = if (event.wheel.y == 0)

@@ -62,9 +62,7 @@ pub const Keyboard = struct {
 
 const MouseButton = enum { left, right, middle };
 pub const MouseState = struct {
-    // TODO: rename these, make into a Vec2
-    clientX: f32,
-    clientY: f32,
+    client_pos: Vec2,
     scrolled: enum {
         up,
         down,
@@ -85,8 +83,7 @@ pub const MouseState = struct {
     },
 
     pub const init: MouseState = .{
-        .clientX = 0,
-        .clientY = 0,
+        .client_pos = .zero,
         .scrolled = .none,
         .buttons = .{
             .left = false,
@@ -96,7 +93,7 @@ pub const MouseState = struct {
     };
 
     pub fn pos(self: MouseState, camera: Camera) Vec2 {
-        return camera.worldFromScreenPosition(Vec2.new(self.clientX, self.clientY));
+        return camera.worldFromScreenPosition(self.client_pos);
     }
 
     pub fn isDown(self: MouseState, button: MouseButton) bool {
