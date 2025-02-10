@@ -248,7 +248,6 @@ pub const Drawer = struct {
             unreachable;
         }
     };
-    // TODO: all should be unreachable
     pub const dummy = Drawer{
         .clear = dummySignatures.color,
         .drawRect = struct {
@@ -260,11 +259,11 @@ pub const Drawer = struct {
                 unreachable;
             }
         }.anon,
-        .drawAtomDebug = undefined,
+        .drawAtomDebug = dummySignatures.camera_point,
         .drawAtom = dummySignatures.camera_point_visuals,
         .drawVariable = dummySignatures.camera_point_visuals,
         .drawPatternVariable = dummySignatures.camera_point_visuals,
-        .drawPatternAtomDebug = undefined,
+        .drawPatternAtomDebug = dummySignatures.camera_point,
         .drawCaseHolder = dummySignatures.camera_point,
         .drawFnkHolder = dummySignatures.camera_point,
         .drawPairHolder = dummySignatures.camera_point,
