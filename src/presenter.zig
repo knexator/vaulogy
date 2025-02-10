@@ -1046,7 +1046,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .main_input => |local| SexprView.sexprChildView(MAIN_INPUT_POS, local),
                     .main_fnk_name => |local| SexprView.sexprChildView(MAIN_FNK_POS, local),
                     .toolbar_special_var => toolbar.special_var_point,
-                    .sample => |sample| SexprView.sexprChildView(examples_reel.getPoint(sample.index, sample.which), sample.local),
+                    .sample => |sample| SexprView.sexprChildView(samples_reel.getPoint(sample.index, sample.which), sample.local),
                 };
             }
 
@@ -1205,8 +1205,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         };
 
-        // TODO NOW: change to 'samples reel'
-        const examples_reel = struct {
+        const samples_reel = struct {
             const top_left: Point = .{ .pos = .new(-6, 0.25), .scale = 0.75 };
             var scroll: f32 = 0;
 
@@ -1342,13 +1341,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         pub fn update(self: *Self, delta_seconds: f32) !bool {
             var mouse = platform.getMouse();
-            if (examples_reel.rect.contains(mouse.cur.pos(self.camera))) {
-                examples_reel.scroll -= delta_seconds * 10 * mouse.cur.scrolled.toNumber();
+            if (samples_reel.rect.contains(mouse.cur.pos(self.camera))) {
+                samples_reel.scroll -= delta_seconds * 10 * mouse.cur.scrolled.toNumber();
                 mouse.cur.scrolled = .none;
             }
             // TODO: remove this line
             if (self.level.manual_samples.len < 3) return error.TODO;
-            math.lerp_towards_range(&examples_reel.scroll, 0, tof32(self.level.manual_samples.len - 3), 0.1, delta_seconds);
+            math.lerp_towards_range(&samples_reel.scroll, 0, tof32(self.level.manual_samples.len - 3), 0.1, delta_seconds);
             moveCamera(&self.camera, delta_seconds, platform.getKeyboard(), mouse);
 
             const camera = self.camera;
@@ -1441,7 +1440,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     }
                 else if (toolbar.findOverlap(mouse_pos)) |overlap|
                     .{ .sexpr = .{ .toolbar = overlap.index } }
-                else if (try examples_reel.findOverlap(mouse_pos, self.level.manual_samples)) |overlap|
+                else if (try samples_reel.findOverlap(mouse_pos, self.level.manual_samples)) |overlap|
                     .{ .sexpr = .{ .sample = overlap } }
                 else if (toolbar.overlapsWithSpecialVar(mouse_pos))
                     .{ .sexpr = .toolbar_special_var }
@@ -1597,7 +1596,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             try toolbar.draw(camera);
 
-            try examples_reel.draw(camera, self.level.manual_samples);
+            try samples_reel.draw(camera, self.level.manual_samples);
 
             self.ui_state.draw(drawer);
 
