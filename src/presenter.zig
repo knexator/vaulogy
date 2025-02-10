@@ -132,6 +132,10 @@ pub const PlayerData = struct {
     fnks: FnkCollection,
     first_time: bool = true,
 
+    pub fn allFnkNames(self: PlayerData) []const *const Sexpr {
+        return self.fnks.keys();
+    }
+
     pub fn empty(mem: *VeryPermamentGameStuff) PlayerData {
         return PlayerData{
             .ascii_data = "",
@@ -395,7 +399,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             result.persistence = player_data;
 
             result.state = .{
-                .editing_fnk = try .init(&levels[0], defaultFnkBody1(&result.mem), &result.mem),
+                .editing_fnk = try .init(&levels[0], player_data.allFnkNames(), defaultFnkBody1(&result.mem), &result.mem),
             };
 
             result.scoring_run = undefined;
@@ -411,6 +415,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                     const fnk_body = self.persistence.fnks.get(fnk_name) orelse defaultFnkBody1(&self.mem);
                     self.state = .{ .editing_fnk = try .init(
                         &levels[level_index],
+                        self.persistence.allFnkNames(),
                         fnk_body,
                         &self.mem,
                     ) };
@@ -1014,6 +1019,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         const Self = @This();
         const artist = Artist(platform, drawer);
 
+        const ExternalFnkAddress = struct {
+            index: usize,
+            local: core.SexprAddress,
+        };
         const SexprPlace = union(enum) {
             full_address: core.FullAddress,
             toolbar: usize,
@@ -1021,6 +1030,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             main_input: core.SexprAddress,
             main_fnk_name: core.SexprAddress,
             sample: Sample.Address,
+            external_fnk: ExternalFnkAddress,
 
             pub fn equals(self: @This(), other: @This()) bool {
                 if (std.meta.activeTag(self) != std.meta.activeTag(other)) return false;
@@ -1032,6 +1042,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .sample => |self_sample| self_sample.index == other.sample.index and
                         self_sample.which == other.sample.which and
                         core.equalSexprAddress(self_sample.local, other.sample.local),
+                    .external_fnk => |self_fnk| self_fnk.index == other.external_fnk.index and
+                        core.equalSexprAddress(self_fnk.local, other.external_fnk.local),
                     .toolbar_special_var => true,
                 };
             }
@@ -1047,6 +1059,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .main_fnk_name => |local| SexprView.sexprChildView(MAIN_FNK_POS, local),
                     .toolbar_special_var => toolbar.special_var_point,
                     .sample => |sample| SexprView.sexprChildView(samples_reel.getPoint(sample.index, sample.which), sample.local),
+                    .external_fnk => |fnk| SexprView.sexprChildView(fnks_reel.getPoint(fnk.index), fnk.local),
                 };
             }
 
@@ -1058,6 +1071,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .main_fnk_name => |local| self.level.fnk_name.getAt(local).?,
                     .toolbar_special_var => toolbar.special_var_state.next_value,
                     .sample => |sample| self.level.manual_samples[sample.index].get(sample.which).?.getAt(sample.local).?,
+                    .external_fnk => |fnk| self.available_fnks[fnk.index].getAt(fnk.local).?,
                     // examples_reel.getPoint(sample.index, sample.which), sample.local),
                     // .main_input => |local| self.main_input.getAt(local).?,
                 };
@@ -1070,7 +1084,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         const value_without_variables = try value.changeAllVariablesToNil(self.mem);
                         self.main_input = try self.main_input.setAt(self.mem, local_address, value_without_variables);
                     },
-                    .toolbar, .main_fnk_name, .toolbar_special_var, .sample => unreachable,
+                    .toolbar, .main_fnk_name, .toolbar_special_var, .sample, .external_fnk => unreachable,
                 }
             }
 
@@ -1088,6 +1102,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .main_fnk_name => false,
                     .toolbar_special_var => false,
                     .sample => false,
+                    .external_fnk => false,
                     .full_address => true,
                     .main_input => true,
                 };
@@ -1098,6 +1113,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         camera: Camera = Camera{ .center = .new(7, 3), .height = 15.0 },
         ui_state: UI.State,
 
+        available_fnks: []const *const Sexpr,
         level: *const Level,
         cases: CaseGroup,
         main_input: *const Sexpr,
@@ -1211,6 +1227,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             const rect: Rect = .{ .top_left = top_left.pos, .size = Vec2.new(7, 7.5).scale(top_left.scale) };
 
+            pub fn update_scroll(main: Self, delta_seconds: f32) void {
+                math.lerp_towards_range(&samples_reel.scroll, 0, @max(0, tof32(main.level.manual_samples.len) - 3), 0.1, delta_seconds);
+            }
+
             fn getPoint(k: usize, which: Sample.Part) Point {
                 const index: f32 = tof32(k) - scroll;
                 const y = 1.25 + index * 2.5;
@@ -1269,6 +1289,55 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         };
 
+        // TODO: would be nice to classify fnks by name
+        const fnks_reel = struct {
+            const top_left: Point = .{ .pos = .new(-6, 0.5 + samples_reel.rect.size.y), .scale = 0.75 };
+            var scroll: f32 = 0;
+
+            const rect: Rect = .{ .top_left = top_left.pos, .size = Vec2.new(7, 5.5).scale(top_left.scale) };
+            const N_FNKS_PER_ROW = 3;
+
+            pub fn update_scroll(main: Self, delta_seconds: f32) void {
+                math.lerp_towards_range(&fnks_reel.scroll, 0, @max(0, tof32(main.available_fnks.len / N_FNKS_PER_ROW) - 2), 0.1, delta_seconds);
+            }
+
+            fn getPoint(k: usize) Point {
+                const v_index: f32 = tof32(k / N_FNKS_PER_ROW) - scroll;
+                const y = 2 + v_index * 2.5;
+                const x = 1.25 + tof32(k % N_FNKS_PER_ROW) * 2.1;
+                const scale = @min(
+                    math.smoothstep(v_index, -0.5, 0),
+                    math.smoothstep(v_index, 1.5, 1),
+                );
+                return top_left.applyToLocalPoint(.{
+                    .pos = .new(x, y),
+                    .scale = scale * 0.75,
+                    .turns = -0.25,
+                });
+            }
+
+            pub fn findOverlap(mouse_pos: Vec2, available_fnks: []const *const Sexpr) !?ExternalFnkAddress {
+                for (available_fnks, 0..) |fnk_name, k| {
+                    if (try SexprView.overlapsSexpr(
+                        platform.gpa,
+                        fnk_name,
+                        getPoint(k),
+                        mouse_pos,
+                    )) |local| {
+                        return ExternalFnkAddress{ .index = k, .local = local };
+                    }
+                }
+                return null;
+            }
+
+            pub fn draw(camera: Camera, available_fnks: []const *const Sexpr) !void {
+                drawer.drawRect(camera, rect);
+                for (available_fnks, 0..) |fnk_name, k| {
+                    try artist.drawSexpr(camera, getPoint(k), fnk_name);
+                }
+            }
+        };
+
         fn makeCasesPhysical(mem: *VeryPermamentGameStuff, cases: core.MatchCases) !CaseGroup {
             var result = std.ArrayListUnmanaged(CaseState){};
             for (cases.items, 0..) |case, k| {
@@ -1306,7 +1375,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             return result;
         }
 
-        pub fn init(level: *const Level, fnk_body: core.FnkBody, mem: *VeryPermamentGameStuff) !Self {
+        pub fn init(level: *const Level, available_fnks: []const *const Sexpr, fnk_body: core.FnkBody, mem: *VeryPermamentGameStuff) !Self {
             const cases = try makeCasesPhysical(mem, fnk_body.cases);
             const main_input = try mem.storeSexpr(Sexpr.doPair(&Sexpr.nil, &Sexpr.input));
 
@@ -1321,6 +1390,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 // .main_input = &Sexpr.true,
                 .main_input = main_input,
                 .ui_state = ui_state,
+                .available_fnks = available_fnks,
             };
         }
 
@@ -1341,13 +1411,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         pub fn update(self: *Self, delta_seconds: f32) !bool {
             var mouse = platform.getMouse();
-            if (samples_reel.rect.contains(mouse.cur.pos(self.camera))) {
-                samples_reel.scroll -= delta_seconds * 10 * mouse.cur.scrolled.toNumber();
-                mouse.cur.scrolled = .none;
+            inline for (.{ samples_reel, fnks_reel }) |x| {
+                if (x.rect.contains(mouse.cur.pos(self.camera))) {
+                    x.scroll -= delta_seconds * 10 * mouse.cur.scrolled.toNumber();
+                    mouse.cur.scrolled = .none;
+                }
+                x.update_scroll(self.*, delta_seconds);
             }
-            // TODO: remove this line
-            if (self.level.manual_samples.len < 3) return error.TODO;
-            math.lerp_towards_range(&samples_reel.scroll, 0, tof32(self.level.manual_samples.len - 3), 0.1, delta_seconds);
             moveCamera(&self.camera, delta_seconds, platform.getKeyboard(), mouse);
 
             const camera = self.camera;
@@ -1371,7 +1441,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 .fnk_name => .{ .turns = 0.02, .pos = .new(0.5, 0) },
                             },
                             .main_input => .{ .turns = -0.02, .pos = .new(0.5, 0) },
-                            .toolbar, .main_fnk_name, .toolbar_special_var, .sample => unreachable,
+                            .toolbar, .main_fnk_name, .toolbar_special_var, .sample, .external_fnk => unreachable,
                         })
                     else
                         // TODO: it would be nice to have the scale instantly correct when the camera zooms
@@ -1442,6 +1512,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .{ .toolbar = overlap.index } }
                 else if (try samples_reel.findOverlap(mouse_pos, self.level.manual_samples)) |overlap|
                     .{ .sexpr = .{ .sample = overlap } }
+                else if (try fnks_reel.findOverlap(mouse_pos, self.available_fnks)) |overlap|
+                    .{ .sexpr = .{ .external_fnk = overlap } }
                 else if (toolbar.overlapsWithSpecialVar(mouse_pos))
                     .{ .sexpr = .toolbar_special_var }
                 else if (try SexprView.overlapsSexpr(self.mem.gpa, self.main_input, MAIN_INPUT_POS, mouse_pos)) |overlap|
@@ -1597,6 +1669,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             try toolbar.draw(camera);
 
             try samples_reel.draw(camera, self.level.manual_samples);
+            try fnks_reel.draw(camera, self.available_fnks);
 
             self.ui_state.draw(drawer);
 
