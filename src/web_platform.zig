@@ -202,7 +202,7 @@ const WebDrawer = struct {
         );
     }
 
-    pub fn drawRect(camera: Camera, rect: Rect) void {
+    pub fn drawRect(camera: Camera, rect: Rect, stroke: ?Color, fill: ?Color) void {
         const screen_top_left = screenFromWorldPosition(camera, rect.top_left);
         const screen_size = screenFromWorldSize(camera, rect.size);
         const screen_positions = [_]Vec2{
@@ -212,11 +212,15 @@ const WebDrawer = struct {
             screen_top_left.addY(screen_size.y),
         };
         js_better.canvas.pathLoop(&screen_positions);
-        js.canvas.setLineWidth(1);
-        js_better.canvas.setFillColor(Color.white);
-        js_better.canvas.setStrokeColor(Color.black);
-        js.canvas.fill();
-        js.canvas.stroke();
+        if (stroke) |col| {
+            js.canvas.setLineWidth(1);
+            js_better.canvas.setStrokeColor(col);
+            js.canvas.stroke();
+        }
+        if (fill) |col| {
+            js_better.canvas.setFillColor(col);
+            js.canvas.fill();
+        }
     }
 
     pub fn drawVariable(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {

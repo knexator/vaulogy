@@ -65,7 +65,7 @@ const SdlDrawer = struct {
         panickify(c.SDL_RenderClear(sdl_renderer));
     }
 
-    pub fn drawRect(camera: Camera, rect: Rect) void {
+    pub fn drawRect(camera: Camera, rect: Rect, stroke: ?Color, fill: ?Color) void {
         const screen_top_left = screenFromWorldPosition(camera, rect.top_left);
         const screen_size = screenFromWorldSize(camera, rect.size);
 
@@ -76,10 +76,14 @@ const SdlDrawer = struct {
             .h = screen_size.y,
         };
 
-        setRenderDrawColor(Color.white);
-        panickify(c.SDL_RenderFillRect(sdl_renderer, &sdl_rect));
-        setRenderDrawColor(Color.black);
-        panickify(c.SDL_RenderRect(sdl_renderer, &sdl_rect));
+        if (stroke) |col| {
+            setRenderDrawColor(col);
+            panickify(c.SDL_RenderRect(sdl_renderer, &sdl_rect));
+        }
+        if (fill) |col| {
+            setRenderDrawColor(col);
+            panickify(c.SDL_RenderFillRect(sdl_renderer, &sdl_rect));
+        }
     }
 
     fn polygon(screen_positions: []const Vec2, triangles: []const [3]usize, outline_points: []const usize, fill: Color, stroke: Color) void {

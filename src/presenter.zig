@@ -219,7 +219,7 @@ pub const AtomVisuals = struct {
 
 pub const Drawer = struct {
     clear: fn (color: Color) void,
-    drawRect: fn (camera: Camera, rect: Rect) void,
+    drawRect: fn (camera: Camera, rect: Rect, stroke: ?Color, fill: ?Color) void,
     drawAtomDebug: fn (camera: Camera, world_point: Point) void,
     drawAtom: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
     drawPatternAtomOutline: fn (camera: Camera, world_point: Point) void,
@@ -250,16 +250,19 @@ pub const Drawer = struct {
             _ = world_point;
             unreachable;
         }
-        pub fn camera_rect(camera: Camera, rect: Rect) void {
-            _ = camera;
-            _ = rect;
-            unreachable;
-        }
     };
     // TODO: all should be unreachable
     pub const dummy = Drawer{
         .clear = dummySignatures.color,
-        .drawRect = dummySignatures.camera_rect,
+        .drawRect = struct {
+            pub fn anon(camera: Camera, rect: Rect, stroke: ?Color, fill: ?Color) void {
+                _ = camera;
+                _ = rect;
+                _ = stroke;
+                _ = fill;
+                unreachable;
+            }
+        }.anon,
         .drawAtomDebug = undefined,
         .drawAtom = dummySignatures.camera_point_visuals,
         .drawVariable = dummySignatures.camera_point_visuals,
@@ -1269,7 +1272,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             pub fn draw(camera: Camera, samples: []const Sample) !void {
-                drawer.drawRect(camera, rect);
+                drawer.drawRect(camera, rect, .black, null);
                 for (samples, 0..) |sample, k| {
                     try artist.drawSexpr(
                         camera,
@@ -1331,7 +1334,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             pub fn draw(camera: Camera, available_fnks: []const *const Sexpr) !void {
-                drawer.drawRect(camera, rect);
+                drawer.drawRect(camera, rect, .black, null);
                 for (available_fnks, 0..) |fnk_name, k| {
                     try artist.drawSexpr(camera, getPoint(k), fnk_name);
                 }
@@ -2513,7 +2516,7 @@ const UI = struct {
             for (self.buttons) |button| {
                 drawer.drawRect(UI.cam, button.pos.plusMargin(
                     clamp01(button.hot_t - button.active_t) * 0.1,
-                ));
+                ), .black, .white);
             }
         }
     };
@@ -2554,7 +2557,7 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
         pub fn draw(self: Self) OoM!void {
             drawer.clear(Color.gray(128));
             for (self.ui_state.buttons, 0..) |button, k| {
-                drawer.drawRect(UI.cam, button.pos);
+                drawer.drawRect(UI.cam, button.pos, .black, .white);
                 if (button.hot_t > 0 or button.active_t > 0) {
                     try artist.drawSexpr(UI.cam, .{
                         .pos = button.pos.top_left.add(.new(2 - button.active_t, 0.5)),
