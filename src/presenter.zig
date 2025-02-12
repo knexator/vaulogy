@@ -1018,6 +1018,26 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         const Self = @This();
         const artist = Artist(platform, drawer);
 
+        const CasePlace = union(enum) {
+            main_fnk: core.CaseAddress,
+            toolbar_special_case,
+
+            pub fn equals(self: @This(), other: @This()) bool {
+                if (std.meta.activeTag(self) != std.meta.activeTag(other)) return false;
+                return switch (self) {
+                    .main_fnk => |self_case| std.mem.eql(usize, self_case, other.main_fnk),
+                    .toolbar_special_case => true,
+                };
+            }
+
+            pub fn acceptsDrop(place: CasePlace) bool {
+                return switch (place) {
+                    .main_fnk => true,
+                    .toolbar_special_case => false,
+                };
+            }
+        };
+
         // TODO: move this to fnks_reel
         const ExternalFnkAddress = struct {
             index: usize,
@@ -1134,11 +1154,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         focus: union(enum) {
             nothing,
-            hovering_special_case: f32,
-            hovering_case: core.CaseAddress,
+            hovering_case: struct {
+                address: CasePlace,
+                hot: f32,
+            },
             grabbing_case: struct {
                 case: CaseState,
-                address_if_released: ?core.CaseAddress,
+                address_if_released: ?CasePlace,
             },
             hovering_sexpr: struct {
                 address: SexprPlace,
@@ -1537,11 +1559,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         delta_seconds,
                     );
                 },
-                .hovering_special_case => |*hot| {
-                    math.lerp_towards(hot, 1, 0.6, delta_seconds);
-                },
-                .hovering_case => |unfolded| {
-                    try self.cases.setUnfolded(unfolded);
+                .hovering_case => |*hovering| switch (hovering.address) {
+                    .main_fnk => |unfolded| {
+                        try self.cases.setUnfolded(unfolded);
+                    },
+                    .toolbar_special_case => {
+                        math.lerp_towards(&hovering.hot, 1, 0.6, delta_seconds);
+                    },
                 },
             }
 
@@ -1549,8 +1573,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             {
                 const mouse_pos = platform.getMouse().cur.pos(camera);
                 const maybe_overlapped: ?union(enum) {
-                    special_case,
-                    case: core.CaseAddress,
+                    case: CasePlace,
                     sexpr: SexprPlace,
                 } = if (try asdfUpdateAndReturnOverlap(
                     self,
@@ -1558,7 +1581,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     delta_seconds,
                 )) |overlap|
                     switch (overlap) {
-                        .case => |case| .{ .case = case },
+                        .case => |case| .{ .case = .{ .main_fnk = case } },
                         .sexpr => |sexpr| .{ .sexpr = .{ .full_address = sexpr.full_address } },
                     }
                 else if (toolbar.findOverlap(mouse_pos)) |overlap|
@@ -1577,16 +1600,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 else if (try SexprView.overlapsSexpr(self.mem.gpa, self.level.fnk_name, MAIN_FNK_POS, mouse_pos)) |overlap|
                     .{ .sexpr = .{ .main_fnk_name = overlap } }
                 else if (toolbar.overlapsWithSpecialCase(mouse_pos))
-                    .special_case
+                    .{ .case = .toolbar_special_case }
                 else
                     null;
 
                 switch (self.focus) {
                     .grabbing_case => |*grabbing| if (maybe_overlapped) |overlapped|
                         switch (overlapped) {
-                            .special_case => grabbing.address_if_released = null,
-                            .case => |case| {
-                                grabbing.address_if_released = case;
+                            .case => |place| {
+                                grabbing.address_if_released = if (place.acceptsDrop()) place else null;
                             },
                             .sexpr => {
                                 grabbing.address_if_released = null;
@@ -1597,9 +1619,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     },
                     .grabbing_sexpr => |*grabbing| if (maybe_overlapped) |overlapped|
                         switch (overlapped) {
-                            .special_case => grabbing.address_if_released = null,
-                            .case => |case| {
-                                try self.cases.setUnfolded(case);
+                            .case => |place| {
+                                if (std.meta.activeTag(place) == .main_fnk) {
+                                    try self.cases.setUnfolded(place.main_fnk);
+                                }
                                 grabbing.address_if_released = null;
                             },
                             .sexpr => |place| {
@@ -1612,12 +1635,19 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     else {
                         grabbing.address_if_released = null;
                     },
-                    .nothing, .hovering_sexpr, .hovering_case, .hovering_special_case => if (maybe_overlapped) |overlapped| {
+                    .nothing, .hovering_sexpr, .hovering_case => if (maybe_overlapped) |overlapped| {
                         switch (overlapped) {
-                            .special_case => if (!(std.meta.activeTag(self.focus) == .hovering_special_case)) {
-                                self.focus = .{ .hovering_special_case = 0 };
+                            // .special_case => if (!(std.meta.activeTag(self.focus) == .hovering_special_case)) {
+                            //     self.focus = .{ .hovering_special_case = 0 };
+                            // },
+                            .case => |place| {
+                                if (!(std.meta.activeTag(self.focus) == .hovering_case and self.focus.hovering_case.address.equals(place))) {
+                                    self.focus = .{ .hovering_case = .{
+                                        .address = place,
+                                        .hot = 0,
+                                    } };
+                                }
                             },
-                            .case => |case| self.focus = .{ .hovering_case = case },
                             .sexpr => |place| {
                                 if (!(std.meta.activeTag(self.focus) == .hovering_sexpr and self.focus.hovering_sexpr.address.equals(place))) {
                                     self.focus = .{
@@ -1640,12 +1670,17 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 switch (self.focus) {
                     .nothing => {},
                     .grabbing_case => |*grabbing| {
-                        if (grabbing.address_if_released) |address| {
-                            const global_point = grabbing.case.pattern_point_relative_to_parent;
-                            const parent_point = try self.cases.getPatternGlobalPoint(.{}, address[0 .. address.len - 1]);
-                            grabbing.case.pattern_point_relative_to_parent = parent_point.inverseApplyGetLocal(global_point);
-                            try self.cases.insertAt(self.mem, address, grabbing.case);
-                            self.focus = .{ .hovering_case = address };
+                        if (grabbing.address_if_released) |place| {
+                            switch (place) {
+                                .main_fnk => |address| {
+                                    const global_point = grabbing.case.pattern_point_relative_to_parent;
+                                    const parent_point = try self.cases.getPatternGlobalPoint(.{}, address[0 .. address.len - 1]);
+                                    grabbing.case.pattern_point_relative_to_parent = parent_point.inverseApplyGetLocal(global_point);
+                                    try self.cases.insertAt(self.mem, address, grabbing.case);
+                                    self.focus = .{ .hovering_case = .{ .address = place, .hot = 0 } };
+                                },
+                                .toolbar_special_case => unreachable,
+                            }
                         } else {
                             self.focus = .{ .nothing = {} };
                         }
@@ -1661,20 +1696,24 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             self.focus = .{ .nothing = {} };
                         }
                     },
-                    .hovering_special_case => {
-                        self.focus = .{ .grabbing_case = .{
-                            .case = toolbar.special_case_value,
-                            .address_if_released = null,
-                        } };
-                    },
-                    .hovering_case => |unfolded| {
-                        const global_point = try self.cases.getPatternGlobalPoint(.{}, unfolded);
-                        var asdf = try self.cases.removeAt(unfolded);
-                        asdf.pattern_point_relative_to_parent = global_point;
-                        self.focus = .{ .grabbing_case = .{
-                            .case = asdf,
-                            .address_if_released = unfolded,
-                        } };
+                    .hovering_case => |hovering| {
+                        switch (hovering.address) {
+                            .main_fnk => |unfolded| {
+                                const global_point = try self.cases.getPatternGlobalPoint(.{}, unfolded);
+                                var asdf = try self.cases.removeAt(unfolded);
+                                asdf.pattern_point_relative_to_parent = global_point;
+                                self.focus = .{ .grabbing_case = .{
+                                    .case = asdf,
+                                    .address_if_released = hovering.address,
+                                } };
+                            },
+                            .toolbar_special_case => {
+                                self.focus = .{ .grabbing_case = .{
+                                    .case = toolbar.special_case_value,
+                                    .address_if_released = null,
+                                } };
+                            },
+                        }
                     },
                     .hovering_sexpr => |hovering| {
                         if (try hovering.address.getSexpr(self.*)) |v| {
@@ -1747,17 +1786,20 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             switch (self.focus) {
                 .nothing => {},
-                .hovering_special_case => |hot| {
-                    // TODO: cooler
-                    drawer.drawCaseHolder(camera, toolbar.special_case_point
-                        .applyToLocalPoint(.{ .scale = hot }));
-                },
-                .hovering_case => |unfolded| {
-                    const pattern_point = try self.cases.getPatternGlobalPoint(.{}, unfolded);
-                    drawer.drawCaseHolder(camera, .{
-                        .pos = pattern_point.pos.sub(.new(3, 0)),
-                        .scale = pattern_point.scale,
-                    });
+                .hovering_case => |hovering| switch (hovering.address) {
+                    .main_fnk => |unfolded| {
+                        const pattern_point = try self.cases.getPatternGlobalPoint(.{}, unfolded);
+                        drawer.drawCaseHolder(camera, .{
+                            .pos = pattern_point.pos.sub(.new(3, 0)),
+                            // TODO: change to hovering.hot
+                            .scale = pattern_point.scale,
+                        });
+                    },
+                    .toolbar_special_case => {
+                        // TODO: cooler
+                        drawer.drawCaseHolder(camera, toolbar.special_case_point
+                            .applyToLocalPoint(.{ .scale = hovering.hot }));
+                    },
                 },
                 .grabbing_sexpr => |grabbing| {
                     try artist.drawBothSexpr(
@@ -1838,11 +1880,17 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         fn asdfUpdateAndReturnOverlap(self: *Self, mouse_pos: Vec2, delta_seconds: f32) !?OverlapResult {
             if (std.meta.activeTag(self.focus) == .grabbing_case) {
-                // asdf
-                try doGrabbingCaseFirstPass(self.mem, self.focus.grabbing_case.address_if_released, &.{}, self.cases, delta_seconds);
+                const main_fnk_address_if_released = if (self.focus.grabbing_case.address_if_released) |address_if_released|
+                    switch (address_if_released) {
+                        .main_fnk => |x| x,
+                        else => null,
+                    }
+                else
+                    null;
+                try doGrabbingCaseFirstPass(self.mem, main_fnk_address_if_released, &.{}, self.cases, delta_seconds);
                 const asdf = if (self.cases.cases.items.len == 0) try self.debugMakeAddress(0) else try doGrabbingCaseSecondPass(
                     mouse_pos,
-                    self.focus.grabbing_case.address_if_released,
+                    main_fnk_address_if_released,
                     self.mem,
                     &.{},
                     &self.cases,
@@ -1866,6 +1914,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         const OverlapResult = union(enum) {
             case: core.CaseAddress,
             sexpr: struct {
+                // TODO: simplify
                 full_address: core.FullAddress,
             },
         };
