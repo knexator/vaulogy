@@ -1580,7 +1580,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 )) |overlap|
                     switch (overlap) {
                         .case => |case| .{ .case = .{ .main_fnk = case } },
-                        .sexpr => |sexpr| .{ .sexpr = .{ .full_address = sexpr.full_address } },
+                        .sexpr => |sexpr| .{ .sexpr = .{ .full_address = sexpr } },
                     }
                 else if (toolbar.findOverlap(mouse_pos)) |overlap|
                     .{ .sexpr = .{ .toolbar = overlap.index } }
@@ -1910,10 +1910,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         const OverlapResult = union(enum) {
             case: core.CaseAddress,
-            sexpr: struct {
-                // TODO: simplify
-                full_address: core.FullAddress,
-            },
+            sexpr: core.FullAddress,
         };
 
         fn updateCasePositionsAndReturnMouseOverlap(mem: *VeryPermamentGameStuff, parent_address: core.CaseAddress, relative_mouse_pos: Vec2, group: CaseGroup, delta_seconds: f32) !?OverlapResult {
@@ -1941,11 +1938,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     relative_pattern_point,
                     relative_mouse_pos,
                 )) |local_address| {
-                    overlapped = .{ .sexpr = .{ .full_address = .{
+                    overlapped = .{ .sexpr = .{
                         .case_address = cur_address,
                         .sexpr_address = local_address,
                         .which = .pattern,
-                    } } };
+                    } };
                 } else if (blk: {
                     if (is_folded) break :blk null;
                     break :blk try SexprView.overlapsSexpr(
@@ -1955,11 +1952,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         relative_mouse_pos,
                     );
                 }) |local_address| {
-                    overlapped = .{ .sexpr = .{ .full_address = .{
+                    overlapped = .{ .sexpr = .{
                         .case_address = cur_address,
                         .sexpr_address = local_address,
                         .which = .template,
-                    } } };
+                    } };
                 } else if (blk: {
                     if (is_folded) break :blk null;
                     break :blk try SexprView.overlapsSexpr(
@@ -1969,11 +1966,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         relative_mouse_pos,
                     );
                 }) |local_address| {
-                    overlapped = .{ .sexpr = .{ .full_address = .{
+                    overlapped = .{ .sexpr = .{
                         .case_address = cur_address,
                         .sexpr_address = local_address,
                         .which = .fnk_name,
-                    } } };
+                    } };
                 } else if (inRange(local_mouse_pos.y, -1, 1) and
                     inRange(local_mouse_pos.x, -5 / case.pattern_point_relative_to_parent.scale, 0))
                 {
