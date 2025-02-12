@@ -1559,13 +1559,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         delta_seconds,
                     );
                 },
-                .hovering_case => |*hovering| switch (hovering.address) {
-                    .main_fnk => |unfolded| {
-                        try self.cases.setUnfolded(unfolded);
-                    },
-                    .toolbar_special_case => {
-                        math.lerp_towards(&hovering.hot, 1, 0.6, delta_seconds);
-                    },
+                .hovering_case => |*hovering| {
+                    if (std.meta.activeTag(hovering.address) == .main_fnk) {
+                        try self.cases.setUnfolded(hovering.address.main_fnk);
+                    }
+                    math.lerp_towards(&hovering.hot, 1, 0.6, delta_seconds);
                 },
             }
 
@@ -1791,8 +1789,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         const pattern_point = try self.cases.getPatternGlobalPoint(.{}, unfolded);
                         drawer.drawCaseHolder(camera, .{
                             .pos = pattern_point.pos.sub(.new(3, 0)),
-                            // TODO: change to hovering.hot
-                            .scale = pattern_point.scale,
+                            .scale = hovering.hot,
                         });
                     },
                     .toolbar_special_case => {
