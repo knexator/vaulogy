@@ -1546,26 +1546,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             // update cases & focus
-            if (std.meta.activeTag(self.focus) == .grabbing_case) {
-                try doGrabbingCaseFirstPass(self.mem, self.focus.grabbing_case.address_if_released, &.{}, self.cases, delta_seconds);
-                self.focus.grabbing_case.address_if_released = if (self.cases.cases.items.len == 0) try self.debugMakeAddress(0) else try doGrabbingCaseSecondPass(
-                    platform.getMouse().cur.pos(camera),
-                    self.focus.grabbing_case.address_if_released,
-                    self.mem,
-                    &.{},
-                    &self.cases,
-                );
-            } else {
+            {
                 const mouse_pos = platform.getMouse().cur.pos(camera);
                 const maybe_overlapped: ?union(enum) {
                     special_case,
                     case: core.CaseAddress,
                     sexpr: SexprPlace,
-                } = if (try updateCasePositionsAndReturnMouseOverlap(
-                    self.mem,
-                    &.{},
+                } = if (try asdfUpdateAndReturnOverlap(
+                    self,
                     mouse_pos,
-                    self.cases,
                     delta_seconds,
                 )) |overlap|
                     switch (overlap) {
@@ -1593,7 +1582,19 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     null;
 
                 switch (self.focus) {
-                    .grabbing_case => unreachable,
+                    .grabbing_case => |*grabbing| if (maybe_overlapped) |overlapped|
+                        switch (overlapped) {
+                            .special_case => grabbing.address_if_released = null,
+                            .case => |case| {
+                                grabbing.address_if_released = case;
+                            },
+                            .sexpr => {
+                                grabbing.address_if_released = null;
+                            },
+                        }
+                    else {
+                        grabbing.address_if_released = null;
+                    },
                     .grabbing_sexpr => |*grabbing| if (maybe_overlapped) |overlapped|
                         switch (overlapped) {
                             .special_case => grabbing.address_if_released = null,
@@ -1832,6 +1833,33 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             );
             if (case.next) |next| {
                 try drawCases(camera, false, pattern_point, next);
+            }
+        }
+
+        fn asdfUpdateAndReturnOverlap(self: *Self, mouse_pos: Vec2, delta_seconds: f32) !?OverlapResult {
+            if (std.meta.activeTag(self.focus) == .grabbing_case) {
+                // asdf
+                try doGrabbingCaseFirstPass(self.mem, self.focus.grabbing_case.address_if_released, &.{}, self.cases, delta_seconds);
+                const asdf = if (self.cases.cases.items.len == 0) try self.debugMakeAddress(0) else try doGrabbingCaseSecondPass(
+                    mouse_pos,
+                    self.focus.grabbing_case.address_if_released,
+                    self.mem,
+                    &.{},
+                    &self.cases,
+                );
+                if (asdf) |x| {
+                    return OverlapResult{ .case = x };
+                } else {
+                    return null;
+                }
+            } else {
+                return try updateCasePositionsAndReturnMouseOverlap(
+                    self.mem,
+                    &.{},
+                    mouse_pos,
+                    self.cases,
+                    delta_seconds,
+                );
             }
         }
 
