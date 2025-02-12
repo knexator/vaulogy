@@ -2074,12 +2074,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     return null;
                 }
             } else {
+                const below_the_cable = mouse_pos_relative_to_parent.y > 0;
                 for (group.cases.items, 0..) |*case, k| {
                     const grabbing_pos_relative_to_cur = Point.inverseApplyGetLocalPosition(
                         case.pattern_point_relative_to_parent,
                         mouse_pos_relative_to_parent,
                     );
-                    if (grabbing_pos_relative_to_cur.y < 0 and inRange(
+                    if (below_the_cable and grabbing_pos_relative_to_cur.y < 0 and inRange(
                         grabbing_pos_relative_to_cur.x,
                         -5.0 / case.pattern_point_relative_to_parent.scale,
                         0,
