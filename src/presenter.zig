@@ -1038,11 +1038,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         };
 
-        // TODO: move this to fnks_reel
-        const ExternalFnkAddress = struct {
-            index: usize,
-            local: core.SexprAddress,
-        };
         const SexprPlace = union(enum) {
             full_address: core.FullAddress,
             toolbar: usize,
@@ -1050,7 +1045,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             main_input: core.SexprAddress,
             main_fnk_name: core.SexprAddress,
             sample: Sample.Address,
-            external_fnk: ExternalFnkAddress,
+            external_fnk: fnks_reel.Address,
             meta_converter: core.SexprAddress,
 
             pub fn equals(self: @This(), other: @This()) bool {
@@ -1333,6 +1328,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             const rect: Rect = .{ .top_left = top_left.pos, .size = Vec2.new(7, 5.5).scale(top_left.scale) };
             const N_FNKS_PER_ROW = 3;
 
+            pub const Address = struct {
+                index: usize,
+                local: core.SexprAddress,
+            };
+
             pub fn update_scroll(main: Self, delta_seconds: f32) void {
                 math.lerp_towards_range(&fnks_reel.scroll, 0, @max(0, tof32(main.available_fnks.len / N_FNKS_PER_ROW) - 2), 0.1, delta_seconds);
             }
@@ -1352,7 +1352,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 });
             }
 
-            pub fn findOverlap(mouse_pos: Vec2, available_fnks: []const *const Sexpr) !?ExternalFnkAddress {
+            pub fn findOverlap(mouse_pos: Vec2, available_fnks: []const *const Sexpr) !?Address {
                 for (available_fnks, 0..) |fnk_name, k| {
                     if (try SexprView.overlapsSexpr(
                         platform.gpa,
@@ -1360,7 +1360,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         getPoint(k),
                         mouse_pos,
                     )) |local| {
-                        return ExternalFnkAddress{ .index = k, .local = local };
+                        return .{ .index = k, .local = local };
                     }
                 }
                 return null;
