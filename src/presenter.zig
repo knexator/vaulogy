@@ -1018,6 +1018,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         const Self = @This();
         const artist = Artist(platform, drawer);
 
+        // TODO: move this to fnks_reel
         const ExternalFnkAddress = struct {
             index: usize,
             local: core.SexprAddress,
@@ -1030,6 +1031,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             main_fnk_name: core.SexprAddress,
             sample: Sample.Address,
             external_fnk: ExternalFnkAddress,
+            meta_converter: core.SexprAddress,
 
             pub fn equals(self: @This(), other: @This()) bool {
                 if (std.meta.activeTag(self) != std.meta.activeTag(other)) return false;
@@ -1044,6 +1046,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .external_fnk => |self_fnk| self_fnk.index == other.external_fnk.index and
                         core.equalSexprAddress(self_fnk.local, other.external_fnk.local),
                     .toolbar_special_var => true,
+                    .meta_converter => |self_local| core.equalSexprAddress(self_local, other.meta_converter),
                 };
             }
 
@@ -1059,10 +1062,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .toolbar_special_var => toolbar.special_var_point,
                     .sample => |sample| SexprView.sexprChildView(samples_reel.getPoint(sample.index, sample.which), sample.local),
                     .external_fnk => |fnk| SexprView.sexprChildView(fnks_reel.getPoint(fnk.index), fnk.local),
+                    .meta_converter => |local| SexprView.sexprChildView(meta_converter.sexpr_point, local),
                 };
             }
 
-            pub fn getSexpr(address: @This(), self: Self) !*const Sexpr {
+            pub fn getSexpr(address: @This(), self: Self) !?*const Sexpr {
                 return switch (address) {
                     .full_address => |full_address| try self.cases.getSexprAt(full_address),
                     .toolbar => |index| toolbar.things[index].value,
@@ -1071,6 +1075,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .toolbar_special_var => toolbar.special_var_state.next_value,
                     .sample => |sample| self.level.manual_samples[sample.index].get(sample.which).?.getAt(sample.local).?,
                     .external_fnk => |fnk| self.available_fnks[fnk.index].getAt(fnk.local).?,
+                    .meta_converter => |local| if (meta_converter.sexpr) |v| v.getAt(local).? else null,
                     // examples_reel.getPoint(sample.index, sample.which), sample.local),
                     // .main_input => |local| self.main_input.getAt(local).?,
                 };
@@ -1082,6 +1087,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .main_input => |local_address| {
                         const value_without_variables = try value.changeAllVariablesToNil(self.mem);
                         self.main_input = try self.main_input.setAt(self.mem, local_address, value_without_variables);
+                    },
+                    .meta_converter => |local_address| {
+                        meta_converter.sexpr = if (meta_converter.sexpr) |existing| blk: {
+                            const value_without_variables = try value.changeAllVariablesToNil(self.mem);
+                            break :blk try existing.setAt(self.mem, local_address, value_without_variables);
+                        } else blk: {
+                            std.debug.assert(local_address.len == 0);
+                            break :blk value;
+                        };
                     },
                     .toolbar, .main_fnk_name, .toolbar_special_var, .sample, .external_fnk => unreachable,
                 }
@@ -1104,6 +1118,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .external_fnk => false,
                     .full_address => true,
                     .main_input => true,
+                    .meta_converter => true,
                 };
             }
         };
@@ -1337,6 +1352,55 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         };
 
+        /// sexprs to cases and vice versa
+        const meta_converter = struct {
+            const sexpr_point: Point = .{ .pos = .new(16, -3), .scale = 0.75 };
+            const case_point: Point = sexpr_point.applyToLocalPoint(.{ .pos = .new(0, 2) });
+
+            pub const Overlap = union(enum) {
+                case,
+                sexpr: core.SexprAddress,
+            };
+
+            var sexpr: ?*const Sexpr = null;
+            var case: ?core.MatchCaseDefinition = null;
+
+            pub fn findOverlap(mouse_pos: Vec2) !?Overlap {
+                if (sexpr) |s| {
+                    if (try SexprView.overlapsSexpr(
+                        platform.gpa,
+                        s,
+                        sexpr_point,
+                        mouse_pos,
+                    )) |local| {
+                        return .{ .sexpr = local };
+                    }
+                } else if (SexprView.overlapsAtom(
+                    sexpr_point,
+                    mouse_pos,
+                    .atom,
+                )) {
+                    return .{ .sexpr = core.emptySexprAddress };
+                }
+                // TODO: case
+                return null;
+            }
+
+            pub fn draw(camera: Camera) !void {
+                if (sexpr) |s| {
+                    try artist.drawSexpr(camera, sexpr_point, s);
+                } else {
+                    drawer.drawRect(
+                        camera,
+                        Rect.fromCenterAndSize(sexpr_point.pos, .both(sexpr_point.scale)),
+                        .black,
+                        null,
+                    );
+                }
+                // TODO: case
+            }
+        };
+
         fn makeCasesPhysical(mem: *VeryPermamentGameStuff, cases: core.MatchCases) !CaseGroup {
             var result = std.ArrayListUnmanaged(CaseState){};
             for (cases.items, 0..) |case, k| {
@@ -1440,6 +1504,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 .fnk_name => .{ .turns = 0.02, .pos = .new(0.5, 0) },
                             },
                             .main_input => .{ .turns = -0.02, .pos = .new(0.5, 0) },
+                            .meta_converter => .{ .turns = -0.02, .pos = .new(0.5, 0) },
                             .toolbar, .main_fnk_name, .toolbar_special_var, .sample, .external_fnk => unreachable,
                         })
                     else
@@ -1513,7 +1578,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .{ .sample = overlap } }
                 else if (try fnks_reel.findOverlap(mouse_pos, self.available_fnks)) |overlap|
                     .{ .sexpr = .{ .external_fnk = overlap } }
-                else if (toolbar.overlapsWithSpecialVar(mouse_pos))
+                else if (try meta_converter.findOverlap(mouse_pos)) |overlap| switch (overlap) {
+                    .sexpr => |local| .{ .sexpr = .{ .meta_converter = local } },
+                    .case => return error.TODO,
+                } else if (toolbar.overlapsWithSpecialVar(mouse_pos))
                     .{ .sexpr = .toolbar_special_var }
                 else if (try SexprView.overlapsSexpr(self.mem.gpa, self.main_input, MAIN_INPUT_POS, mouse_pos)) |overlap|
                     .{ .sexpr = .{ .main_input = overlap } }
@@ -1608,19 +1676,21 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         } };
                     },
                     .hovering_sexpr => |hovering| {
-                        self.focus = .{
-                            .grabbing_sexpr = .{
-                                .address_if_released = if (hovering.address.acceptsDrop()) hovering.address else null,
-                                .is_pattern = if (hovering.address.isPattern()) 1 else 0,
-                                .point = hovering.global_point,
-                                .sexpr = try hovering.address.getSexpr(self.*),
-                            },
-                        };
+                        if (try hovering.address.getSexpr(self.*)) |v| {
+                            self.focus = .{
+                                .grabbing_sexpr = .{
+                                    .address_if_released = if (hovering.address.acceptsDrop()) hovering.address else null,
+                                    .is_pattern = if (hovering.address.isPattern()) 1 else 0,
+                                    .point = hovering.global_point,
+                                    .sexpr = v,
+                                },
+                            };
 
-                        if (std.meta.activeTag(hovering.address) == .full_address and hovering.address.full_address.which == .fnk_name) {
-                            (try self.cases.caseRefAt(hovering.address.full_address.case_address)).fnk_name = &Sexpr.identity;
-                        } else if (std.meta.activeTag(hovering.address) == .toolbar_special_var) {
-                            try toolbar.special_var_state.next(self.mem);
+                            if (std.meta.activeTag(hovering.address) == .full_address and hovering.address.full_address.which == .fnk_name) {
+                                (try self.cases.caseRefAt(hovering.address.full_address.case_address)).fnk_name = &Sexpr.identity;
+                            } else if (std.meta.activeTag(hovering.address) == .toolbar_special_var) {
+                                try toolbar.special_var_state.next(self.mem);
+                            }
                         }
                     },
                 }
@@ -1630,9 +1700,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 switch (self.focus) {
                     .hovering_sexpr => |hovering| {
                         if (hovering.address.acceptsDrop()) {
-                            const old_value = try hovering.address.getSexpr(self.*);
-                            const new_value = try self.mem.storeSexpr(Sexpr.doPair(old_value, &Sexpr.nil));
-                            try hovering.address.setSexpr(self, new_value);
+                            if (try hovering.address.getSexpr(self.*)) |old_value| {
+                                const new_value = try self.mem.storeSexpr(Sexpr.doPair(old_value, &Sexpr.nil));
+                                try hovering.address.setSexpr(self, new_value);
+                            }
                         }
                     },
                     else => {},
@@ -1669,6 +1740,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             try samples_reel.draw(camera, self.level.manual_samples);
             try fnks_reel.draw(camera, self.available_fnks);
 
+            try meta_converter.draw(camera);
+
             self.ui_state.draw(drawer);
 
             switch (self.focus) {
@@ -1704,16 +1777,18 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     try drawCaseExtra(camera, pattern_point, grabbing.case);
                 },
                 .hovering_sexpr => |hovering| {
-                    try artist.drawBothSexpr(
-                        camera,
-                        hovering.global_point,
-                        if (hovering.address.isPattern()) 1 else 0,
-                        try hovering.address.getSexpr(self),
-                    );
-                    // try artist.drawPatternOutline(camera, artist.sexprPatternChildView(
-                    //     case.pattern_point,
-                    //     full_address.sexpr_address,
-                    // ));
+                    if (try hovering.address.getSexpr(self)) |value| {
+                        try artist.drawBothSexpr(
+                            camera,
+                            hovering.global_point,
+                            if (hovering.address.isPattern()) 1 else 0,
+                            value,
+                        );
+                        // try artist.drawPatternOutline(camera, artist.sexprPatternChildView(
+                        //     case.pattern_point,
+                        //     full_address.sexpr_address,
+                        // ));
+                    }
                 },
             }
         }

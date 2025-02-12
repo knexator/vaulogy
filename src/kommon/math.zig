@@ -172,6 +172,10 @@ pub const Rect = struct {
     pub fn plusMargin(self: Rect, v: f32) Rect {
         return .{ .top_left = self.top_left.sub(.new(v, v)), .size = self.size.add(Vec2.new(v, v).scale(2)) };
     }
+
+    pub fn fromCenterAndSize(center: Vec2, size: Vec2) Rect {
+        return .{ .top_left = center.sub(size.scale(0.5)), .size = size };
+    }
 };
 
 pub const Color = struct {

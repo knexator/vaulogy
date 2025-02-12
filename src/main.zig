@@ -178,6 +178,9 @@ pub const Sexpr = union(enum) {
         }
     }
 };
+
+// TODO: make a proper struct
+pub const emptySexprAddress: SexprAddress = &.{};
 pub const SexprAddressItem = enum { left, right };
 pub const SexprAddress = []SexprAddressItem;
 pub fn equalSexprAddress(a: SexprAddress, b: SexprAddress) bool {
