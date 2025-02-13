@@ -1021,12 +1021,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         const CasePlace = union(enum) {
             main_fnk: core.CaseAddress,
             toolbar_special_case,
+            meta_converter,
 
             pub fn equals(self: @This(), other: @This()) bool {
                 if (std.meta.activeTag(self) != std.meta.activeTag(other)) return false;
                 return switch (self) {
                     .main_fnk => |self_case| std.mem.eql(usize, self_case, other.main_fnk),
                     .toolbar_special_case => true,
+                    .meta_converter => true,
                 };
             }
 
@@ -1034,6 +1036,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 return switch (place) {
                     .main_fnk => true,
                     .toolbar_special_case => false,
+                    .meta_converter => true,
                 };
             }
         };
@@ -1169,6 +1172,30 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             },
         } = .{ .nothing = {} },
 
+        fn overlapsWithTinyCase(mouse_pos: Vec2, case_point: Point) bool {
+            const local_point = case_point
+                .applyToLocalPoint(.{ .pos = .new(2, 0) })
+                .inverseApplyGetLocalPosition(mouse_pos);
+
+            return local_point.mag() < 2;
+        }
+
+        // TODO: cooler, by taking a 'hot' param
+        fn drawTinyCase(camera: Camera, case_point: Point, pattern: *const Sexpr, template: *const Sexpr) !void {
+            try artist.drawPatternSexpr(camera, case_point
+                .applyToLocalPoint(.{ .pos = .new(1, 0) }), pattern);
+            try artist.drawSexpr(camera, case_point
+                .applyToLocalPoint(.{ .pos = .new(3, 0) }), template);
+            // TODO: artist.drawCableBetween(camera, pattern_pos, template_pos);
+            drawer.drawCable(
+                camera,
+                case_point.applyToLocalPosition(.new(1.5, 0)),
+                case_point.applyToLocalPosition(.new(2.5, 0)),
+                case_point.scale,
+                0,
+            );
+        }
+
         const toolbar = struct {
             const atom_values = [_]Sexpr{
                 Sexpr.pair_nil_nil,
@@ -1214,11 +1241,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             pub fn overlapsWithSpecialCase(mouse_pos: Vec2) bool {
-                const local_point = special_case_point
-                    .applyToLocalPoint(.{ .pos = .new(2, 0) })
-                    .inverseApplyGetLocalPosition(mouse_pos);
-
-                return local_point.mag() < 2;
+                return overlapsWithTinyCase(mouse_pos, special_case_point);
             }
 
             pub fn findOverlap(mouse_pos: Vec2) ?std.meta.Elem(@TypeOf(things)) {
@@ -1237,18 +1260,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     try artist.drawSexpr(camera, thing.point, thing.value);
                 }
 
-                try artist.drawPatternSexpr(camera, special_case_point
-                    .applyToLocalPoint(.{ .pos = .new(1, 0) }), special_case_value.pattern);
-                try artist.drawSexpr(camera, special_case_point
-                    .applyToLocalPoint(.{ .pos = .new(3, 0) }), special_case_value.template);
-                // TODO: artist.drawCableBetween(camera, pattern_pos, template_pos);
-                drawer.drawCable(
-                    camera,
-                    special_case_point.applyToLocalPosition(.new(1.5, 0)),
-                    special_case_point.applyToLocalPosition(.new(2.5, 0)),
-                    special_case_point.scale,
-                    0,
-                );
+                try drawTinyCase(camera, special_case_point, special_case_value.pattern, special_case_value.template);
             }
         };
 
@@ -1404,7 +1416,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 )) {
                     return .{ .sexpr = core.emptySexprAddress };
                 }
-                // TODO: case
+
+                if (overlapsWithTinyCase(mouse_pos, case_point)) {
+                    return .case;
+                }
+
                 return null;
             }
 
@@ -1419,20 +1435,35 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         null,
                     );
                 }
-                // TODO: case
+
+                if (case) |c| {
+                    // TODO: case fnk_name and "has_next"
+                    try drawTinyCase(camera, case_point, c.pattern, c.template);
+                } else {
+                    drawer.drawRect(
+                        camera,
+                        Rect.fromCenterAndSize(case_point.pos, .both(case_point.scale)),
+                        .black,
+                        null,
+                    );
+                }
             }
         };
 
-        fn makeCasesPhysical(mem: *VeryPermamentGameStuff, cases: core.MatchCases) !CaseGroup {
+        fn makeCasePhysical(mem: *VeryPermamentGameStuff, case: core.MatchCaseDefinition, point: Point) !CaseState {
+            return .{
+                .fnk_name = case.fnk_name,
+                .pattern = case.pattern,
+                .template = case.template,
+                .next = if (case.next) |next| try makeCasesPhysical(mem, next) else null,
+                .pattern_point_relative_to_parent = point,
+            };
+        }
+
+        fn makeCasesPhysical(mem: *VeryPermamentGameStuff, cases: core.MatchCases) OoM!CaseGroup {
             var result = std.ArrayListUnmanaged(CaseState){};
             for (cases.items, 0..) |case, k| {
-                try result.append(mem.gpa, .{
-                    .fnk_name = case.fnk_name,
-                    .pattern = case.pattern,
-                    .template = case.template,
-                    .next = if (case.next) |next| try makeCasesPhysical(mem, next) else null,
-                    .pattern_point_relative_to_parent = .{ .pos = .new(3, 2.5 + 1.5 * tof32(k)), .scale = 0.5 },
-                });
+                try result.append(mem.gpa, try makeCasePhysical(mem, case, .{ .pos = .new(3, 2.5 + 1.5 * tof32(k)), .scale = 0.5 }));
             }
             return .{ .cases = result, .unfolded = 0 };
         }
@@ -1444,18 +1475,22 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             };
         }
 
-        fn getMatchCases(mem: *VeryPermamentGameStuff, group: CaseGroup) !core.MatchCases {
+        fn makeCaseVirtual(mem: *VeryPermamentGameStuff, case: CaseState) !core.MatchCaseDefinition {
+            return .{
+                .fnk_name = case.fnk_name,
+                .pattern = case.pattern,
+                .template = case.template,
+                .next = if (case.next) |next|
+                    (try getMatchCases(mem, next))
+                else
+                    null,
+            };
+        }
+
+        fn getMatchCases(mem: *VeryPermamentGameStuff, group: CaseGroup) OoM!core.MatchCases {
             var result = std.ArrayListUnmanaged(core.MatchCaseDefinition){};
             for (group.cases.items) |case| {
-                try result.append(mem.arena_for_cases.allocator(), .{
-                    .fnk_name = case.fnk_name,
-                    .pattern = case.pattern,
-                    .template = case.template,
-                    .next = if (case.next) |next|
-                        (try getMatchCases(mem, next))
-                    else
-                        null,
-                });
+                try result.append(mem.arena_for_cases.allocator(), try makeCaseVirtual(mem, case));
             }
             return result;
         }
@@ -1590,7 +1625,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .{ .external_fnk = overlap } }
                 else if (try meta_converter.findOverlap(mouse_pos)) |overlap| switch (overlap) {
                     .sexpr => |local| .{ .sexpr = .{ .meta_converter = local } },
-                    .case => return error.TODO,
+                    .case => .{ .case = .meta_converter },
                 } else if (toolbar.overlapsWithSpecialVar(mouse_pos))
                     .{ .sexpr = .toolbar_special_var }
                 else if (try SexprView.overlapsSexpr(self.mem.gpa, self.main_input, MAIN_INPUT_POS, mouse_pos)) |overlap|
@@ -1675,7 +1710,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     const parent_point = try self.cases.getPatternGlobalPoint(.{}, address[0 .. address.len - 1]);
                                     grabbing.case.pattern_point_relative_to_parent = parent_point.inverseApplyGetLocal(global_point);
                                     try self.cases.insertAt(self.mem, address, grabbing.case);
-                                    self.focus = .{ .hovering_case = .{ .address = place, .hot = 0 } };
+                                    self.focus = .{ .hovering_case = .{ .address = place, .hot = 1 } };
+                                },
+                                .meta_converter => {
+                                    meta_converter.case = try makeCaseVirtual(self.mem, grabbing.case);
+                                    self.focus = .{ .hovering_case = .{ .address = place, .hot = 1 } };
                                 },
                                 .toolbar_special_case => unreachable,
                             }
@@ -1704,6 +1743,17 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     .case = asdf,
                                     .address_if_released = hovering.address,
                                 } };
+                            },
+                            .meta_converter => {
+                                if (meta_converter.case) |case| {
+                                    self.focus = .{
+                                        .grabbing_case = .{
+                                            // TODO NOW: check the Point
+                                            .case = try makeCasePhysical(self.mem, case, Point{}),
+                                            .address_if_released = hovering.address,
+                                        },
+                                    };
+                                }
                             },
                             .toolbar_special_case => {
                                 self.focus = .{ .grabbing_case = .{
@@ -1791,6 +1841,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             .pos = pattern_point.pos.sub(.new(3, 0)),
                             .scale = hovering.hot,
                         });
+                    },
+                    .meta_converter => {
+                        // TODO: cooler
+                        drawer.drawCaseHolder(camera, meta_converter.case_point
+                            .applyToLocalPoint(.{ .scale = hovering.hot }));
                     },
                     .toolbar_special_case => {
                         // TODO: cooler
