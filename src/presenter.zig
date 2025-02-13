@@ -1174,7 +1174,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         fn overlapsWithTinyCase(mouse_pos: Vec2, case_point: Point) bool {
             const local_point = case_point
-                .applyToLocalPoint(.{ .pos = .new(2, 0) })
                 .inverseApplyGetLocalPosition(mouse_pos);
 
             return local_point.mag() < 2;
@@ -1183,17 +1182,24 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         // TODO: cooler, by taking a 'hot' param
         fn drawTinyCase(camera: Camera, case_point: Point, pattern: *const Sexpr, template: *const Sexpr) !void {
             try artist.drawPatternSexpr(camera, case_point
-                .applyToLocalPoint(.{ .pos = .new(1, 0) }), pattern);
+                .applyToLocalPoint(.{ .pos = .new(-1, 0) }), pattern);
             try artist.drawSexpr(camera, case_point
-                .applyToLocalPoint(.{ .pos = .new(3, 0) }), template);
+                .applyToLocalPoint(.{ .pos = .new(1, 0) }), template);
             // TODO: artist.drawCableBetween(camera, pattern_pos, template_pos);
             drawer.drawCable(
                 camera,
-                case_point.applyToLocalPosition(.new(1.5, 0)),
-                case_point.applyToLocalPosition(.new(2.5, 0)),
+                case_point.applyToLocalPosition(.new(-0.5, 0)),
+                case_point.applyToLocalPosition(.new(0.5, 0)),
                 case_point.scale,
                 0,
             );
+        }
+
+        fn drawTinyCaseHolder(camera: Camera, case_point: Point, hot: f32) void {
+            // TODO: cooler
+            drawer.drawCaseHolder(camera, case_point
+                .applyToLocalPoint(.{ .pos = .new(-2, 0) })
+                .applyToLocalPoint(.{ .scale = hot }));
         }
 
         const toolbar = struct {
@@ -1227,7 +1233,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
             } = .{};
 
-            const special_case_point = Point{ .pos = .new(10, -2.5), .scale = 0.5 };
+            const special_case_point = Point{ .pos = .new(11, -2.5), .scale = 0.5 };
             const special_case_value = CaseState{
                 .fnk_name = &Sexpr.identity,
                 .pattern = &Sexpr.var_v1,
@@ -1389,7 +1395,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         /// sexprs to cases and vice versa
         const meta_converter = struct {
             const sexpr_point: Point = .{ .pos = .new(16, -3), .scale = 0.75 };
-            const case_point: Point = sexpr_point.applyToLocalPoint(.{ .pos = .new(0, 2) });
+            const case_point: Point = sexpr_point.applyToLocalPoint(.{ .pos = .new(0, 2.5) });
 
             pub const Overlap = union(enum) {
                 case,
@@ -1748,8 +1754,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 if (meta_converter.case) |case| {
                                     self.focus = .{
                                         .grabbing_case = .{
-                                            // TODO NOW: check the Point
-                                            .case = try makeCasePhysical(self.mem, case, Point{}),
+                                            .case = try makeCasePhysical(self.mem, case, meta_converter.case_point),
                                             .address_if_released = hovering.address,
                                         },
                                     };
@@ -1842,15 +1847,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             .scale = hovering.hot,
                         });
                     },
-                    .meta_converter => {
-                        // TODO: cooler
-                        drawer.drawCaseHolder(camera, meta_converter.case_point
-                            .applyToLocalPoint(.{ .scale = hovering.hot }));
+                    .meta_converter => if (meta_converter.case != null) {
+                        drawTinyCaseHolder(camera, meta_converter.case_point, hovering.hot);
                     },
                     .toolbar_special_case => {
-                        // TODO: cooler
-                        drawer.drawCaseHolder(camera, toolbar.special_case_point
-                            .applyToLocalPoint(.{ .scale = hovering.hot }));
+                        drawTinyCaseHolder(camera, toolbar.special_case_point, hovering.hot);
                     },
                 },
                 .grabbing_sexpr => |grabbing| {
