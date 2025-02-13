@@ -27,6 +27,7 @@ pub const Sexpr = union(enum) {
     pub const debug = Sexpr.doLit("DEBUGGG");
     pub const @"return" = Sexpr.doLit("return");
     pub const @"var" = Sexpr.doLit("var");
+    // TODO: change this to 'lit'
     pub const atom = Sexpr.doLit("atom");
     pub const nil = Sexpr.doLit("nil");
     pub const identity = Sexpr.doLit("identity");
@@ -331,11 +332,15 @@ pub const VeryPermamentGameStuff = struct {
     }
 
     pub fn storeSexpr(this: *VeryPermamentGameStuff, s: Sexpr) !*const Sexpr {
-        const res = try this.pool_for_sexprs.create();
-        res.* = s;
-        return res;
+        return storeSexprInPool(&this.pool_for_sexprs, s);
     }
 };
+
+pub fn storeSexprInPool(pool: *MemoryPool(Sexpr), s: Sexpr) !*const Sexpr {
+    const res = try pool.create();
+    res.* = s;
+    return res;
+}
 
 pub const ScoringRun = struct {
     mem: *VeryPermamentGameStuff,
@@ -1203,11 +1208,51 @@ fn asListPlusSentinel(s: *const Sexpr, l: *std.ArrayList(*const Sexpr)) !*const 
     }
 }
 
+fn toListPlusSentinel(values: []const *const Sexpr, sentinel: *const Sexpr, pool: *MemoryPool(Sexpr)) !*const Sexpr {
+    if (values.len == 0) return sentinel;
+    return try storeSexprInPool(pool, Sexpr.doPair(
+        values[0],
+        try toListPlusSentinel(values[1..], sentinel, pool),
+    ));
+}
+
+pub fn sexprFromCase(case: MatchCaseDefinition, pool: *MemoryPool(Sexpr)) error{OutOfMemory}!*const Sexpr {
+    return toListPlusSentinel(&.{
+        try externalFromInternal(case.pattern, pool),
+        case.fnk_name,
+        try externalFromInternal(case.template, pool),
+    }, if (case.next) |next|
+        try sexprFromCases(next.items, pool)
+    else
+        &Sexpr.@"return", pool);
+}
+
+pub fn sexprFromCases(cases: []MatchCaseDefinition, pool: *MemoryPool(Sexpr)) !*const Sexpr {
+    if (cases.len == 0) return &Sexpr.nil;
+    return try storeSexprInPool(pool, Sexpr.doPair(
+        try sexprFromCase(cases[0], pool),
+        try sexprFromCases(cases[1..], pool),
+    ));
+}
+
 fn fnkFromSexpr(s: *const Sexpr, allocator_for_cases: std.mem.Allocator, pool: *MemoryPool(Sexpr)) !FnkBody {
     return .{ .cases = (try fnkFromSexprHelper(s, allocator_for_cases, pool)).? };
 }
 
-fn fnkFromSexprHelper(s: *const Sexpr, arena: std.mem.Allocator, pool: *MemoryPool(Sexpr)) !?MatchCases {
+pub fn caseFromSexpr(cur: *const Sexpr, arena: std.mem.Allocator, pool: *MemoryPool(Sexpr)) !MatchCaseDefinition {
+    const pattern = try internalFromExternal(cur.pair.left, pool);
+    const fnk_name = cur.pair.right.pair.left;
+    const template = try internalFromExternal(cur.pair.right.pair.right.pair.left, pool);
+    const next = try fnkFromSexprHelper(cur.pair.right.pair.right.pair.right, arena, pool);
+    return .{
+        .pattern = pattern,
+        .fnk_name = fnk_name,
+        .template = template,
+        .next = next,
+    };
+}
+
+fn fnkFromSexprHelper(s: *const Sexpr, arena: std.mem.Allocator, pool: *MemoryPool(Sexpr)) error{ InvalidMetaFnk, OutOfMemory, BAD_INPUT }!?MatchCases {
     var cases = std.ArrayListUnmanaged(MatchCaseDefinition){};
     switch (s.*) {
         .atom_lit => return if (s.equals(&Sexpr.@"return")) null else error.InvalidMetaFnk,
@@ -1216,16 +1261,7 @@ fn fnkFromSexprHelper(s: *const Sexpr, arena: std.mem.Allocator, pool: *MemoryPo
             var cur_parent = p;
             while (true) {
                 const cur = cur_parent.left;
-                const pattern = try internalFromExternal(cur.pair.left, pool);
-                const fnk_name = cur.pair.right.pair.left;
-                const template = try internalFromExternal(cur.pair.right.pair.right.pair.left, pool);
-                const next = try fnkFromSexprHelper(cur.pair.right.pair.right.pair.right, arena, pool);
-                try cases.append(arena, .{
-                    .pattern = pattern,
-                    .fnk_name = fnk_name,
-                    .template = template,
-                    .next = next,
-                });
+                try cases.append(arena, try caseFromSexpr(cur, arena, pool));
                 switch (cur_parent.right.*) {
                     .atom_lit => |a| {
                         if (a.equals(Sexpr.nil.atom_lit)) {
@@ -1272,4 +1308,16 @@ fn internalFromExternal(s: *const Sexpr, pool: *MemoryPool(Sexpr)) !*const Sexpr
             }
         },
     }
+}
+
+// (aaa . @bbb) => ((atom . aaa) . (var . bbb))
+fn externalFromInternal(s: *const Sexpr, pool: *MemoryPool(Sexpr)) !*const Sexpr {
+    return switch (s.*) {
+        .atom_var => |v| storeSexprInPool(pool, Sexpr.doPair(&Sexpr.@"var", try storeSexprInPool(pool, Sexpr.doLit(v.value)))),
+        .atom_lit => storeSexprInPool(pool, Sexpr.doPair(&Sexpr.atom, s)),
+        .pair => |p| storeSexprInPool(pool, Sexpr.doPair(
+            try externalFromInternal(p.left, pool),
+            try externalFromInternal(p.right, pool),
+        )),
+    };
 }

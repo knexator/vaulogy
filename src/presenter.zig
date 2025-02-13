@@ -1107,13 +1107,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         self.main_input = try self.main_input.setAt(self.mem, local_address, value_without_variables);
                     },
                     .meta_converter => |local_address| {
-                        meta_converter.sexpr = if (meta_converter.sexpr) |existing| blk: {
-                            const value_without_variables = try value.changeAllVariablesToNil(self.mem);
-                            break :blk try existing.setAt(self.mem, local_address, value_without_variables);
-                        } else blk: {
-                            std.debug.assert(local_address.len == 0);
-                            break :blk value;
-                        };
+                        try meta_converter.setSexpr(self.mem, value, local_address);
                     },
                     .toolbar, .main_fnk_name, .toolbar_special_var, .sample, .external_fnk => unreachable,
                 }
@@ -1402,8 +1396,30 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 sexpr: core.SexprAddress,
             };
 
+            /// Don't set this directly
             var sexpr: ?*const Sexpr = null;
+            /// Don't set this directly
             var case: ?core.MatchCaseDefinition = null;
+
+            pub fn setSexpr(mem: *VeryPermamentGameStuff, new_sexpr: *const Sexpr, local_address: core.SexprAddress) !void {
+                sexpr = if (meta_converter.sexpr) |existing| blk: {
+                    // const value_without_variables = try new_sexpr.changeAllVariablesToNil(mem);
+                    break :blk try existing.setAt(mem, local_address, new_sexpr);
+                } else blk: {
+                    std.debug.assert(local_address.len == 0);
+                    break :blk new_sexpr;
+                };
+
+                case = core.caseFromSexpr(sexpr.?, mem.arena_for_cases.allocator(), &mem.pool_for_sexprs) catch |err| switch (err) {
+                    error.InvalidMetaFnk, error.BAD_INPUT => null,
+                    else => return err,
+                };
+            }
+
+            pub fn setCase(mem: *VeryPermamentGameStuff, new_case: core.MatchCaseDefinition) !void {
+                case = new_case;
+                sexpr = try core.sexprFromCase(case.?, &mem.pool_for_sexprs);
+            }
 
             pub fn findOverlap(mouse_pos: Vec2) !?Overlap {
                 if (sexpr) |s| {
@@ -1719,7 +1735,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     self.focus = .{ .hovering_case = .{ .address = place, .hot = 1 } };
                                 },
                                 .meta_converter => {
-                                    meta_converter.case = try makeCaseVirtual(self.mem, grabbing.case);
+                                    try meta_converter.setCase(self.mem, try makeCaseVirtual(self.mem, grabbing.case));
                                     self.focus = .{ .hovering_case = .{ .address = place, .hot = 1 } };
                                 },
                                 .toolbar_special_case => unreachable,
