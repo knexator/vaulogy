@@ -365,23 +365,39 @@ const SdlDrawer = struct {
 
     pub fn drawFnkHolder(camera: Camera, world_point: Point) void {
         const screen_point = screenFromWorld(camera, world_point);
-        _ = screen_point;
-        std.log.warn("TODO: drawFnkHolder", .{});
+
+        setRenderDrawColor(Color.black);
+        strokeCircle(32, screen_point.applyToLocalPoint(.{ .scale = 0.5 }));
+
+        strokePoints(2, &.{
+            screen_point.applyToLocalPosition(.new(0, -0.5)),
+            screen_point.applyToLocalPosition(.new(0, -1.5)),
+        });
+    }
+
+    fn strokePoints(N: comptime_int, screen_positions: *const [N]Vec2) void {
+        var sdl_points: [N]c.SDL_FPoint = undefined;
+        for (&sdl_points, screen_positions) |*target, source| {
+            target.* = c.SDL_FPoint{ .x = source.x, .y = source.y };
+        }
+        panickify(c.SDL_RenderLines(sdl_renderer, &sdl_points, sdl_points.len));
+    }
+
+    fn strokeCircle(N: comptime_int, screen_point: Point) void {
+        var screen_positions: [N + 1]c.SDL_FPoint = undefined;
+        for (0..N) |k| {
+            const radians = std.math.tau * @as(f32, @floatFromInt(k)) / @as(f32, @floatFromInt(N));
+            const point = screen_point.applyToLocalPosition(Vec2.new(std.math.cos(radians), std.math.sin(radians)));
+            screen_positions[k] = c.SDL_FPoint{ .x = point.x, .y = point.y };
+        }
+        screen_positions[N] = screen_positions[0];
+        panickify(c.SDL_RenderLines(sdl_renderer, &screen_positions, screen_positions.len));
     }
 
     pub fn drawCaseHolder(camera: Camera, world_point: Point) void {
         const screen_point = screenFromWorld(camera, world_point);
-
-        const N = 32;
-        var screen_positions: [N + 1]c.SDL_FPoint = undefined;
-        for (0..N) |k| {
-            const radians = std.math.tau * @as(f32, @floatFromInt(k)) / @as(f32, @floatFromInt(N));
-            const point = screen_point.applyToLocalPosition(Vec2.new(std.math.cos(radians), std.math.sin(radians)).scale(0.5));
-            screen_positions[k] = c.SDL_FPoint{ .x = point.x, .y = point.y };
-        }
-        screen_positions[N] = screen_positions[0];
         setRenderDrawColor(Color.white);
-        panickify(c.SDL_RenderLines(sdl_renderer, &screen_positions, screen_positions.len));
+        strokeCircle(32, screen_point.applyToLocalPoint(.{ .scale = 0.5 }));
     }
 
     pub fn drawAtom(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {
