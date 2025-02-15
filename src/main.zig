@@ -1240,6 +1240,8 @@ fn fnkFromSexpr(s: *const Sexpr, allocator_for_cases: std.mem.Allocator, pool: *
 }
 
 pub fn caseFromSexpr(cur: *const Sexpr, arena: std.mem.Allocator, pool: *MemoryPool(Sexpr)) !MatchCaseDefinition {
+    if (std.meta.activeTag(cur.*) != .pair) return error.InvalidMetaFnk;
+    // TODO: make the deep ".pair.right.pair.left" stuff safe, maybe with comptime magic
     const pattern = try internalFromExternal(cur.pair.left, pool);
     const fnk_name = cur.pair.right.pair.left;
     const template = try internalFromExternal(cur.pair.right.pair.right.pair.left, pool);
