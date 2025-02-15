@@ -43,10 +43,11 @@ const js = struct {
         extern fn fillRect(x: f32, y: f32, w: f32, h: f32) void;
         extern fn arc(x: f32, y: f32, radius: f32, startAngle: f32, endAngle: f32, counterclockwise: bool) void;
         extern fn ellipse(x: f32, y: f32, radiusX: f32, radiusY: f32, rotation: f32, startAngle: f32, endAngle: f32, counterclockwise: bool) void;
+        extern fn fillText(text_ptr: [*]const u8, text_len: usize, x: f32, y: f32, h: f32) void;
         extern fn getWidth() u32;
         extern fn getHeight() u32;
 
-        // TODO: save/restore, translate/rotate/scale/resetTransform, rect, fillText
+        // TODO: save/restore, translate/rotate/scale/resetTransform, rect
     };
 
     pub const storage = struct {
@@ -221,6 +222,13 @@ const WebDrawer = struct {
             js_better.canvas.setFillColor(col);
             js.canvas.fill();
         }
+    }
+
+    pub fn drawDebugText(camera: Camera, center: Point, text: [:0]const u8, color: Color) void {
+        const screen_point = screenFromWorld(camera, center);
+        js_better.canvas.setFillColor(color);
+        std.log.debug("scale: {d}", .{screen_point.scale});
+        js.canvas.fillText(text.ptr, text.len, screen_point.pos.x, screen_point.pos.y, screen_point.scale * 0.7);
     }
 
     pub fn drawVariable(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {
@@ -548,6 +556,7 @@ const web_platform = presenter.Platform{
 const web_drawer = presenter.Drawer{
     .clear = js_better.canvas.clear,
     .drawRect = WebDrawer.drawRect,
+    .drawDebugText = WebDrawer.drawDebugText,
     .drawAtom = WebDrawer.drawAtom,
     .drawPatternAtom = WebDrawer.drawPatternAtom,
     .drawVariable = WebDrawer.drawVariable,

@@ -164,6 +164,10 @@ pub const Rect = struct {
     top_left: Vec2,
     size: Vec2,
 
+    pub fn getCenter(self: Rect) Vec2 {
+        return self.top_left.add(self.size.scale(0.5));
+    }
+
     pub fn contains(self: Rect, p: Vec2) bool {
         return inRange(p.x, self.top_left.x, self.top_left.x + self.size.x) and
             inRange(p.y, self.top_left.y, self.top_left.y + self.size.y);

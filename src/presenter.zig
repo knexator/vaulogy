@@ -213,6 +213,7 @@ pub const AtomVisuals = struct {
 pub const Drawer = struct {
     clear: fn (color: Color) void,
     drawRect: fn (camera: Camera, rect: Rect, stroke: ?Color, fill: ?Color) void,
+    drawDebugText: fn (camera: Camera, center: Point, text: [:0]const u8, color: Color) void,
     drawAtomDebug: fn (camera: Camera, world_point: Point) void,
     drawAtom: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
     drawPatternAtomOutline: fn (camera: Camera, world_point: Point) void,
@@ -403,7 +404,9 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn update(self: *Self, delta_seconds: f32) !void {
-            // std.log.info("FPS: {d}", .{1.0 / delta_seconds});
+            if (1.0 / delta_seconds < 40) {
+                std.log.info("Low FPS: {d}", .{1.0 / delta_seconds});
+            }
             switch (self.state) {
                 .level_select => |*ui| if (ui.update(delta_seconds)) |level_index| {
                     const fnk_name = levels[level_index].fnk_name;
@@ -1523,7 +1526,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }) };
 
             const ui_state_for_camera = UI.State{ .buttons = try platform.gpa.dupe(UI.Button, &.{
-                .{ .pos = Rect{ .top_left = .new(0, 0), .size = .one } },
+                .{ .pos = Rect{ .top_left = .new(0, 0), .size = .one }, .text = "Reset\nView" },
             }) };
 
             return .{
@@ -1859,9 +1862,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             try meta_converter.draw(camera);
 
-            self.ui_state.draw(drawer);
-            self.ui_state_for_camera.draw(drawer);
-
             switch (self.focus) {
                 .nothing => {},
                 .hovering_case => |hovering| switch (hovering.address) {
@@ -1912,6 +1912,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     }
                 },
             }
+
+            self.ui_state.draw(drawer);
+            self.ui_state_for_camera.draw(drawer);
         }
 
         fn drawCases(camera: Camera, is_first: bool, parent_point: Point, group: CaseGroup) OoM!void {
@@ -2730,6 +2733,12 @@ const UI = struct {
                 drawer.drawRect(UI.cam, button.pos.plusMargin(
                     clamp01(button.hot_t - button.active_t) * 0.1,
                 ), .black, .white);
+                if (button.text) |text| {
+                    drawer.drawDebugText(UI.cam, .{
+                        .pos = button.pos.getCenter(),
+                        .scale = button.pos.size.y / (1 + tof32(std.mem.count(u8, text, "\n"))),
+                    }, text, Color.black);
+                }
             }
         }
     };
@@ -2738,6 +2747,7 @@ const UI = struct {
         pos: Rect,
         hot_t: f32 = 0,
         active_t: f32 = 0,
+        text: ?[:0]const u8 = null,
     };
 };
 

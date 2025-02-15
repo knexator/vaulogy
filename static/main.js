@@ -18,18 +18,19 @@ function wasmMem() {
   return new Uint8Array(wasm_exports.memory.buffer);
 }
 
+function getString(ptr, len) {
+  return text_decoder.decode(
+    wasmMem().subarray(ptr, ptr + len),
+  );
+}
+
 async function getWasm() {
   console.log("calling getWasm");
   const asdf = await WebAssembly.instantiateStreaming(fetch("main.wasm"), {
     env: {
       logInt: (arg) => console.log(arg),
       logFloat: (arg) => console.log(arg),
-      logString: (ptr, len) =>
-        console.log(
-          text_decoder.decode(
-            wasmMem().subarray(ptr, ptr + len),
-          ),
-        ),
+      logString: (ptr, len) => console.log(getString(ptr, len)),
 
       beginPath: () => ctx.beginPath(),
       moveTo: (x, y) => ctx.moveTo(x, y),
@@ -64,13 +65,30 @@ async function getWasm() {
           endAngle,
           counterclockwise,
         ),
+      fillText: (text_ptr, text_len, x, y, h) => {
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = `${Math.floor(h)}px Arial`;
+
+        const text = getString(text_ptr, text_len);
+        const lines = text.split("\n");
+        var line_height = h;
+
+        for (var i = 0; i < lines.length; i++) {
+          ctx.fillText(
+            lines[i],
+            x,
+            y + ((i - (lines.length - 1) / 2) * line_height),
+          );
+        }
+
+        // ctx.fillText(text, x, y);
+      },
       getWidth: () => canvas.width,
       getHeight: () => canvas.height,
 
       itemSize: (key_ptr, key_len) => {
-        const key = text_decoder.decode(
-          wasmMem().subarray(key_ptr, key_ptr + key_len),
-        );
+        const key = getString(key_ptr, key_len);
         const value = localStorage.getItem(key);
         if (value !== null) {
           return text_encoder.encode(value).length;
@@ -79,9 +97,7 @@ async function getWasm() {
         }
       },
       getItem: (key_ptr, key_len, dst_ptr) => {
-        const key = text_decoder.decode(
-          wasmMem().subarray(key_ptr, key_ptr + key_len),
-        );
+        const key = getString(key_ptr, key_len);
         const value = localStorage.getItem(key);
         if (value !== null) {
           return text_encoder.encodeInto(
@@ -93,12 +109,8 @@ async function getWasm() {
         }
       },
       setItem: (key_ptr, key_len, value_ptr, value_len) => {
-        const key = text_decoder.decode(
-          wasmMem().subarray(key_ptr, key_ptr + key_len),
-        );
-        const value = text_decoder.decode(
-          wasmMem().subarray(value_ptr, value_ptr + value_len),
-        );
+        const key = getString(key_ptr, key_len);
+        const value = getString(value_ptr, value_len);
         localStorage.setItem(key, value);
       },
     },

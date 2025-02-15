@@ -25,6 +25,7 @@ const SdlPlatform = struct {
 
 var sdl_renderer: *c.SDL_Renderer = undefined;
 
+const tof32 = @import("kommon/math.zig").tof32;
 const Camera = presenter.Camera;
 const Point = presenter.Point;
 const Vec2 = presenter.Vec2;
@@ -83,6 +84,22 @@ const SdlDrawer = struct {
         if (fill) |col| {
             setRenderDrawColor(col);
             panickify(c.SDL_RenderFillRect(sdl_renderer, &sdl_rect));
+        }
+    }
+
+    pub fn drawDebugText(camera: Camera, center: Point, text: [:0]const u8, color: Color) void {
+        const screen_point = screenFromWorld(camera, center);
+        // TODO: scale
+        // panickify(c.SDL_SetRenderScale(sdl_renderer, screen_point.scale / 8, screen_point.scale / 8));
+        // defer panickify(c.SDL_SetRenderScale(sdl_renderer, 1, 1));
+        setRenderDrawColor(color);
+        var it = std.mem.splitScalar(u8, text, '\n');
+        var y: f32 = -4 - 8 * (tof32(std.mem.count(u8, text, "\n")) / 2);
+        while (it.next()) |line| {
+            const lineZ = gpa.allocator().dupeZ(u8, line) catch @panic("OoM");
+            defer gpa.allocator().free(lineZ);
+            panickify(c.SDL_RenderDebugText(sdl_renderer, screen_point.pos.x - tof32(line.len) * 4, screen_point.pos.y + y, lineZ));
+            y += 8;
         }
     }
 
@@ -420,6 +437,7 @@ const sdl_platform = presenter.Platform{
 const sdl_drawer = presenter.Drawer{
     .clear = SdlDrawer.clear,
     .drawRect = SdlDrawer.drawRect,
+    .drawDebugText = SdlDrawer.drawDebugText,
     .drawAtom = SdlDrawer.drawAtom,
     .drawPatternAtom = SdlDrawer.drawPatternAtom,
     .drawVariable = SdlDrawer.drawVariable,
