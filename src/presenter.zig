@@ -1134,6 +1134,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         mem: *VeryPermamentGameStuff,
         camera: Camera = Camera{ .center = .new(7, 3), .height = 15.0 },
         ui_state: UI.State,
+        ui_state_for_camera: UI.State,
 
         available_fnks: []const *const Sexpr,
         level: *const Level,
@@ -1521,6 +1522,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .{ .pos = Rect{ .top_left = .new(2, 2), .size = .one } },
             }) };
 
+            const ui_state_for_camera = UI.State{ .buttons = try platform.gpa.dupe(UI.Button, &.{
+                .{ .pos = Rect{ .top_left = .new(0, 0), .size = .one } },
+            }) };
+
             return .{
                 .mem = mem,
                 .level = level,
@@ -1528,6 +1533,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 // .main_input = &Sexpr.true,
                 .main_input = main_input,
                 .ui_state = ui_state,
+                .ui_state_for_camera = ui_state_for_camera,
                 .available_fnks = available_fnks,
             };
         }
@@ -1597,6 +1603,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     if (self.ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button| {
                         switch (pressed_button) {
                             0 => return true,
+                            else => @panic("oops"),
+                        }
+                    }
+                    if (self.ui_state_for_camera.update(platform.getMouse(), delta_seconds)) |pressed_button| {
+                        switch (pressed_button) {
+                            0 => self.camera = std.meta.fieldInfo(Self, .camera).defaultValue().?,
                             else => @panic("oops"),
                         }
                     }
@@ -1848,6 +1860,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             try meta_converter.draw(camera);
 
             self.ui_state.draw(drawer);
+            self.ui_state_for_camera.draw(drawer);
 
             switch (self.focus) {
                 .nothing => {},
