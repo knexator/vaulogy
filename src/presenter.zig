@@ -31,10 +31,6 @@ const parsing = @import("parsing.zig");
 
 const OoM = error{ OutOfMemory, TODO, BAD_INPUT };
 
-fn defaultValue(comptime field_info: std.builtin.Type.StructField) ?*const field_info.type {
-    return @as(?*const field_info.type, @ptrCast(@alignCast(field_info.default_value)));
-}
-
 pub const KeyboardButton = std.meta.FieldEnum(KeyboardState);
 pub const KeyboardState = struct {
     left: bool,
@@ -1590,7 +1586,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         // TODO: it would be nice to have the scale instantly correct when the camera zooms
                         Point{
                             .pos = platform.getMouse().cur.pos(camera),
-                            .scale = camera.height / defaultValue(std.meta.fieldInfo(Self, .camera)).?.height,
+                            .scale = camera.height / std.meta.fieldInfo(Self, .camera).defaultValue().?.height,
                         }, 0.6, delta_seconds);
                     math.lerp_towards(&grabbing.is_pattern, if (grabbing.address_if_released) |goal|
                         if (goal.isPattern()) 1 else 0
