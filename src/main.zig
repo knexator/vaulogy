@@ -183,7 +183,7 @@ pub const Sexpr = union(enum) {
 // TODO: make a proper struct
 pub const emptySexprAddress: SexprAddress = &.{};
 pub const SexprAddressItem = enum { left, right };
-pub const SexprAddress = []SexprAddressItem;
+pub const SexprAddress = []const SexprAddressItem;
 pub fn equalSexprAddress(a: SexprAddress, b: SexprAddress) bool {
     return std.mem.eql(SexprAddressItem, a, b);
 }
@@ -1240,12 +1240,10 @@ fn fnkFromSexpr(s: *const Sexpr, allocator_for_cases: std.mem.Allocator, pool: *
 }
 
 pub fn caseFromSexpr(cur: *const Sexpr, arena: std.mem.Allocator, pool: *MemoryPool(Sexpr)) !MatchCaseDefinition {
-    if (std.meta.activeTag(cur.*) != .pair) return error.InvalidMetaFnk;
-    // TODO: make the deep ".pair.right.pair.left" stuff safe, maybe with comptime magic
-    const pattern = try internalFromExternal(cur.pair.left, pool);
-    const fnk_name = cur.pair.right.pair.left;
-    const template = try internalFromExternal(cur.pair.right.pair.right.pair.left, pool);
-    const next = try fnkFromSexprHelper(cur.pair.right.pair.right.pair.right, arena, pool);
+    const pattern = try internalFromExternal(cur.getAt(&.{.left}) orelse return error.InvalidMetaFnk, pool);
+    const fnk_name = cur.getAt(&.{ .right, .left }) orelse return error.InvalidMetaFnk;
+    const template = try internalFromExternal(cur.getAt(&.{ .right, .right, .left }) orelse return error.InvalidMetaFnk, pool);
+    const next = try fnkFromSexprHelper(cur.getAt(&.{ .right, .right, .right }) orelse return error.InvalidMetaFnk, arena, pool);
     return .{
         .pattern = pattern,
         .fnk_name = fnk_name,
