@@ -15,6 +15,13 @@ pub fn build(b: *std.Build) void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
+    // To use in other projects
+    _ = b.addModule("kommon", .{
+        .root_source_file = b.path("src/kommon/kommon.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const exe = b.addExecutable(.{
         .name = "vaulogy",
         .root_source_file = b.path("src/main.zig"),

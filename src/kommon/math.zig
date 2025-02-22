@@ -63,7 +63,7 @@ pub fn tof32(value: anytype) f32 {
     };
 }
 
-pub const Vec2 = struct {
+pub const Vec2 = extern struct {
     pub const Scalar = f32;
 
     x: Scalar,
@@ -126,6 +126,10 @@ pub const Vec2 = struct {
         try Vec2.expectApproxEqAbs(Vec2.e2, rotate(Vec2.e1, 0.25), 0.001);
     }
 
+    pub fn fromTurns(turns: f32) Self {
+        return e1.rotate(turns);
+    }
+
     pub fn normalized(v: Self) Self {
         return v.scale(1 / v.mag());
     }
@@ -182,10 +186,18 @@ pub const Rect = struct {
     }
 };
 
-pub const Color = struct {
+pub const FColor = extern struct {
+    r: f32,
+    g: f32,
+    b: f32,
+    a: f32 = 1,
+};
+
+pub const Color = extern struct {
     r: u8,
     g: u8,
     b: u8,
+    a: u8 = 255,
 
     pub const white = new(255, 255, 255);
     pub const black = new(0, 0, 0);
@@ -196,6 +208,7 @@ pub const Color = struct {
     }
 
     pub fn from01(r: f32, g: f32, b: f32) Color {
+        std.debug.assert(in01(r) and in01(g) and in01(b));
         return Color.new(
             @intFromFloat(r * 255),
             @intFromFloat(g * 255),
@@ -203,8 +216,37 @@ pub const Color = struct {
         );
     }
 
+    pub fn fromHex(comptime str: []const u8) Color {
+        @setEvalBranchQuota(10000);
+        if (str.len != 7 or str[0] != '#') @compileError("bad format");
+        errdefer @compileError("bad format");
+        var it = std.mem.window(u8, str[1..], 2, 2);
+        return Color{
+            .r = try std.fmt.parseInt(u8, it.next().?, 16),
+            .g = try std.fmt.parseInt(u8, it.next().?, 16),
+            .b = try std.fmt.parseInt(u8, it.next().?, 16),
+        };
+    }
+
     pub fn gray(v: u8) Color {
         return new(v, v, v);
+    }
+
+    pub fn withAlpha(c: Color, a: u8) Color {
+        return Color{ .r = c.r, .g = c.g, .b = c.b, .a = a };
+    }
+
+    pub fn withAlpha01(c: Color, a: f32) Color {
+        return withAlpha(c, @intFromFloat(a * 255));
+    }
+
+    pub fn toFColor(c: Color) FColor {
+        return .{
+            .r = tof32(c.r) / 255,
+            .g = tof32(c.g) / 255,
+            .b = tof32(c.b) / 255,
+            .a = tof32(c.a) / 255,
+        };
     }
 };
 
