@@ -101,6 +101,10 @@ pub const Vec2 = extern struct {
         return new(a.x * b.x, a.y * b.y);
     }
 
+    pub fn div(a: Self, b: Self) Self {
+        return new(a.x / b.x, a.y / b.y);
+    }
+
     pub fn addX(a: Self, b: f32) Self {
         return new(a.x + b, a.y);
     }
@@ -191,6 +195,10 @@ pub const FColor = extern struct {
     g: f32,
     b: f32,
     a: f32 = 1,
+
+    pub fn toArray(c: FColor) [4]f32 {
+        return .{ c.r, c.g, c.b, c.a };
+    }
 };
 
 pub const Color = extern struct {

@@ -17,7 +17,7 @@ fn SingleInputOf(map_fn: anytype) type {
     return single(@typeInfo(@TypeOf(map_fn)).@"fn".params).type.?;
 }
 
-fn ReturnOf(map_fn: anytype) type {
+pub fn ReturnOf(map_fn: anytype) type {
     return @typeInfo(@TypeOf(map_fn)).@"fn".return_type.?;
 }
 
@@ -35,9 +35,9 @@ fn FirstInputOf(map_fn: anytype) type {
     return @typeInfo(@TypeOf(map_fn)).@"fn".params[0].type.?;
 }
 
-pub fn fromCount(n: usize, comptime map_fn: anytype) [n]ReturnOf(map_fn) {
+pub fn fromCount(comptime n: usize, comptime map_fn: anytype) [n]ReturnOf(map_fn) {
     std.debug.assert(SingleInputOf(map_fn) == usize);
-    var result: [n]usize = undefined;
+    var result: [n]ReturnOf(map_fn) = undefined;
     for (0..n, &result) |k, *target| {
         target.* = map_fn(k);
     }
@@ -51,6 +51,29 @@ pub fn mapWithIndexAndCtx(comptime map_fn: anytype, comptime in: []const FirstIn
     var result: [in.len]ReturnOf(map_fn) = undefined;
     for (in, &result, 0..) |v, *target, k| {
         target.* = map_fn(v, k, ctx);
+    }
+    return result;
+}
+
+pub fn sum(comptime T: type, values: []const T) T {
+    var result: T = 0;
+    for (values) |v| {
+        result += v;
+    }
+    return result;
+}
+
+// pub fn concatComptime(comptime strs: []const []const u8) [
+//     sum(usize, &map(struct {
+//         pub fn anon(v: []const u8) usize {
+//             return v.len;
+//         }
+//     }.anon, strs))
+// ]u8 {
+pub fn concatComptime(comptime strs: []const []const u8) []const u8 {
+    var result: []const u8 = "";
+    for (strs) |s| {
+        result = result ++ s;
     }
     return result;
 }

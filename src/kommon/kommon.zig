@@ -3,6 +3,9 @@ pub const funktional = @import("funktional.zig");
 pub const hex = @import("hex.zig");
 pub const sdl = @import("sdl.zig");
 pub const Timekeeper = @import("Timekeeper.zig");
+pub const Grid2D = @import("grid_2D.zig").Grid2D;
+pub const itertools = @import("itertools.zig");
+pub const input = @import("input.zig");
 
 comptime {
     const std = @import("std");

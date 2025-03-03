@@ -9,6 +9,10 @@ pub const Hex = struct {
         .new(1, 0, -1), .new(1, -1, 0), .new(0, -1, 1),
         .new(-1, 0, 1), .new(-1, 1, 0), .new(0, 1, -1),
     };
+    pub const diagonals: [6]Hex = .{
+        .new(2, -1, -1), .new(1, -2, 1),  .new(-1, -1, 2),
+        .new(-2, 1, 1),  .new(-1, 2, -1), .new(1, 1, -2),
+    };
 
     pub fn new(q: i32, r: i32, s: i32) Hex {
         std.debug.assert(q + r + s == 0);
@@ -25,6 +29,10 @@ pub const Hex = struct {
 
     pub fn add(self: Hex, other: Hex) Hex {
         return new(self.q + other.q, self.r + other.r, self.s + other.s);
+    }
+
+    pub fn sub(self: Hex, other: Hex) Hex {
+        return new(self.q - other.q, self.r - other.r, self.s - other.s);
     }
 
     pub fn scale(self: Hex, k: i32) Hex {
@@ -53,8 +61,30 @@ pub const HexFract = struct {
         std.debug.assert(std.math.approxEqAbs(f32, 0, q + r + s, 0.0001));
         return .{ .q = q, .r = r, .s = s };
     }
+
+    pub fn round(this: HexFract) Hex {
+        var qi: f32 = std.math.round(this.q);
+        var ri: f32 = std.math.round(this.r);
+        var si: f32 = std.math.round(this.s);
+        const q_diff: f32 = @abs(qi - this.q);
+        const r_diff: f32 = @abs(ri - this.r);
+        const s_diff: f32 = @abs(si - this.s);
+        if (q_diff > r_diff and q_diff > s_diff) {
+            qi = -ri - si;
+        } else if (r_diff > s_diff) {
+            ri = -qi - si;
+        } else {
+            si = -qi - ri;
+        }
+        return .new(
+            @intFromFloat(qi),
+            @intFromFloat(ri),
+            @intFromFloat(si),
+        );
+    }
 };
 
+// TODO: remove
 fn Iterator(comptime T: type) type {
     return struct {
         min_inclusive: T,
@@ -238,12 +268,12 @@ pub const Layout = struct {
     size: Vec2,
     origin: Vec2,
 
-    // public static pointPixelOffset(h: Hex, size: number, origin: Point): Point {
-    //     var M: Orientation = Layout.pointy;
-    //     var x: number = (M.f0 * h.q + M.f1 * h.r) * size;
-    //     var y: number = (M.f2 * h.q + M.f3 * h.r) * size;
-    //     return new Point(x + origin.x, y + origin.y);
-    // }
+    pub fn pointPixelOffset(h: Hex, size: f32, origin: Vec2) Vec2 {
+        const M: Orientation = Orientation.pointy;
+        const x: f32 = (M.f0 * h.q + M.f1 * h.r);
+        const y: f32 = (M.f2 * h.q + M.f3 * h.r);
+        return Vec2.new(x, y).scale(size).add(origin);
+    }
 
     pub fn hexToPixel(self: Layout, h: HexFract) Vec2 {
         const M = self.orientation;
@@ -253,15 +283,15 @@ pub const Layout = struct {
         ).mul(self.size));
     }
 
-    // public pixelToHex(p: Point): Hex {
-    //     var M: Orientation = this.orientation;
-    //     var size: Point = this.size;
-    //     var origin: Point = this.origin;
-    //     var pt: Point = new Point((p.x - origin.x) / size.x, (p.y - origin.y) / size.y);
-    //     var q: number = M.b0 * pt.x + M.b1 * pt.y;
-    //     var r: number = M.b2 * pt.x + M.b3 * pt.y;
-    //     return new Hex(q, r, -q - r);
-    // }
+    pub fn pixelToHex(self: Layout, p: Vec2) HexFract {
+        const M: Orientation = self.orientation;
+        const size: Vec2 = self.size;
+        const origin: Vec2 = self.origin;
+        const pt: Vec2 = .new((p.x - origin.x) / size.x, (p.y - origin.y) / size.y);
+        const q: f32 = M.b0 * pt.x + M.b1 * pt.y;
+        const r: f32 = M.b2 * pt.x + M.b3 * pt.y;
+        return .new(q, r, -q - r);
+    }
 
     // public hexCornerOffset(corner: number): Point {
     //     var M: Orientation = this.orientation;
@@ -280,6 +310,40 @@ pub const Layout = struct {
     //     return corners;
     // }
 
+};
+
+pub const DoubledCoord = struct {
+    col: i32,
+    row: i32,
+
+    pub fn new(col: i32, row: i32) DoubledCoord {
+        return .{ .col = col, .row = row };
+    }
+
+    // public static qdoubledFromCube(h: Hex): DoubledCoord {
+    //     var col: number = h.q;
+    //     var row: number = 2 * h.r + h.q;
+    //     return new DoubledCoord(col, row);
+    // }
+
+    // public qdoubledToCube(): Hex {
+    //     var q: number = this.col;
+    //     var r: number = (this.row - this.col) / 2;
+    //     var s: number = -q - r;
+    //     return new Hex(q, r, s);
+    // }
+
+    // public static rdoubledFromCube(h: Hex): DoubledCoord {
+    //     var col: number = 2 * h.q + h.r;
+    //     var row: number = h.r;
+    //     return new DoubledCoord(col, row);
+    // }
+
+    pub fn rdoubledToCube(self: DoubledCoord) Hex {
+        const q: i32 = @divExact(self.col - self.row, 2);
+        const r: i32 = self.row;
+        return .fromQR(q, r);
+    }
 };
 
 const Vec2 = @import("math.zig").Vec2;
