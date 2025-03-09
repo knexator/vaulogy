@@ -250,7 +250,7 @@ const Binding = struct {
 };
 const Bindings = std.ArrayList(Binding);
 
-const SexprContext = struct {
+pub const SexprContext = struct {
     pub fn hash(self: @This(), s: *const Sexpr) u32 {
         return switch (s.*) {
             .atom_lit => |a| std.array_hash_map.hashString(a.value),

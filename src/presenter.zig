@@ -69,7 +69,9 @@ pub const PlayerData = struct {
     // TODO: this field should not be here.
     ascii_data: []const u8,
 
+    // TODO: unify fnks & levels
     fnks: FnkCollection,
+    levels: std.ArrayHashMap(*const Sexpr, Level, core.SexprContext, true),
     first_time: bool = true,
 
     pub fn allFnkNames(self: PlayerData) []const *const Sexpr {
@@ -80,6 +82,7 @@ pub const PlayerData = struct {
         return PlayerData{
             .ascii_data = "",
             .fnks = FnkCollection.init(mem.gpa),
+            .levels = .init(mem.gpa),
         };
     }
 
@@ -101,6 +104,7 @@ pub const PlayerData = struct {
         try parser.parseFnkCollection(&fnks, &mem.pool_for_sexprs, mem.arena_for_cases.allocator());
         return PlayerData{
             .fnks = fnks,
+            .levels = .init(mem.gpa),
             .ascii_data = ascii_data,
         };
     }
@@ -295,6 +299,17 @@ fn defaultFnkBody2(mem: *VeryPermamentGameStuff) FnkBody {
     return fnk.body;
 }
 
+fn defaultFnkBody(mem: *VeryPermamentGameStuff) FnkBody {
+    const default_fnk =
+        \\default {
+        \\  @x -> @x;
+        \\}
+    ;
+    var parser = parsing.Parser{ .remaining_text = default_fnk };
+    const fnk = parser.parseFnkNew(&mem.pool_for_sexprs, mem.arena_for_cases.allocator()) catch unreachable;
+    return fnk.body;
+}
+
 /// The full game, from loading screen to end credits
 pub fn Presenter(platform: Platform, drawer: Drawer) type {
     return struct {
@@ -342,7 +357,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             result.persistence = player_data;
 
             result.state = .{
-                .editing_fnk = try .init(&levels[0], player_data.allFnkNames(), defaultFnkBody1(&result.mem), &result.mem),
+                .editing_fnk = try .init(&builtin_levels[0], player_data.allFnkNames(), defaultFnkBody1(&result.mem), &result.mem),
             };
 
             result.scoring_run = undefined;
@@ -356,29 +371,49 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             }
             switch (self.state) {
                 .level_select => |*ui| if (ui.update(delta_seconds)) |level_index| {
-                    const fnk_name = levels[level_index].fnk_name;
+                    const fnk_name = builtin_levels[level_index].fnk_name;
                     const fnk_body = self.persistence.fnks.get(fnk_name) orelse defaultFnkBody1(&self.mem);
                     self.state = .{ .editing_fnk = try .init(
-                        &levels[level_index],
+                        &builtin_levels[level_index],
                         self.persistence.allFnkNames(),
                         fnk_body,
                         &self.mem,
                     ) };
                 },
-                .editing_fnk => |*editing| if (try editing.update(delta_seconds)) {
-                    // todo
-                    const fnk = try editing.getFnk();
-                    try self.persistence.fnks.put(fnk.name, fnk.body);
-                    self.scoring_run = try core.ScoringRun.initFromFnks(
-                        self.persistence.fnks,
-                        &self.mem,
-                    );
-                    self.state = .{ .executing_fnk = try .init(
-                        editing.main_input,
-                        fnk.name,
-                        &self.scoring_run,
-                        editing.camera,
-                    ) };
+                .editing_fnk => |*editing| switch (try editing.update(delta_seconds)) {
+                    .nothing => {},
+                    .launch_execution => {
+                        // todo
+                        const fnk = try editing.getFnk();
+                        try self.persistence.fnks.put(fnk.name, fnk.body);
+                        self.scoring_run = try core.ScoringRun.initFromFnks(
+                            self.persistence.fnks,
+                            &self.mem,
+                        );
+                        self.state = .{ .executing_fnk = try .init(
+                            editing.main_input,
+                            fnk.name,
+                            &self.scoring_run,
+                            editing.camera,
+                        ) };
+                    },
+                    .change_to => |fnk_name| {
+                        const res = try self.persistence.fnks.getOrPutValue(fnk_name, defaultFnkBody(&self.mem));
+                        const level_res = try self.persistence.levels.getOrPutValue(fnk_name, .{
+                            .fnk_name = fnk_name,
+                            .solution = null,
+                            .manual_samples = &.{},
+                        });
+                        self.state = .{
+                            .editing_fnk = try .init(
+                                level_res.value_ptr,
+                                self.persistence.allFnkNames(),
+                                res.value_ptr.*,
+                                &self.mem,
+                            ),
+                        };
+                        self.scoring_run = undefined;
+                    },
                 },
                 // TODO
                 .executing_fnk => |*executing| if (try executing.update(delta_seconds)) |final_value| {
@@ -431,8 +466,9 @@ const Sample = struct {
     }
 };
 const Level = struct {
+    // TODO: remove fnk_name?
     fnk_name: *const Sexpr,
-    solution: *const fn (input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr,
+    solution: ?*const fn (input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr,
     manual_samples: []const Sample,
 
     // TODO: have a comptime pool of Sexprs so this works for solutions that actually use mem
@@ -454,7 +490,7 @@ const Level = struct {
         };
     }
 };
-const levels: []const Level = &.{
+const builtin_levels: []const Level = &.{
     .init(&Sexpr.doLit("default1"), struct {
         fn anon(input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr {
             _ = mem;
@@ -1056,7 +1092,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         const value_without_variables = try value.changeAllVariablesToNil(self.mem);
                         self.main_input = try self.main_input.setAt(self.mem, local_address, value_without_variables);
                     },
-                    .fnk_manager => try fnk_manager.setSexpr(self, value),
+                    .fnk_manager => unreachable,
                     .meta_converter => |local_address| {
                         try meta_converter.setSexpr(self.mem, value, local_address);
                     },
@@ -1083,13 +1119,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .main_input => true,
                     .fnk_manager => true,
                     .meta_converter => true,
-                };
-            }
-
-            pub fn acceptsPick(address: @This()) bool {
-                return switch (address) {
-                    .fnk_manager => false,
-                    else => true,
                 };
             }
         };
@@ -1350,10 +1379,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         const fnk_manager = struct {
             const sexpr_point: Point = .{ .pos = .new(-3, -1.5), .scale = 0.5, .turns = -0.25 };
 
-            pub fn setSexpr(self: *Self, fnk_name: *const Sexpr) !void {
-                try self.loadFnk(fnk_name);
-            }
-
             pub fn findOverlap(mouse_pos: Vec2) bool {
                 return SexprView.overlapsAtom(sexpr_point, mouse_pos, .atom);
             }
@@ -1525,18 +1550,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         // TODO: deinit
 
-        fn loadFnk(self: *Self, fnk_name: *const Sexpr) !void {
-            var presenter: *Presenter(platform, drawer) = @fieldParentPtr("state", self);
-
-            const fnk_body = presenter.persistence.fnks.get(fnk_name) orelse defaultFnkBody1(&presenter.mem);
-            // self.level = TODO
-            self.cases = try makeCasesPhysical(&self.mem, fnk_body.cases);
-            self.state = .{ .editing_fnk = try .init(&levels[0], self.persistence.allFnkNames(), fnk_body, &self.mem) };
-            self.scoring_run = undefined;
-
-            // try presenter.loadFnk(fnk_name);
-        }
-
         fn debugMakeAddress(self: *Self, k: usize) !core.CaseAddress {
             return try debugMakeAddress2(self.mem, k);
         }
@@ -1550,7 +1563,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             return new_buf;
         }
 
-        pub fn update(self: *Self, delta_seconds: f32) !bool {
+        pub fn update(self: *Self, delta_seconds: f32) !union(enum) {
+            nothing,
+            launch_execution,
+            change_to: *const Sexpr,
+        } {
             var mouse = platform.getMouse();
             inline for (.{ samples_reel, fnks_reel }) |x| {
                 if (x.rect.contains(mouse.cur.pos(self.camera))) {
@@ -1600,7 +1617,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .nothing => {
                     if (self.ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button| {
                         switch (pressed_button) {
-                            0 => return true,
+                            0 => return .launch_execution,
                             else => @panic("oops"),
                         }
                     }
@@ -1754,14 +1771,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     },
                     .grabbing_sexpr => |grabbing| {
                         if (grabbing.address_if_released) |address| {
-                            try address.setSexpr(self, grabbing.sexpr);
-                            if (address.acceptsPick()) {
+                            if (address == .fnk_manager) {
+                                return .{ .change_to = grabbing.sexpr };
+                            } else {
+                                try address.setSexpr(self, grabbing.sexpr);
                                 self.focus = .{ .hovering_sexpr = .{
                                     .address = address,
                                     .global_point = grabbing.point,
                                 } };
-                            } else {
-                                self.focus = .{ .nothing = {} };
                             }
                         } else {
                             self.focus = .{ .nothing = {} };
@@ -1831,7 +1848,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
             }
 
-            return false;
+            return .nothing;
         }
 
         fn isPattern(which: @FieldType(core.FullAddress, "which")) f32 {
@@ -2767,7 +2784,7 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
         ui_state: UI.State,
 
         pub fn init() Self {
-            const res = platform.gpa.alloc(UI.Button, levels.len) catch unreachable;
+            const res = platform.gpa.alloc(UI.Button, builtin_levels.len) catch unreachable;
             for (res, 0..) |*b, k| {
                 b.* = .{ .pos = Rect{ .top_left = .new(2, 2.5 + 2.5 * @as(f32, @floatFromInt(k))), .size = .one } };
             }
@@ -2787,7 +2804,7 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
                     try artist.drawSexpr(UI.cam, .{
                         .pos = button.pos.top_left.add(.new(2 - button.active_t, 0.5)),
                         .scale = button.hot_t,
-                    }, levels[k].fnk_name);
+                    }, builtin_levels[k].fnk_name);
                 }
             }
         }
