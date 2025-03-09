@@ -1048,6 +1048,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             main_fnk_name: core.SexprAddress,
             sample: Sample.Address,
             external_fnk: fnks_reel.Address,
+            fnk_manager,
             meta_converter: core.SexprAddress,
 
             pub fn equals(self: @This(), other: @This()) bool {
@@ -1063,6 +1064,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .external_fnk => |self_fnk| self_fnk.index == other.external_fnk.index and
                         core.equalSexprAddress(self_fnk.local, other.external_fnk.local),
                     .toolbar_special_var => true,
+                    .fnk_manager => true,
                     .meta_converter => |self_local| core.equalSexprAddress(self_local, other.meta_converter),
                 };
             }
@@ -1079,6 +1081,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .toolbar_special_var => toolbar.special_var_point,
                     .sample => |sample| SexprView.sexprChildView(samples_reel.getPoint(sample.index, sample.which), sample.local),
                     .external_fnk => |fnk| SexprView.sexprChildView(fnks_reel.getPoint(fnk.index), fnk.local),
+                    .fnk_manager => fnk_manager.sexpr_point,
                     .meta_converter => |local| SexprView.sexprChildView(meta_converter.sexpr_point, local),
                 };
             }
@@ -1092,6 +1095,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .toolbar_special_var => toolbar.special_var_state.next_value,
                     .sample => |sample| self.level.manual_samples[sample.index].get(sample.which).?.getAt(sample.local).?,
                     .external_fnk => |fnk| self.available_fnks[fnk.index].getAt(fnk.local).?,
+                    .fnk_manager => null,
                     .meta_converter => |local| if (meta_converter.sexpr) |v| v.getAt(local).? else null,
                     // examples_reel.getPoint(sample.index, sample.which), sample.local),
                     // .main_input => |local| self.main_input.getAt(local).?,
@@ -1105,6 +1109,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         const value_without_variables = try value.changeAllVariablesToNil(self.mem);
                         self.main_input = try self.main_input.setAt(self.mem, local_address, value_without_variables);
                     },
+                    .fnk_manager => try fnk_manager.setSexpr(self.mem, value),
                     .meta_converter => |local_address| {
                         try meta_converter.setSexpr(self.mem, value, local_address);
                     },
@@ -1129,6 +1134,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .external_fnk => false,
                     .full_address => true,
                     .main_input => true,
+                    .fnk_manager => true,
                     .meta_converter => true,
                 };
             }
@@ -1388,8 +1394,26 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         /// create/edit/delete fnks
         const fnk_manager = struct {
-            const sexpr_point: Point = .{ .pos = .new(-6, -3), .scale = 0.75 };
-            // TODO: all
+            const sexpr_point: Point = .{ .pos = .new(-3, -1.5), .scale = 0.5, .turns = -0.25 };
+
+            pub fn setSexpr(mem: *VeryPermamentGameStuff, fnk_name: *const Sexpr) !void {
+                _ = mem;
+                _ = fnk_name;
+                @panic("TODO");
+            }
+
+            pub fn findOverlap(mouse_pos: Vec2) bool {
+                return SexprView.overlapsAtom(sexpr_point, mouse_pos, .atom);
+            }
+
+            pub fn draw(camera: Camera) !void {
+                drawer.drawRect(
+                    camera,
+                    Rect.fromCenterAndSize(sexpr_point.pos, .both(sexpr_point.scale)),
+                    .black,
+                    null,
+                );
+            }
         };
 
         /// sexprs to cases and vice versa
@@ -1594,6 +1618,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 .fnk_name => .{ .turns = 0.02, .pos = .new(0.5, 0) },
                             },
                             .main_input => .{ .turns = -0.02, .pos = .new(0.5, 0) },
+                            .fnk_manager => .{ .turns = -0.02, .pos = .new(0.5, 0) },
                             .meta_converter => .{ .turns = -0.02, .pos = .new(0.5, 0) },
                             .toolbar, .main_fnk_name, .toolbar_special_var, .sample, .external_fnk => unreachable,
                         })
@@ -1662,6 +1687,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .{ .sample = overlap } }
                 else if (try fnks_reel.findOverlap(mouse_pos, self.available_fnks)) |overlap|
                     .{ .sexpr = .{ .external_fnk = overlap } }
+                else if (fnk_manager.findOverlap(mouse_pos))
+                    .{ .sexpr = .fnk_manager }
                 else if (try meta_converter.findOverlap(mouse_pos)) |overlap| switch (overlap) {
                     .sexpr => |local| .{ .sexpr = .{ .meta_converter = local } },
                     .case => .{ .case = .meta_converter },
@@ -1866,6 +1893,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             try samples_reel.draw(camera, self.level.manual_samples);
             try fnks_reel.draw(camera, self.available_fnks);
 
+            try fnk_manager.draw(camera);
             try meta_converter.draw(camera);
 
             switch (self.focus) {
