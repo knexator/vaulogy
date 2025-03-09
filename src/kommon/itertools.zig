@@ -65,4 +65,26 @@ pub fn iteratorLen(it: anytype) usize {
     return result;
 }
 
+pub fn ForEachIterator(comptime T: type) type {
+    return struct {
+        buffer: []const T,
+        index: usize,
+
+        const Self = @This();
+
+        /// Returns the next element, or null if already returned all.
+        pub fn next(self: *Self) ?T {
+            if (self.index >= self.buffer.len) return null;
+            const result = self.buffer[self.index];
+            self.index += 1;
+            return result;
+        }
+
+        /// Resets the iterator to the initial element.
+        pub fn reset(self: *Self) void {
+            self.index = 0;
+        }
+    };
+}
+
 const std = @import("std");

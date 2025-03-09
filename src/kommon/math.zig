@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub fn inRange(value: f32, min_inclusive: f32, max_exclusive: f32) bool {
+pub fn inRange(value: anytype, min_inclusive: anytype, max_exclusive: anytype) bool {
     return min_inclusive <= value and value < max_exclusive;
 }
 
@@ -63,6 +63,69 @@ pub fn tof32(value: anytype) f32 {
     };
 }
 
+pub const UVec2 = ZVec2(usize);
+pub const IVec2 = ZVec2(isize);
+
+pub fn ZVec2(T: type) type {
+    return extern struct {
+        pub const Scalar = T;
+
+        x: Scalar,
+        y: Scalar,
+
+        const Self = @This();
+
+        pub const zero = new(0, 0);
+        pub const one = new(1, 1);
+        pub const e1 = new(1, 0);
+        pub const e2 = new(0, 1);
+
+        pub fn equals(a: Self, b: Self) bool {
+            return a.x == b.x and a.y == b.y;
+        }
+
+        pub fn new(x: Scalar, y: Scalar) Self {
+            return .{ .x = x, .y = y };
+        }
+
+        pub fn both(v: Scalar) Self {
+            return new(v, v);
+        }
+
+        pub fn add(a: Self, b: Self) Self {
+            return new(a.x + b.x, a.y + b.y);
+        }
+
+        pub fn sub(a: Self, b: Self) Self {
+            return new(a.x - b.x, a.y - b.y);
+        }
+
+        pub fn scale(v: Self, s: Scalar) Self {
+            return new(v.x * s, v.y * s);
+        }
+
+        pub fn mul(a: Self, b: Self) Self {
+            return new(a.x * b.x, a.y * b.y);
+        }
+
+        pub fn addX(a: Self, b: Scalar) Self {
+            return new(a.x + b, a.y);
+        }
+
+        pub fn addY(a: Self, b: Scalar) Self {
+            return new(a.x, a.y + b);
+        }
+
+        pub fn magSq(v: Self) Scalar {
+            return dot(v, v);
+        }
+
+        pub fn dot(a: Self, b: Self) Scalar {
+            return a.x * b.x + a.y * b.y;
+        }
+    };
+}
+
 pub const Vec2 = extern struct {
     pub const Scalar = f32;
 
@@ -105,11 +168,11 @@ pub const Vec2 = extern struct {
         return new(a.x / b.x, a.y / b.y);
     }
 
-    pub fn addX(a: Self, b: f32) Self {
+    pub fn addX(a: Self, b: Scalar) Self {
         return new(a.x + b, a.y);
     }
 
-    pub fn addY(a: Self, b: f32) Self {
+    pub fn addY(a: Self, b: Scalar) Self {
         return new(a.x, a.y + b);
     }
 
@@ -452,7 +515,7 @@ pub const Camera = struct {
 
         const camera = Camera.fromMapping(world_point, screen_point);
 
-        try Point.expectApproxEqAbs(
+        try Point.expectApproxEqRel(
             screen_point,
             camera.screenFromWorld(world_point),
             0.001,
@@ -474,13 +537,13 @@ pub const Camera = struct {
 
         const new_camera = original_camera.zoom(fixed_world_position, new_height);
 
-        try Vec2.expectApproxEqAbs(
+        try Vec2.expectApproxEqRel(
             original_camera.screenFromWorldPosition(fixed_world_position),
             new_camera.screenFromWorldPosition(fixed_world_position),
             0.001,
         );
 
-        try std.testing.expectApproxEqAbs(new_height, new_camera.height, 0.001);
+        try std.testing.expectApproxEqRel(new_height, new_camera.height, 0.001);
     }
 };
 
