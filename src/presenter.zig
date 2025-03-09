@@ -1386,6 +1386,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         };
 
+        /// create/edit/delete fnks
+        const fnk_manager = struct {
+            const sexpr_point: Point = .{ .pos = .new(-6, -3), .scale = 0.75 };
+            // TODO: all
+        };
+
         /// sexprs to cases and vice versa
         const meta_converter = struct {
             const sexpr_point: Point = .{ .pos = .new(16, -3), .scale = 0.75 };
@@ -1522,7 +1528,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             const main_input = try mem.storeSexpr(Sexpr.doPair(&Sexpr.nil, &Sexpr.input));
 
             const ui_state = UI.State{ .buttons = try platform.gpa.dupe(UI.Button, &.{
-                .{ .pos = Rect{ .top_left = .new(2, 2), .size = .one } },
+                .{ .pos = Rect{ .top_left = .new(2, 0), .size = .one } },
             }) };
 
             const ui_state_for_camera = UI.State{ .buttons = try platform.gpa.dupe(UI.Button, &.{
@@ -2244,8 +2250,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 .anim_t = 0.0,
                 .camera = camera,
                 .ui_state = .{ .buttons = try platform.gpa.dupe(UI.Button, &.{
-                    .{ .pos = Rect{ .top_left = .new(1, 2), .size = .one } },
-                    .{ .pos = Rect{ .top_left = .new(3, 2), .size = .one } },
+                    .{ .pos = Rect{ .top_left = .new(1, 0), .size = .one } },
+                    .{ .pos = Rect{ .top_left = .new(3, 0), .size = .one } },
                 }) },
             };
 
