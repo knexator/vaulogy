@@ -69,10 +69,11 @@ pub const PlayerData = struct {
     // TODO: this field should not be here.
     ascii_data: []const u8,
 
-    // TODO: unify fnks & levels
     fnks: FnkCollection,
-    levels: std.ArrayHashMap(*const Sexpr, Level, core.SexprContext, true),
+    custom_samples: std.ArrayHashMap(*const Sexpr, []const Sample, core.SexprContext, true),
     first_time: bool = true,
+
+    const no_samples: []const Sample = &.{};
 
     pub fn allFnkNames(self: PlayerData) []const *const Sexpr {
         return self.fnks.keys();
@@ -82,7 +83,7 @@ pub const PlayerData = struct {
         return PlayerData{
             .ascii_data = "",
             .fnks = FnkCollection.init(mem.gpa),
-            .levels = .init(mem.gpa),
+            .custom_samples = .init(mem.gpa),
         };
     }
 
@@ -104,7 +105,7 @@ pub const PlayerData = struct {
         try parser.parseFnkCollection(&fnks, &mem.pool_for_sexprs, mem.arena_for_cases.allocator());
         return PlayerData{
             .fnks = fnks,
-            .levels = .init(mem.gpa),
+            .custom_samples = .init(mem.gpa),
             .ascii_data = ascii_data,
         };
     }
@@ -365,13 +366,28 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             try player_data.fnks.put(try result.mem.storeSexpr(Sexpr.doLit("default2")), defaultFnkBody2(&result.mem));
             result.persistence = player_data;
 
-            result.state = .{
-                .editing_fnk = try .init(&builtin_levels[0], player_data.allFnkNames(), defaultFnkBody1(&result.mem), &result.mem),
-            };
+            try player_data.fnks.put(builtin_levels[0].fnk_name, defaultFnkBody1(&result.mem));
 
-            result.scoring_run = undefined;
+            try result.initEditing(builtin_levels[0].fnk_name, builtin_levels[0].manual_samples);
 
             try Artist(platform, drawer).init();
+        }
+
+        fn initEditing(self: *Self, fnk_name: *const Sexpr, builtin_samples: ?[]const Sample) !void {
+            const fnk_body = (try self.persistence.fnks.getOrPutValue(fnk_name, defaultFnkBody(&self.mem))).value_ptr.*;
+            // TODO: include both the builtin & the user created samples
+            // const samples = self.persistence.custom_samples.get(fnk_name) orelse PlayerData.no_samples;
+
+            self.state = .{
+                .editing_fnk = try .init(
+                    fnk_name,
+                    builtin_samples orelse PlayerData.no_samples,
+                    self.persistence.allFnkNames(),
+                    fnk_body,
+                    &self.mem,
+                ),
+            };
+            self.scoring_run = undefined;
         }
 
         pub fn update(self: *Self, delta_seconds: f32) !void {
@@ -380,14 +396,8 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             }
             switch (self.state) {
                 .level_select => |*ui| if (ui.update(delta_seconds)) |level_index| {
-                    const fnk_name = builtin_levels[level_index].fnk_name;
-                    const fnk_body = self.persistence.fnks.get(fnk_name) orelse defaultFnkBody1(&self.mem);
-                    self.state = .{ .editing_fnk = try .init(
-                        &builtin_levels[level_index],
-                        self.persistence.allFnkNames(),
-                        fnk_body,
-                        &self.mem,
-                    ) };
+                    const level = builtin_levels[level_index];
+                    try self.initEditing(level.fnk_name, level.manual_samples);
                 },
                 .editing_fnk => |*editing| switch (try editing.update(delta_seconds)) {
                     .nothing => {},
@@ -406,23 +416,10 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                             editing.camera,
                         ) };
                     },
-                    .change_to => |fnk_name| {
-                        const res = try self.persistence.fnks.getOrPutValue(fnk_name, defaultFnkBody(&self.mem));
-                        const level_res = try self.persistence.levels.getOrPutValue(fnk_name, .{
-                            .fnk_name = fnk_name,
-                            .solution = null,
-                            .manual_samples = &.{},
-                        });
-                        self.state = .{
-                            .editing_fnk = try .init(
-                                level_res.value_ptr,
-                                self.persistence.allFnkNames(),
-                                res.value_ptr.*,
-                                &self.mem,
-                            ),
-                        };
-                        self.scoring_run = undefined;
-                    },
+                    .change_to => |fnk_name| try self.initEditing(fnk_name, if (findBuiltinLevel(fnk_name)) |level|
+                        level.manual_samples
+                    else
+                        null),
                 },
                 // TODO
                 .executing_fnk => |*executing| if (try executing.update(delta_seconds)) |final_value| {
@@ -474,10 +471,11 @@ const Sample = struct {
         };
     }
 };
-const Level = struct {
-    // TODO: remove fnk_name?
+
+const BuiltinLevel = struct {
+    // TODO: remove fnk_name, making it a key in a hashmap?
     fnk_name: *const Sexpr,
-    solution: ?*const fn (input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr,
+    solution: *const fn (input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr,
     manual_samples: []const Sample,
 
     // TODO: have a comptime pool of Sexprs so this works for solutions that actually use mem
@@ -485,21 +483,21 @@ const Level = struct {
         fnk_name: *const Sexpr,
         solution: *const fn (input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr,
         comptime manual_inputs: []const *const Sexpr,
-    ) Level {
+    ) BuiltinLevel {
         var manual_samples: [manual_inputs.len]Sample = undefined;
         for (manual_inputs, &manual_samples) |input, *sample| {
             sample.input = input;
             sample.output = solution(input, undefined);
         }
         const manual_samples_done = manual_samples;
-        return Level{
+        return BuiltinLevel{
             .fnk_name = fnk_name,
             .solution = solution,
             .manual_samples = &manual_samples_done,
         };
     }
 };
-const builtin_levels: []const Level = &.{
+const builtin_levels: []const BuiltinLevel = &.{
     .init(&Sexpr.doLit("default1"), struct {
         fn anon(input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr {
             _ = mem;
@@ -515,6 +513,14 @@ const builtin_levels: []const Level = &.{
         .{ .input = &Sexpr.doLit("Hermes"), .output = &Sexpr.doLit("Mercury") },
     } },
 };
+
+// code smell
+fn findBuiltinLevel(fnk_name: *const Sexpr) ?BuiltinLevel {
+    for (builtin_levels) |level| {
+        if (fnk_name.equals(level.fnk_name)) return level;
+    }
+    return null;
+}
 
 /// Like Drawer, but higher level
 fn Artist(platform: Platform, drawer: Drawer) type {
@@ -1083,9 +1089,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .full_address => |full_address| try self.cases.getSexprAt(full_address),
                     .toolbar => |index| toolbar.things[index].value,
                     .main_input => |local| self.main_input.getAt(local).?,
-                    .main_fnk_name => |local| self.level.fnk_name.getAt(local).?,
+                    .main_fnk_name => |local| self.fnk_name.getAt(local).?,
                     .toolbar_special_var => toolbar.special_var_state.next_value,
-                    .sample => |sample| self.level.manual_samples[sample.index].get(sample.which).?.getAt(sample.local).?,
+                    .sample => |sample| self.samples[sample.index].get(sample.which).?.getAt(sample.local).?,
                     .external_fnk => |fnk| self.available_fnks[fnk.index].getAt(fnk.local).?,
                     .fnk_manager => null,
                     .meta_converter => |local| if (meta_converter.sexpr) |v| v.getAt(local).? else null,
@@ -1137,8 +1143,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         ui_state: UI.State,
         ui_state_for_camera: UI.State,
 
+        // TODO: allow user-created Samples
+        samples: []const Sample,
+        fnk_name: *const Sexpr,
         available_fnks: []const *const Sexpr,
-        level: *const Level,
         cases: CaseGroup,
         main_input: *const Sexpr,
 
@@ -1269,7 +1277,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             const rect: Rect = .{ .top_left = top_left.pos, .size = Vec2.new(7, 7.5).scale(top_left.scale) };
 
             pub fn update_scroll(main: Self, delta_seconds: f32) void {
-                math.lerp_towards_range(&samples_reel.scroll, 0, @max(0, tof32(main.level.manual_samples.len) - 3), 0.1, delta_seconds);
+                math.lerp_towards_range(&samples_reel.scroll, 0, @max(0, tof32(main.samples.len) - 3), 0.1, delta_seconds);
             }
 
             fn getPoint(k: usize, which: Sample.Part) Point {
@@ -1384,6 +1392,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         };
 
+        // TODO: don't allow placing variables here
         /// create/edit/delete fnks
         const fnk_manager = struct {
             const sexpr_point: Point = .{ .pos = .new(-3, -1.5), .scale = 0.5, .turns = -0.25 };
@@ -1508,7 +1517,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         pub fn getFnk(self: Self) !Fnk {
             return Fnk{
-                .name = self.level.fnk_name,
+                .name = self.fnk_name,
                 .body = .{ .cases = try getMatchCases(self.mem, self.cases) },
             };
         }
@@ -1533,7 +1542,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             return result;
         }
 
-        pub fn init(level: *const Level, available_fnks: []const *const Sexpr, fnk_body: core.FnkBody, mem: *VeryPermamentGameStuff) !Self {
+        pub fn init(fnk_name: *const Sexpr, builtin_samples: []const Sample, available_fnks: []const *const Sexpr, fnk_body: core.FnkBody, mem: *VeryPermamentGameStuff) !Self {
             const cases = try makeCasesPhysical(mem, fnk_body.cases);
             const main_input = try mem.storeSexpr(Sexpr.doPair(&Sexpr.nil, &Sexpr.input));
 
@@ -1546,10 +1555,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }) };
 
             return .{
+                .fnk_name = fnk_name,
+                .samples = builtin_samples,
                 .mem = mem,
-                .level = level,
                 .cases = cases,
-                // .main_input = &Sexpr.true,
                 .main_input = main_input,
                 .ui_state = ui_state,
                 .ui_state_for_camera = ui_state_for_camera,
@@ -1673,7 +1682,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     }
                 else if (toolbar.findOverlap(mouse_pos)) |overlap|
                     .{ .sexpr = .{ .toolbar = overlap.index } }
-                else if (try samples_reel.findOverlap(mouse_pos, self.level.manual_samples)) |overlap|
+                else if (try samples_reel.findOverlap(mouse_pos, self.samples)) |overlap|
                     .{ .sexpr = .{ .sample = overlap } }
                 else if (try fnks_reel.findOverlap(mouse_pos, self.available_fnks)) |overlap|
                     .{ .sexpr = .{ .external_fnk = overlap } }
@@ -1686,7 +1695,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .toolbar_special_var }
                 else if (try SexprView.overlapsSexpr(self.mem.gpa, self.main_input, MAIN_INPUT_POS, mouse_pos)) |overlap|
                     .{ .sexpr = .{ .main_input = overlap } }
-                else if (try SexprView.overlapsSexpr(self.mem.gpa, self.level.fnk_name, MAIN_FNK_POS, mouse_pos)) |overlap|
+                else if (try SexprView.overlapsSexpr(self.mem.gpa, self.fnk_name, MAIN_FNK_POS, mouse_pos)) |overlap|
                     .{ .sexpr = .{ .main_fnk_name = overlap } }
                 else if (toolbar.overlapsWithSpecialCase(mouse_pos))
                     .{ .case = .toolbar_special_case }
@@ -1877,14 +1886,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     MAIN_INPUT_POS,
                     self.main_input,
                 );
-                try artist.drawHoldedFnk(camera, MAIN_FNK_POS, 1, self.level.fnk_name);
+                try artist.drawHoldedFnk(camera, MAIN_FNK_POS, 1, self.fnk_name);
             }
 
             try drawCases(camera, true, .{}, self.cases);
 
             try toolbar.draw(camera);
 
-            try samples_reel.draw(camera, self.level.manual_samples);
+            try samples_reel.draw(camera, self.samples);
             try fnks_reel.draw(camera, self.available_fnks);
 
             try fnk_manager.draw(camera);
