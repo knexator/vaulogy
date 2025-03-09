@@ -228,6 +228,15 @@ pub const Drawer = struct {
                 unreachable;
             }
         }.anon,
+        .drawDebugText = struct {
+            pub fn anon(camera: Camera, center: Point, text: [:0]const u8, color: Color) void {
+                _ = camera;
+                _ = center;
+                _ = text;
+                _ = color;
+                unreachable;
+            }
+        }.anon,
     };
 };
 
