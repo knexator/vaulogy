@@ -65,6 +65,7 @@ pub const Platform = struct {
     getKeyboard: fn () Keyboard,
 };
 
+// TODO: update this after EditingFnk
 pub const PlayerData = struct {
     // TODO: this field should not be here.
     ascii_data: []const u8,
@@ -89,14 +90,31 @@ pub const PlayerData = struct {
         };
     }
 
-    pub fn fromAscii2(data: []const u8, mem: *VeryPermamentGameStuff) !usize {
-        const ascii_data = try mem.gpa.dupe(u8, data);
-        var parser = parsing.Parser{ .remaining_text = ascii_data };
-        var fnks = FnkCollection.init(mem.gpa);
-        errdefer fnks.deinit();
-        try parser.parseFnkCollection(&fnks, &mem.pool_for_sexprs, mem.arena_for_cases.allocator());
-        return fnks.capacity();
-        // return fnks.capacity();
+    pub fn updateSolvedStatus(self: *PlayerData, level_index: usize, mem: *VeryPermamentGameStuff) !void {
+        std.debug.assert(level_index < builtin_levels.len);
+        self.is_builtin_level_solved[level_index] = try isSolved(builtin_levels[level_index], self.fnks, mem);
+    }
+
+    fn isSolved(level: BuiltinLevel, fnks: FnkCollection, mem: *VeryPermamentGameStuff) !bool {
+        var score = try core.ScoringRun.initFromFnks(fnks, mem);
+        defer score.deinit();
+
+        for (level.manual_samples) |sample| {
+            var exec = core.ExecutionThread.init(sample.input, level.fnk_name, &score) catch |err| switch (err) {
+                error.FnkNotFound => return false,
+                else => return err,
+            };
+            defer exec.deinit();
+
+            const actual_output = exec.getFinalResult(&score) catch |err| switch (err) {
+                error.FnkNotFound, error.NoMatchingCase, error.InvalidMetaFnk => return false,
+                error.OutOfMemory => return err,
+                error.BAD_INPUT => return err,
+            };
+            if (!actual_output.equals(sample.output.?)) return false;
+        } else {
+            return true;
+        }
     }
 
     pub fn fromAscii(data: []const u8, mem: *VeryPermamentGameStuff) !PlayerData {
@@ -106,34 +124,8 @@ pub const PlayerData = struct {
         errdefer fnks.deinit();
         try parser.parseFnkCollection(&fnks, &mem.pool_for_sexprs, mem.arena_for_cases.allocator());
         var is_builtin_level_solved: [builtin_levels.len]bool = undefined;
-        var score = try core.ScoringRun.initFromFnks(fnks, mem);
-        defer score.deinit();
         for (builtin_levels, &is_builtin_level_solved) |level, *target| {
-            for (level.manual_samples) |sample| {
-                var exec = core.ExecutionThread.init(sample.input, level.fnk_name, &score) catch |err| switch (err) {
-                    error.FnkNotFound => {
-                        target.* = false;
-                        break;
-                    },
-                    else => return err,
-                };
-                defer exec.deinit();
-
-                const actual_output = exec.getFinalResult(&score) catch |err| switch (err) {
-                    error.FnkNotFound, error.NoMatchingCase, error.InvalidMetaFnk => {
-                        target.* = false;
-                        break;
-                    },
-                    error.OutOfMemory => return err,
-                    error.BAD_INPUT => return err,
-                };
-                if (!actual_output.equals(sample.output.?)) {
-                    target.* = false;
-                    break;
-                }
-            } else {
-                target.* = true;
-            }
+            target.* = try isSolved(level, fnks, mem);
         }
         return PlayerData{
             .fnks = fnks,
@@ -394,6 +386,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             var parser = parsing.Parser{ .remaining_text = tutorial_fnk };
             const fnk = try parser.parseFnkNew(&result.mem.pool_for_sexprs, result.mem.arena_for_cases.allocator());
             try player_data.fnks.put(fnk.name, fnk.body);
+            try player_data.updateSolvedStatus(0, &result.mem);
             try platform.setPlayerData(player_data, &result.mem);
 
             try player_data.fnks.put(try result.mem.storeSexpr(Sexpr.doLit("default2")), defaultFnkBody2(&result.mem));
