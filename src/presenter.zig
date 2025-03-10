@@ -30,7 +30,7 @@ const FnkCollection = core.FnkCollection;
 const VeryPermamentGameStuff = core.VeryPermamentGameStuff;
 const parsing = @import("parsing.zig");
 
-const OoM = error{ OutOfMemory, TODO, BAD_INPUT };
+const OoM = error{ OutOfMemory, TODO, BAD_INPUT, BadHexCode };
 
 pub const KeyboardButton = std.meta.FieldEnum(KeyboardState);
 pub const KeyboardState = struct {
@@ -71,6 +71,7 @@ pub const PlayerData = struct {
 
     fnks: FnkCollection,
     custom_samples: std.ArrayHashMap(*const Sexpr, []const Sample, core.SexprContext, true),
+    is_builtin_level_solved: [builtin_levels.len]bool,
     first_time: bool = true,
 
     const no_samples: []const Sample = &.{};
@@ -84,6 +85,7 @@ pub const PlayerData = struct {
             .ascii_data = "",
             .fnks = FnkCollection.init(mem.gpa),
             .custom_samples = .init(mem.gpa),
+            .is_builtin_level_solved = @splat(false),
         };
     }
 
@@ -103,10 +105,41 @@ pub const PlayerData = struct {
         var fnks = FnkCollection.init(mem.gpa);
         errdefer fnks.deinit();
         try parser.parseFnkCollection(&fnks, &mem.pool_for_sexprs, mem.arena_for_cases.allocator());
+        var is_builtin_level_solved: [builtin_levels.len]bool = undefined;
+        var score = try core.ScoringRun.initFromFnks(fnks, mem);
+        defer score.deinit();
+        for (builtin_levels, &is_builtin_level_solved) |level, *target| {
+            for (level.manual_samples) |sample| {
+                var exec = core.ExecutionThread.init(sample.input, level.fnk_name, &score) catch |err| switch (err) {
+                    error.FnkNotFound => {
+                        target.* = false;
+                        break;
+                    },
+                    else => return err,
+                };
+                defer exec.deinit();
+
+                const actual_output = exec.getFinalResult(&score) catch |err| switch (err) {
+                    error.FnkNotFound, error.NoMatchingCase, error.InvalidMetaFnk => {
+                        target.* = false;
+                        break;
+                    },
+                    error.OutOfMemory => return err,
+                    error.BAD_INPUT => return err,
+                };
+                if (!actual_output.equals(sample.output.?)) {
+                    target.* = false;
+                    break;
+                }
+            } else {
+                target.* = true;
+            }
+        }
         return PlayerData{
             .fnks = fnks,
             .custom_samples = .init(mem.gpa),
             .ascii_data = ascii_data,
+            .is_builtin_level_solved = is_builtin_level_solved,
         };
     }
 
@@ -370,7 +403,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             // try result.initEditing(builtin_levels[0].fnk_name, builtin_levels[0].manual_samples);
 
             result.state = .{
-                .level_select = try .init(),
+                .level_select = try .init(&result.persistence),
             };
 
             try Artist(platform, drawer).init();
@@ -427,7 +460,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 // TODO
                 .executing_fnk => |*executing| if (try executing.update(delta_seconds)) |final_value| {
                     _ = final_value;
-                    self.state = .{ .level_select = try .init() };
+                    self.state = .{ .level_select = try .init(&self.persistence) };
                 },
                 inline else => |*x| x.update(delta_seconds),
             }
@@ -2802,8 +2835,9 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
         level_select_buttons: UI.State,
         play_level_button: UI.State,
         selected_level: ?usize = null,
+        persistence: *const PlayerData,
 
-        pub fn init() !Self {
+        pub fn init(persistence: *const PlayerData) !Self {
             const res = platform.gpa.alloc(UI.Button, builtin_levels.len) catch unreachable;
             for (res, 0..) |*b, k| {
                 b.* = .{ .pos = Rect{ .top_left = .new(2, 2.5 + 2.5 * @as(f32, @floatFromInt(k))), .size = .one } };
@@ -2813,6 +2847,7 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
                 .play_level_button = .{ .buttons = try platform.gpa.dupe(UI.Button, &.{
                     .{ .pos = Rect{ .top_left = .new(10, 10), .size = .new(2, 1) }, .text = "Play" },
                 }) },
+                .persistence = persistence,
             };
         }
 
@@ -2832,6 +2867,9 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
         pub fn draw(self: Self) OoM!void {
             drawer.clear(Color.gray(128));
             for (self.level_select_buttons.buttons, 0..) |button, k| {
+                if (self.persistence.is_builtin_level_solved[k]) {
+                    drawer.drawRect(UI.cam, button.pos.plusMargin(0.2), Color.fromHex("#55ff55"), null);
+                }
                 if (k == self.selected_level) {
                     drawer.drawRect(UI.cam, button.pos.plusMargin(0.4), .black, null);
                 } else if (button.hot_t > 0) {

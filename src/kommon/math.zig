@@ -289,13 +289,23 @@ pub const Color = extern struct {
 
     pub fn fromHex(comptime str: []const u8) Color {
         @setEvalBranchQuota(10000);
-        if (str.len != 7 or str[0] != '#') @compileError("bad format");
-        errdefer @compileError("bad format");
+        const error_message = std.fmt.comptimePrint("bad format for str {s}", .{str});
+        if (str.len != 7 or str[0] != '#') @compileError(error_message);
+        errdefer @compileError(error_message);
+        return comptime Color{
+            .r = try std.fmt.parseInt(u8, str[1..3], 16),
+            .g = try std.fmt.parseInt(u8, str[3..5], 16),
+            .b = try std.fmt.parseInt(u8, str[5..7], 16),
+        };
+    }
+
+    pub fn fromHexAtRunTime(str: []const u8) !Color {
+        if (str.len != 7 or str[0] != '#') return error.BadHexCode;
         var it = std.mem.window(u8, str[1..], 2, 2);
         return Color{
-            .r = try std.fmt.parseInt(u8, it.next().?, 16),
-            .g = try std.fmt.parseInt(u8, it.next().?, 16),
-            .b = try std.fmt.parseInt(u8, it.next().?, 16),
+            .r = std.fmt.parseInt(u8, it.next().?, 16) catch return error.BadHexCode,
+            .g = std.fmt.parseInt(u8, it.next().?, 16) catch return error.BadHexCode,
+            .b = std.fmt.parseInt(u8, it.next().?, 16) catch return error.BadHexCode,
         };
     }
 
