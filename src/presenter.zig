@@ -366,9 +366,12 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             try player_data.fnks.put(try result.mem.storeSexpr(Sexpr.doLit("default2")), defaultFnkBody2(&result.mem));
             result.persistence = player_data;
 
-            try player_data.fnks.put(builtin_levels[0].fnk_name, defaultFnkBody1(&result.mem));
+            // try player_data.fnks.put(builtin_levels[0].fnk_name, defaultFnkBody1(&result.mem));
+            // try result.initEditing(builtin_levels[0].fnk_name, builtin_levels[0].manual_samples);
 
-            try result.initEditing(builtin_levels[0].fnk_name, builtin_levels[0].manual_samples);
+            result.state = .{
+                .level_select = try .init(),
+            };
 
             try Artist(platform, drawer).init();
         }
@@ -424,7 +427,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 // TODO
                 .executing_fnk => |*executing| if (try executing.update(delta_seconds)) |final_value| {
                     _ = final_value;
-                    self.state = .{ .level_select = .init() };
+                    self.state = .{ .level_select = try .init() };
                 },
                 inline else => |*x| x.update(delta_seconds),
             }
@@ -477,12 +480,14 @@ const BuiltinLevel = struct {
     fnk_name: *const Sexpr,
     solution: *const fn (input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr,
     manual_samples: []const Sample,
+    description: [:0]const u8,
 
     // TODO: have a comptime pool of Sexprs so this works for solutions that actually use mem
     pub fn init(
         fnk_name: *const Sexpr,
         solution: *const fn (input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr,
         comptime manual_inputs: []const *const Sexpr,
+        description: [:0]const u8,
     ) BuiltinLevel {
         var manual_samples: [manual_inputs.len]Sample = undefined;
         for (manual_inputs, &manual_samples) |input, *sample| {
@@ -494,16 +499,11 @@ const BuiltinLevel = struct {
             .fnk_name = fnk_name,
             .solution = solution,
             .manual_samples = &manual_samples_done,
+            .description = description,
         };
     }
 };
 const builtin_levels: []const BuiltinLevel = &.{
-    .init(&Sexpr.doLit("default1"), struct {
-        fn anon(input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr {
-            _ = mem;
-            return input;
-        }
-    }.anon, &.{ &Sexpr.true, &Sexpr.false, &Sexpr.pair_nil_nil, &Sexpr.nil }),
     .{ .fnk_name = &Sexpr.doLit("planetFromOlympian"), .solution = struct {
         fn anon(input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr {
             _ = mem;
@@ -511,7 +511,14 @@ const builtin_levels: []const BuiltinLevel = &.{
         }
     }.anon, .manual_samples = &.{
         .{ .input = &Sexpr.doLit("Hermes"), .output = &Sexpr.doLit("Mercury") },
-    } },
+        .{ .input = &Sexpr.doLit("Aphrodite"), .output = &Sexpr.doLit("Venus") },
+    }, .description = "the tutorial level, etc." },
+    .init(&Sexpr.doLit("default1"), struct {
+        fn anon(input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr {
+            _ = mem;
+            return input;
+        }
+    }.anon, &.{ &Sexpr.true, &Sexpr.false, &Sexpr.pair_nil_nil, &Sexpr.nil }, "etc"),
 };
 
 // code smell
@@ -1546,7 +1553,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             const main_input = try mem.storeSexpr(Sexpr.doPair(&Sexpr.nil, &Sexpr.input));
 
             const ui_state = UI.State{ .buttons = try platform.gpa.dupe(UI.Button, &.{
-                .{ .pos = Rect{ .top_left = .new(2, 0), .size = .one } },
+                .{ .pos = Rect{ .top_left = .new(2, 0), .size = .one }, .text = ">" },
             }) };
 
             const ui_state_for_camera = UI.State{ .buttons = try platform.gpa.dupe(UI.Button, &.{
@@ -2792,37 +2799,55 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
     return struct {
         const Self = @This();
 
-        // asdf: [3]UI.Button = .{
-        //     .{ .pos = Rect{ .top_left = .new(2, 2.5), .size = .one } },
-        //     .{ .pos = Rect{ .top_left = .new(2, 5), .size = .one } },
-        //     .{ .pos = Rect{ .top_left = .new(2, 7.5), .size = .one } },
-        // },
+        level_select_buttons: UI.State,
+        play_level_button: UI.State,
+        selected_level: ?usize = null,
 
-        ui_state: UI.State,
-
-        pub fn init() Self {
+        pub fn init() !Self {
             const res = platform.gpa.alloc(UI.Button, builtin_levels.len) catch unreachable;
             for (res, 0..) |*b, k| {
                 b.* = .{ .pos = Rect{ .top_left = .new(2, 2.5 + 2.5 * @as(f32, @floatFromInt(k))), .size = .one } };
             }
-            return Self{ .ui_state = .{ .buttons = res } };
+            return Self{
+                .level_select_buttons = .{ .buttons = res },
+                .play_level_button = .{ .buttons = try platform.gpa.dupe(UI.Button, &.{
+                    .{ .pos = Rect{ .top_left = .new(10, 10), .size = .new(2, 1) }, .text = "Play" },
+                }) },
+            };
         }
 
         pub fn update(self: *Self, delta_seconds: f32) ?usize {
             const mouse = platform.getMouse();
-            return self.ui_state.update(mouse, delta_seconds);
+            if (self.level_select_buttons.update(mouse, delta_seconds)) |pressed| {
+                self.selected_level = pressed;
+            }
+            if (self.selected_level) |selected| {
+                if (self.play_level_button.update(mouse, delta_seconds) != null) {
+                    return selected;
+                }
+            }
+            return null;
         }
 
         pub fn draw(self: Self) OoM!void {
             drawer.clear(Color.gray(128));
-            for (self.ui_state.buttons, 0..) |button, k| {
-                drawer.drawRect(UI.cam, button.pos, .black, .white);
-                if (button.hot_t > 0 or button.active_t > 0) {
-                    try artist.drawSexpr(UI.cam, .{
-                        .pos = button.pos.top_left.add(.new(2 - button.active_t, 0.5)),
-                        .scale = button.hot_t,
-                    }, builtin_levels[k].fnk_name);
+            for (self.level_select_buttons.buttons, 0..) |button, k| {
+                if (k == self.selected_level) {
+                    drawer.drawRect(UI.cam, button.pos.plusMargin(0.4), .black, null);
+                } else if (button.hot_t > 0) {
+                    drawer.drawRect(UI.cam, button.pos.plusMargin(button.hot_t - 0.5 - 0.1 * button.active_t), .black, null);
                 }
+                try artist.drawSexpr(UI.cam, .{
+                    .pos = button.pos.top_left.add(.new(0.5, 1)),
+                    .turns = -0.25,
+                    .scale = 0.5,
+                }, builtin_levels[k].fnk_name);
+            }
+
+            if (self.selected_level) |selected| {
+                const level = builtin_levels[selected];
+                drawer.drawDebugText(UI.cam, .{ .pos = UI.cam.center }, level.description, .black);
+                self.play_level_button.draw(drawer);
             }
         }
     };

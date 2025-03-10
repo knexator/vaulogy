@@ -49,6 +49,9 @@ mostCommonPlanets
 // - f(g(h(x))), something that is best solved with a meta '(-> h g f)' function
 // - optimization: lookup element N in an array. 2 levels: same N for many arrays, many N for one array.
 
+// From leetcode:
+// ([]N, target: N) => index of 2 elements that sum to target; solution: hashmap(N, index), O(N) time
+
 
 //////
 // built in: eqAtoms?, identity
