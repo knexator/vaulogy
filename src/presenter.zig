@@ -1352,7 +1352,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             };
 
             pub fn update_scroll(main: Self, delta_seconds: f32) void {
-                math.lerp_towards_range(&fnks_reel.scroll, 0, @max(0, tof32(main.available_fnks.len / N_FNKS_PER_ROW) - 2), 0.1, delta_seconds);
+                math.lerp_towards_range(&fnks_reel.scroll, 0, @max(0, tof32(std.math.divCeil(usize, main.available_fnks.len, N_FNKS_PER_ROW) catch unreachable) - 2), 0.1, delta_seconds);
             }
 
             fn getPoint(k: usize) Point {
@@ -1392,10 +1392,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         };
 
-        // TODO: don't allow placing variables here
         /// create/edit/delete fnks
         const fnk_manager = struct {
-            const sexpr_point: Point = .{ .pos = .new(-3, -1.5), .scale = 0.5, .turns = -0.25 };
+            const sexpr_point: Point = .{ .pos = .new(-5, -1.5), .scale = 0.5, .turns = -0.25 };
 
             pub fn findOverlap(mouse_pos: Vec2) bool {
                 return SexprView.overlapsAtom(sexpr_point, mouse_pos, .atom);
@@ -1790,7 +1789,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .grabbing_sexpr => |grabbing| {
                         if (grabbing.address_if_released) |address| {
                             if (address == .fnk_manager) {
-                                return .{ .change_to = grabbing.sexpr };
+                                return .{ .change_to = try grabbing.sexpr.changeAllVariablesToNil(self.mem) };
                             } else {
                                 try address.setSexpr(self, grabbing.sexpr);
                                 self.focus = .{ .hovering_sexpr = .{
