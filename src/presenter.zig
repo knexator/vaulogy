@@ -30,7 +30,7 @@ const FnkCollection = core.FnkCollection;
 const VeryPermamentGameStuff = core.VeryPermamentGameStuff;
 const parsing = @import("parsing.zig");
 
-const OoM = error{ OutOfMemory, TODO, BAD_INPUT, BadHexCode };
+const OoM = error{ OutOfMemory, TODO, BAD_INPUT };
 
 pub const KeyboardButton = std.meta.FieldEnum(KeyboardState);
 pub const KeyboardState = struct {
@@ -88,6 +88,12 @@ pub const PlayerData = struct {
             .custom_samples = .init(mem.gpa),
             .is_builtin_level_solved = @splat(false),
         };
+    }
+
+    pub fn updateSolvedStatusOfAll(self: *PlayerData, mem: *VeryPermamentGameStuff) !void {
+        for (0..builtin_levels.len) |k| {
+            try self.updateSolvedStatus(k, mem);
+        }
     }
 
     pub fn updateSolvedStatus(self: *PlayerData, level_index: usize, mem: *VeryPermamentGameStuff) !void {
@@ -374,13 +380,13 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             if (!player_data.first_time) return error.TODO;
             const tutorial_fnk =
                 \\planetFromOlympian {
-                \\  Hermes -> Mercury;
+                \\  // Hermes -> Mercury;
                 \\  Aphrodite -> Venus;
                 \\  Ares -> Mars;
                 \\  Zeus -> Jupiter;
                 \\  Kronos -> Saturn;
                 \\  Poseidon -> Neptune;
-                \\  // Hades -> Pluto;
+                \\  Hades -> Pluto;
                 \\}
             ;
             var parser = parsing.Parser{ .remaining_text = tutorial_fnk };
@@ -430,6 +436,12 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 },
                 .editing_fnk => |*editing| switch (try editing.update(delta_seconds)) {
                     .nothing => {},
+                    .back_to_level_select => {
+                        const fnk = try editing.getFnk();
+                        try self.persistence.fnks.put(fnk.name, fnk.body);
+                        try self.persistence.updateSolvedStatusOfAll(&self.mem);
+                        self.state = .{ .level_select = try .init(&self.persistence) };
+                    },
                     .launch_execution => {
                         // todo
                         const fnk = try editing.getFnk();
@@ -445,10 +457,14 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                             editing.camera,
                         ) };
                     },
-                    .change_to => |fnk_name| try self.initEditing(fnk_name, if (findBuiltinLevel(fnk_name)) |level|
-                        level.manual_samples
-                    else
-                        null),
+                    .change_to => |fnk_name| {
+                        const fnk = try editing.getFnk();
+                        try self.persistence.fnks.put(fnk.name, fnk.body);
+                        try self.initEditing(fnk_name, if (findBuiltinLevel(fnk_name)) |level|
+                            level.manual_samples
+                        else
+                            null);
+                    },
                 },
                 // TODO
                 .executing_fnk => |*executing| if (try executing.update(delta_seconds)) |final_value| {
@@ -1578,6 +1594,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             const main_input = try mem.storeSexpr(Sexpr.doPair(&Sexpr.nil, &Sexpr.input));
 
             const ui_state = UI.State{ .buttons = try UI.Button.row(platform.gpa, .zero, .one, &.{
+                "Back",
                 "Reset\nView",
                 ">",
             }) };
@@ -1610,6 +1627,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         pub fn update(self: *Self, delta_seconds: f32) !union(enum) {
             nothing,
+            back_to_level_select,
             launch_execution,
             change_to: *const Sexpr,
         } {
@@ -1662,8 +1680,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .nothing => {
                     if (self.ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button| {
                         switch (pressed_button) {
-                            0 => self.camera = std.meta.fieldInfo(Self, .camera).defaultValue().?,
-                            1 => return .launch_execution,
+                            0 => return .back_to_level_select,
+                            1 => self.camera = std.meta.fieldInfo(Self, .camera).defaultValue().?,
+                            2 => return .launch_execution,
                             else => @panic("oops"),
                         }
                     }
