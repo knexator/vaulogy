@@ -2346,7 +2346,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         ui_state: UI.State,
 
         anim_t: f32,
-        anim_speed: f32 = 1.0,
+        anim_speed: f32 = 2.0,
         anim_paused: bool = false,
 
         pub fn init(
