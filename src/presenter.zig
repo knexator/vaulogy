@@ -2339,7 +2339,11 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             };
 
             // for now, skip the "start" anim
-            std.debug.assert(null == try result.thread.advanceTinyStep(result.scoring_run));
+            // std.debug.assert(null == try result.thread.advanceTinyStep(result.scoring_run));
+            if (try result.thread.advanceTinyStep(result.scoring_run) != null) {
+                // TODO: hack
+                result.thread = try .init(input, fn_name, scoring_run);
+            }
 
             return result;
         }
@@ -2784,16 +2788,16 @@ pub fn AfterExecutingFnk(platform: Platform, drawer: Drawer) type {
         pub fn draw(self: Self) !void {
             drawer.clear(Color.gray(128));
 
-            const text_pos: Point = .{ .pos = camera.center };
+            const text_pos: Point = (Point{ .pos = camera.center, .scale = 3 }).applyToLocalPoint(.{ .pos = .new(0, -1) });
             switch (self.result) {
-                .result => {
+                .result => |value| {
                     drawer.drawDebugText(camera, text_pos, "Result:", .black);
-                    // TODO NOW
+                    try artist.drawSexpr(camera, text_pos.applyToLocalPoint(.{ .pos = .new(-1, 2) }), value);
                 },
                 .no_matching_case => drawer.drawDebugText(camera, text_pos, "Ran out of cases!", .black),
-                .missing_or_uncompilable_fnk => {
+                .missing_or_uncompilable_fnk => |fnk_name| {
                     drawer.drawDebugText(camera, text_pos, "Could not find or compile this fnk:", .black);
-                    // TODO NOW
+                    try artist.drawSexpr(camera, text_pos.applyToLocalPoint(.{ .pos = .new(0, 2), .turns = -0.25, .scale = 0.5 }), fnk_name);
                 },
             }
 
