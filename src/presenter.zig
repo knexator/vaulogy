@@ -1220,7 +1220,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         mem: *VeryPermamentGameStuff,
         camera: Camera = Camera{ .center = .new(7, 3), .height = 15.0 },
         ui_state: UI.State,
-
+        meta_enabled: bool,
         // TODO: allow user-created Samples
         samples: []const Sample,
         fnk_name: *const Sexpr,
@@ -1644,6 +1644,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .main_input = main_input,
                 .ui_state = ui_state,
                 .available_fnks = available_fnks,
+                // TODO: figure out when to enable the meta features
+                .meta_enabled = false,
             };
         }
 
@@ -1766,7 +1768,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .{ .external_fnk = overlap } }
                 else if (fnk_manager.findOverlap(mouse_pos))
                     .{ .sexpr = .fnk_manager }
-                else if (try meta_converter.findOverlap(mouse_pos)) |overlap| switch (overlap) {
+                else if (if (self.meta_enabled) try meta_converter.findOverlap(mouse_pos) else null) |overlap| switch (overlap) {
                     .sexpr => |local| .{ .sexpr = .{ .meta_converter = local } },
                     .case => .{ .case = .meta_converter },
                 } else if (toolbar.overlapsWithSpecialVar(mouse_pos))
@@ -1975,7 +1977,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             try fnks_reel.draw(camera, self.available_fnks);
 
             try fnk_manager.draw(camera);
-            try meta_converter.draw(camera);
+            if (self.meta_enabled) try meta_converter.draw(camera);
 
             switch (self.focus) {
                 .nothing => {},
@@ -2919,7 +2921,7 @@ const UI = struct {
                 if (button.text) |text| {
                     drawer.drawDebugText(UI.cam, .{
                         .pos = button.pos.getCenter(),
-                        .scale = button.pos.size.y / (1 + tof32(std.mem.count(u8, text, "\n"))),
+                        .scale = button.pos.size.y / (1.5 + tof32(std.mem.count(u8, text, "\n"))),
                     }, text, Color.black);
                 }
             }
