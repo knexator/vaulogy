@@ -99,7 +99,7 @@ pub fn build(b: *std.Build) void {
     });
     const sdl_dep = b.dependency("sdl", .{
         .target = target,
-        .optimize = optimize,
+        .optimize = .ReleaseFast, // TODO: hardcoded to avoid sdl's undefined behaviour bugs
     });
     const sdl_lib = sdl_dep.artifact("SDL3");
     sdlgame_exe.linkLibrary(sdl_lib);
