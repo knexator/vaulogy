@@ -467,9 +467,12 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                     },
                 },
                 // TODO
-                .executing_fnk => |*executing| if (try executing.update(delta_seconds)) |final_value| {
-                    _ = final_value;
-                    self.state = .{ .level_select = try .init(&self.persistence) };
+                .executing_fnk => |*executing| switch (try executing.update(delta_seconds)) {
+                    .nothing => {},
+                    .finished => |final_value| {
+                        _ = final_value;
+                        self.state = .{ .level_select = try .init(&self.persistence) };
+                    },
                 },
                 inline else => |*x| x.update(delta_seconds),
             }
@@ -2332,7 +2335,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             return result;
         }
 
-        pub fn update(self: *Self, delta_seconds: f32) !?*const Sexpr {
+        pub fn update(self: *Self, delta_seconds: f32) !union(enum) {
+            nothing,
+            finished: ?*const Sexpr,
+        } {
             if (platform.getMouse().wasPressed(.right)) self.anim_t = 0.99;
 
             if (self.ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button|
@@ -2348,10 +2354,15 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             self.anim_t += self.anim_speed * delta_seconds / 2.0;
             while (self.anim_t >= 1) {
                 self.anim_t -= 1;
-                _ = try self.thread.advanceTinyStep(self.scoring_run);
-                // if (try self.thread.advanceTinyStep(self.scoring_run)) |x| return x;
+                // _ = try self.thread.advanceTinyStep(self.scoring_run);
+
+                if (self.thread.advanceTinyStep(self.scoring_run) catch |err| switch (err) {
+                    error.FnkNotFound, error.InvalidMetaFnk, error.NoMatchingCase => return .{ .finished = null },
+                    error.OutOfMemory => return err,
+                    error.BAD_INPUT => return err,
+                }) |x| return .{ .finished = x };
             }
-            return null;
+            return .nothing;
 
             // if (platform.getMouse().wasPressed(.left)) {
             //     return try self.thread.advanceTinyStep(self.scoring_run);
@@ -2421,24 +2432,26 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             .{ .pos = .new(12, -4), .scale = 0, .turns = -0.65 },
                             t,
                         )), discarded_case, true, false, 0);
-                        try drawCase(
-                            camera,
-                            1,
-                            parent_point
-                                .applyToLocalPoint(.{ .pos = .new(5, lerp(3.5, 3, t)), .scale = lerp(0.5, 1, t) }),
-                            active_stack.cur_cases[0],
-                            true,
-                            true,
-                            0,
-                        );
-                        try drawCases(
-                            camera,
-                            1,
-                            parent_point.applyToLocalPoint(.{ .pos = .new(0, 1.5) }),
-                            active_stack.cur_cases[1..],
-                            false,
-                            0,
-                        );
+                        if (active_stack.cur_cases.len > 0) {
+                            try drawCase(
+                                camera,
+                                1,
+                                parent_point
+                                    .applyToLocalPoint(.{ .pos = .new(5, lerp(3.5, 3, t)), .scale = lerp(0.5, 1, t) }),
+                                active_stack.cur_cases[0],
+                                true,
+                                true,
+                                0,
+                            );
+                            try drawCases(
+                                camera,
+                                1,
+                                parent_point.applyToLocalPoint(.{ .pos = .new(0, 1.5) }),
+                                active_stack.cur_cases[1..],
+                                false,
+                                0,
+                            );
+                        }
                     }
                 },
                 .matched => |matched| {

@@ -522,8 +522,6 @@ pub const ExecutionThread = struct {
             const case = last_stack_ptr.cur_cases[0];
             const rest_of_cases = last_stack_ptr.cur_cases[1..];
 
-            std.log.debug("case fnk: {any}", .{case.fnk_name});
-
             if (!(try generateBindings(case.pattern, this.active_value, &last_stack_ptr.cur_bindings))) {
                 undoLastBindings(&last_stack_ptr.cur_bindings, initial_bindings_count);
                 last_stack_ptr.cur_cases = rest_of_cases;
