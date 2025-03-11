@@ -1625,7 +1625,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         pub fn init(fnk_name: *const Sexpr, builtin_samples: []const Sample, available_fnks: []const *const Sexpr, fnk_body: core.FnkBody, mem: *VeryPermamentGameStuff) !Self {
             const cases = try makeCasesPhysical(mem, fnk_body.cases);
-            const main_input = try mem.storeSexpr(Sexpr.doPair(&Sexpr.nil, &Sexpr.input));
+            const main_input: *const Sexpr = &Sexpr.nil;
 
             const ui_state = UI.State{ .buttons = try UI.Button.row(platform.gpa, .zero, .one, &.{
                 "Back",
