@@ -154,16 +154,18 @@ requestAnimationFrame(every_frame);
 //   }
 // }, 250);
 
-const ws = new WebSocket("ws://" + location.host);
-ws.onmessage = (event) => {
-  if (event.data === "reload") {
-    console.log("reloading wasm");
-    getWasm().then((res) => {
-      wasm_exports = res;
-      wasm_exports.init();
-    });
-  }
-};
+if (location.hostname === "localhost") {
+  const ws = new WebSocket("ws://" + location.host);
+  ws.onmessage = (event) => {
+    if (event.data === "reload") {
+      console.log("reloading wasm");
+      getWasm().then((res) => {
+        wasm_exports = res;
+        wasm_exports.init();
+      });
+    }
+  };
+}
 
 document.addEventListener("keydown", (ev) => {
   if (ev.repeat) return;
