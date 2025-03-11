@@ -126,7 +126,6 @@ const js_better = struct {
 
         pub fn path(all_positions: []const Vec2) void {
             if (all_positions.len < 2) programmerError();
-            js.canvas.beginPath();
             moveTo(all_positions[0]);
             for (all_positions[1..]) |pos| {
                 lineTo(pos);
@@ -201,6 +200,20 @@ const WebDrawer = struct {
             screenFromWorldScale(camera, world_size.x),
             screenFromWorldScale(camera, world_size.y),
         );
+    }
+
+    pub fn drawLine(camera: Camera, points: []const Vec2, color: Color) void {
+        const screen_positions = gpa.allocator().alloc(Vec2, points.len) catch @panic("OoM");
+        defer gpa.allocator().free(screen_positions);
+
+        for (points, screen_positions) |world_pos, *screen_pos| {
+            screen_pos.* = screenFromWorldPosition(camera, world_pos);
+        }
+
+        js.canvas.beginPath();
+        js_better.canvas.setStrokeColor(color);
+        js_better.canvas.path(screen_positions);
+        js.canvas.stroke();
     }
 
     pub fn drawRect(camera: Camera, rect: Rect, stroke: ?Color, fill: ?Color) void {
@@ -555,6 +568,7 @@ const web_platform = presenter.Platform{
 };
 const web_drawer = presenter.Drawer{
     .clear = js_better.canvas.clear,
+    .drawLine = WebDrawer.drawLine,
     .drawRect = WebDrawer.drawRect,
     .drawDebugText = WebDrawer.drawDebugText,
     .drawAtom = WebDrawer.drawAtom,

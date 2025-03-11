@@ -66,6 +66,22 @@ const SdlDrawer = struct {
         panickify(c.SDL_RenderClear(sdl_renderer));
     }
 
+    pub fn drawLine(camera: Camera, points: []const Vec2, color: Color) void {
+        const screen_positions = gpa.allocator().alloc(Vec2, points.len) catch @panic("OoM");
+        defer gpa.allocator().free(screen_positions);
+
+        for (points, screen_positions) |world_pos, *screen_pos| {
+            screen_pos.* = screenFromWorldPosition(camera, world_pos);
+        }
+
+        setRenderDrawColor(color);
+        for (0..screen_positions.len - 1) |i| {
+            const from = screen_positions[i];
+            const to = screen_positions[i + 1];
+            panickify(c.SDL_RenderLine(sdl_renderer, from.x, from.y, to.x, to.y));
+        }
+    }
+
     pub fn drawRect(camera: Camera, rect: Rect, stroke: ?Color, fill: ?Color) void {
         const screen_top_left = screenFromWorldPosition(camera, rect.top_left);
         const screen_size = screenFromWorldSize(camera, rect.size);
@@ -452,6 +468,7 @@ const sdl_platform = presenter.Platform{
 };
 const sdl_drawer = presenter.Drawer{
     .clear = SdlDrawer.clear,
+    .drawLine = SdlDrawer.drawLine,
     .drawRect = SdlDrawer.drawRect,
     .drawDebugText = SdlDrawer.drawDebugText,
     .drawAtom = SdlDrawer.drawAtom,

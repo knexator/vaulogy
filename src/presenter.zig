@@ -195,6 +195,7 @@ pub const AtomVisuals = struct {
 
 pub const Drawer = struct {
     clear: fn (color: Color) void,
+    drawLine: fn (camera: Camera, points: []const Vec2, color: Color) void,
     drawRect: fn (camera: Camera, rect: Rect, stroke: ?Color, fill: ?Color) void,
     drawDebugText: fn (camera: Camera, center: Point, text: [:0]const u8, color: Color) void,
     drawAtomDebug: fn (camera: Camera, world_point: Point) void,
@@ -210,6 +211,18 @@ pub const Drawer = struct {
     // TODO: think how to use the visuals when drawing a variable
     drawVariable: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
     drawPatternVariable: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
+
+    pub fn drawArrowForSample(self: Drawer, camera: Camera, center: Point) void {
+        self.drawLine(camera, &.{
+            center.applyToLocalPosition(.new(-1, 0)),
+            center.applyToLocalPosition(.new(2, 0)),
+        }, .black);
+        self.drawLine(camera, &.{
+            center.applyToLocalPosition(.new(1, -1)),
+            center.applyToLocalPosition(.new(2, 0)),
+            center.applyToLocalPosition(.new(1, 1)),
+        }, .black);
+    }
 
     const dummySignatures = struct {
         pub fn color(c: Color) void {
@@ -230,6 +243,14 @@ pub const Drawer = struct {
     };
     pub const dummy = Drawer{
         .clear = dummySignatures.color,
+        .drawLine = struct {
+            pub fn anon(camera: Camera, points: []const Vec2, color: Color) void {
+                _ = camera;
+                _ = points;
+                _ = color;
+                unreachable;
+            }
+        }.anon,
         .drawRect = struct {
             pub fn anon(camera: Camera, rect: Rect, stroke: ?Color, fill: ?Color) void {
                 _ = camera;
@@ -1377,6 +1398,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             pub fn draw(camera: Camera, samples: []const Sample) !void {
                 drawer.drawRect(camera, rect, .black, null);
                 for (samples, 0..) |sample, k| {
+                    drawer.drawArrowForSample(camera, getPoint(k, .output).applyToLocalPoint(.{
+                        .pos = .new(-1.25, 0),
+                        .scale = 0.25,
+                    }));
                     try artist.drawSexpr(
                         camera,
                         getPoint(k, .input),
