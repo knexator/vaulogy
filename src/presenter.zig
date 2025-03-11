@@ -1417,6 +1417,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         return error.TODO;
                     }
                 }
+                drawer.drawDebugText(camera, .{ .pos = rect.get(.top_center).addY(0.2) }, "tests", .black);
             }
         };
 
@@ -1471,6 +1472,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 for (available_fnks, 0..) |fnk_name, k| {
                     try artist.drawSexpr(camera, getPoint(k), fnk_name);
                 }
+                drawer.drawDebugText(camera, .{ .pos = rect.get(.top_center).addY(0.2) }, "vaus", .black);
             }
         };
 
@@ -1489,6 +1491,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .black,
                     null,
                 );
+                drawer.drawDebugText(camera, sexpr_point.applyToLocalPoint(.{ .pos = .new(-1, 0) }), "change vau", .black);
             }
         };
 
