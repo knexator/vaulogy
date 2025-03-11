@@ -7,6 +7,7 @@ const parsing = @import("parsing.zig");
 // Design decision 2: Sexprs are never released :(
 
 const DEBUG = false;
+const OoM = error{ OutOfMemory, BAD_INPUT };
 
 pub const Atom = struct {
     value: []const u8,
@@ -510,14 +511,20 @@ pub const ExecutionThread = struct {
         return ExecutionThread.init(input, fn_name, scoring_run);
     }
 
+    pub const Result = union(enum) {
+        result: *const Sexpr,
+        no_matching_case,
+        missing_or_uncompilable_fnk: *const Sexpr,
+    };
+
     // TODO: remove duplication, maybe
-    pub fn advanceTinyStep(this: *ExecutionThread, scoring_run: *ScoringRun) !?*const Sexpr {
+    pub fn advanceTinyStep(this: *ExecutionThread, scoring_run: *ScoringRun) OoM!?Result {
         var permanent_stuff = scoring_run.mem;
         if (this.stack.items.len > 0) {
             const last_stack_ptr: *StackThing = &this.stack.items[this.stack.items.len - 1];
             const initial_bindings_count = last_stack_ptr.cur_bindings.items.len;
 
-            if (last_stack_ptr.cur_cases.len == 0) return error.NoMatchingCase;
+            if (last_stack_ptr.cur_cases.len == 0) return .no_matching_case;
 
             const case = last_stack_ptr.cur_cases[0];
             const rest_of_cases = last_stack_ptr.cur_cases[1..];
@@ -546,7 +553,12 @@ pub const ExecutionThread = struct {
             this.score.successful_matches += 1;
 
             var added_new_fnk_to_stack: bool = undefined;
-            const new_thing = try StackThing.init(this.active_value, case.fnk_name, scoring_run);
+            const new_thing = StackThing.init(this.active_value, case.fnk_name, scoring_run) catch |err| switch (err) {
+                // TODO: more detail
+                error.FnkNotFound, error.NoMatchingCase, error.InvalidMetaFnk => return .{ .missing_or_uncompilable_fnk = case.fnk_name },
+                else => |e| return e,
+            };
+
             switch (new_thing) {
                 .stack_thing => |x| {
                     try this.stack.append(x);
@@ -571,7 +583,7 @@ pub const ExecutionThread = struct {
             return null;
         } else {
             this.last_visual_state = .{ .ended = this.active_value };
-            return this.active_value;
+            return .{ .result = this.active_value };
         }
     }
 
@@ -1125,7 +1137,7 @@ fn expectEqualSexprs(expected: *const Sexpr, actual: *const Sexpr) !void {
     }
 }
 
-fn generateBindings(pattern: *const Sexpr, value: *const Sexpr, bindings: *Bindings) !bool {
+fn generateBindings(pattern: *const Sexpr, value: *const Sexpr, bindings: *Bindings) error{ BAD_INPUT, OutOfMemory }!bool {
     if (DEBUG) {
         const stderr = std.io.getStdErr().writer();
         stderr.print("\nGenerating bindings for pattern {any} and value {any}\n", .{ pattern, value }) catch unreachable;

@@ -2337,10 +2337,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             return result;
         }
 
-        pub fn update(self: *Self, delta_seconds: f32) !union(enum) {
+        pub fn update(self: *Self, delta_seconds: f32) OoM!union(enum) {
             nothing,
             cancelled,
-            finished: ?*const Sexpr,
+            finished: core.ExecutionThread.Result,
         } {
             if (platform.getMouse().wasPressed(.right)) self.anim_t = 0.99;
 
@@ -2363,11 +2363,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 self.anim_t -= 1;
                 // _ = try self.thread.advanceTinyStep(self.scoring_run);
 
-                if (self.thread.advanceTinyStep(self.scoring_run) catch |err| switch (err) {
-                    error.FnkNotFound, error.InvalidMetaFnk, error.NoMatchingCase => return .{ .finished = null },
-                    error.OutOfMemory => return err,
-                    error.BAD_INPUT => return err,
-                }) |x| return .{ .finished = x };
+                if (try self.thread.advanceTinyStep(self.scoring_run)) |x| return .{ .finished = x };
             }
             return .nothing;
 
