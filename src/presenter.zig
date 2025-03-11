@@ -370,6 +370,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             level_select: LevelSelect(platform, drawer),
             editing_fnk: EditingFnk(platform, drawer),
             executing_fnk: ExecutingFnk(platform, drawer),
+            after_executing_fnk: AfterExecutingFnk(platform, drawer),
         },
 
         pub fn init(result: *Self) !void {
@@ -469,9 +470,15 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 // TODO
                 .executing_fnk => |*executing| switch (try executing.update(delta_seconds)) {
                     .nothing => {},
-                    .cancelled, .finished => {
-                        self.state = .{ .level_select = try .init(&self.persistence) };
+                    .cancelled => self.state = .{ .level_select = try .init(&self.persistence) },
+                    .finished => |result| {
+                        self.state = .{ .after_executing_fnk = try .init(result) };
                     },
+                },
+                .after_executing_fnk => |*after| switch (try after.update(delta_seconds)) {
+                    .nothing => {},
+                    // TODO
+                    .back => self.state = .{ .level_select = try .init(&self.persistence) },
                 },
                 inline else => |*x| x.update(delta_seconds),
             }
@@ -2740,6 +2747,57 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             if (case.next) |next| {
                 try drawCases(camera, 0, pattern_point, next.items, true, 0);
             }
+        }
+    };
+}
+
+pub fn AfterExecutingFnk(platform: Platform, drawer: Drawer) type {
+    return struct {
+        const Self = @This();
+        const artist = Artist(platform, drawer);
+        const camera: Camera = UI.cam;
+
+        ui_state: UI.State,
+        result: core.ExecutionThread.Result,
+
+        pub fn init(result: core.ExecutionThread.Result) !Self {
+            return Self{
+                .result = result,
+                .ui_state = .{ .buttons = try UI.Button.row(platform.gpa, .zero, .one, &.{
+                    "Back",
+                }) },
+            };
+        }
+
+        pub fn update(self: *Self, delta_seconds: f32) OoM!union(enum) {
+            nothing,
+            back,
+        } {
+            if (self.ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button|
+                switch (pressed_button) {
+                    0 => return .back,
+                    else => return error.TODO,
+                };
+            return .nothing;
+        }
+
+        pub fn draw(self: Self) !void {
+            drawer.clear(Color.gray(128));
+
+            const text_pos: Point = .{ .pos = camera.center };
+            switch (self.result) {
+                .result => {
+                    drawer.drawDebugText(camera, text_pos, "Result:", .black);
+                    // TODO NOW
+                },
+                .no_matching_case => drawer.drawDebugText(camera, text_pos, "Ran out of cases!", .black),
+                .missing_or_uncompilable_fnk => {
+                    drawer.drawDebugText(camera, text_pos, "Could not find or compile this fnk:", .black);
+                    // TODO NOW
+                },
+            }
+
+            self.ui_state.draw(drawer);
         }
     };
 }
