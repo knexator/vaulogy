@@ -469,8 +469,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 // TODO
                 .executing_fnk => |*executing| switch (try executing.update(delta_seconds)) {
                     .nothing => {},
-                    .finished => |final_value| {
-                        _ = final_value;
+                    .cancelled, .finished => {
                         self.state = .{ .level_select = try .init(&self.persistence) };
                     },
                 },
@@ -2311,6 +2310,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
         anim_t: f32,
         anim_speed: f32 = 1.0,
+        anim_paused: bool = false,
 
         pub fn init(
             input: *const Sexpr,
@@ -2323,9 +2323,11 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 .scoring_run = scoring_run,
                 .anim_t = 0.0,
                 .camera = camera,
-                .ui_state = .{ .buttons = try platform.gpa.dupe(UI.Button, &.{
-                    .{ .pos = Rect{ .top_left = .new(1, 0), .size = .one } },
-                    .{ .pos = Rect{ .top_left = .new(3, 0), .size = .one } },
+                .ui_state = .{ .buttons = try UI.Button.row(platform.gpa, .zero, .one, &.{
+                    "Stop",
+                    "Reset\nView",
+                    "Play/\nPause",
+                    "Step",
                 }) },
             };
 
@@ -2337,21 +2339,26 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
         pub fn update(self: *Self, delta_seconds: f32) !union(enum) {
             nothing,
+            cancelled,
             finished: ?*const Sexpr,
         } {
             if (platform.getMouse().wasPressed(.right)) self.anim_t = 0.99;
 
             if (self.ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button|
                 switch (pressed_button) {
-                    0 => self.anim_speed /= 2,
-                    1 => self.anim_speed *= 2,
+                    0 => return .cancelled,
+                    1 => self.camera = std.meta.fieldInfo(EditingFnk(platform, drawer), .camera).defaultValue().?,
+                    2 => self.anim_paused = !self.anim_paused,
+                    3 => self.anim_t = 1.1,
                     else => return error.TODO,
                 };
 
             // move camera
             moveCamera(&self.camera, delta_seconds, platform.getKeyboard(), platform.getMouse());
 
-            self.anim_t += self.anim_speed * delta_seconds / 2.0;
+            if (!self.anim_paused) {
+                self.anim_t += self.anim_speed * delta_seconds / 2.0;
+            }
             while (self.anim_t >= 1) {
                 self.anim_t -= 1;
                 // _ = try self.thread.advanceTinyStep(self.scoring_run);
@@ -2375,8 +2382,6 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             const camera = self.camera;
 
             drawer.clear(Color.gray(128));
-
-            self.ui_state.draw(drawer);
 
             if (false) try artist.drawSexpr(
                 camera,
@@ -2678,6 +2683,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     1,
                 );
             }
+
+            self.ui_state.draw(drawer);
         }
 
         // TODO: remove this duplication from EditingFnk
