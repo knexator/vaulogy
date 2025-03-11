@@ -393,8 +393,12 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             executing_fnk: ExecutingFnk(platform, drawer),
             after_executing_fnk: AfterExecutingFnk(platform, drawer),
         },
+        // kinda hacky, could maybe be a stack
+        prev_editing_state: ?EditingFnk(platform, drawer),
 
         pub fn init(result: *Self) !void {
+            result.prev_editing_state = null;
+
             const platform_alloc = platform.gpa;
             result.mem = VeryPermamentGameStuff.init(platform_alloc);
             var player_data = (try platform.getPlayerData(&result.mem)) orelse PlayerData.empty(&result.mem);
@@ -468,6 +472,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         // todo
                         const fnk = try editing.getFnk();
                         try self.persistence.fnks.put(fnk.name, fnk.body);
+                        self.prev_editing_state = editing.*;
                         self.scoring_run = try core.ScoringRun.initFromFnks(
                             self.persistence.fnks,
                             &self.mem,
@@ -491,15 +496,14 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 // TODO
                 .executing_fnk => |*executing| switch (try executing.update(delta_seconds)) {
                     .nothing => {},
-                    .cancelled => self.state = .{ .level_select = try .init(&self.persistence) },
+                    .cancelled => self.state = .{ .editing_fnk = self.prev_editing_state.? },
                     .finished => |result| {
                         self.state = .{ .after_executing_fnk = try .init(result) };
                     },
                 },
                 .after_executing_fnk => |*after| switch (try after.update(delta_seconds)) {
                     .nothing => {},
-                    // TODO
-                    .back => self.state = .{ .level_select = try .init(&self.persistence) },
+                    .back => self.state = .{ .editing_fnk = self.prev_editing_state.? },
                 },
                 inline else => |*x| x.update(delta_seconds),
             }
