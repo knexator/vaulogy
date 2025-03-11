@@ -376,9 +376,9 @@ pub const ScoringRun = struct {
         return ScoringRun.initFromFnks(all_fnks, mem);
     }
 
-    pub fn deinit(this: *ScoringRun) void {
+    pub fn deinit(this: *ScoringRun, owns_fnks: bool) void {
         this.used_fnks.deinit();
-        this.all_fnks.deinit();
+        if (owns_fnks) this.all_fnks.deinit();
     }
 
     fn findFunktion(this: *ScoringRun, name: *const Sexpr) error{
@@ -645,7 +645,7 @@ const SingleRunHelper = struct {
         result.permanent_stuff = VeryPermamentGameStuff.init(allocator);
         errdefer result.permanent_stuff.deinit();
         result.scoring_run = try ScoringRun.init(all_fnks_raw, &result.permanent_stuff);
-        errdefer result.scoring_run.deinit();
+        errdefer result.scoring_run.deinit(true);
 
         const fn_name = try parsing.parseSingleSexpr(fn_name_raw, &result.permanent_stuff.pool_for_sexprs);
         const input = try parsing.parseSingleSexpr(input_raw, &result.permanent_stuff.pool_for_sexprs);
@@ -654,7 +654,7 @@ const SingleRunHelper = struct {
 
     pub fn deinit(this: *SingleRunHelper) void {
         this.permanent_stuff.deinit();
-        this.scoring_run.deinit();
+        this.scoring_run.deinit(true);
         this.execution.deinit();
     }
 
@@ -753,7 +753,7 @@ pub fn main() !u8 {
             var mem = VeryPermamentGameStuff.init(allocator);
             defer mem.deinit();
             var scoring_run = try ScoringRun.init(fnks_collection_raw, &mem);
-            defer scoring_run.deinit();
+            defer scoring_run.deinit(true);
             var exec = try ExecutionThread.initFromText(input_raw, fn_name_raw, &scoring_run);
             defer exec.deinit();
 
@@ -804,9 +804,9 @@ pub fn main() !u8 {
         var mem = VeryPermamentGameStuff.init(allocator);
         defer mem.deinit();
         var player_score = try ScoringRun.init(player_fnks_collection_raw, &mem);
-        defer player_score.deinit();
+        defer player_score.deinit(true);
         var target_score = try ScoringRun.init(target_fnks_collection_raw, &mem);
-        defer target_score.deinit();
+        defer target_score.deinit(true);
 
         var it = target_score.all_fnks.iterator();
         while (it.next()) |x| {
@@ -912,7 +912,7 @@ pub fn main() !u8 {
         var mem = VeryPermamentGameStuff.init(allocator);
         defer mem.deinit();
         var run = try ScoringRun.init(fnks_collection_raw, &mem);
-        defer run.deinit();
+        defer run.deinit(true);
         const fn_name = try parsing.parseSingleSexpr(fn_name_raw, &mem.pool_for_sexprs);
         const result = try run.findFunktion(fn_name);
         try stdout.print("{any}\n", .{Fnk{ .name = fn_name, .body = result.* }});
@@ -1021,7 +1021,7 @@ test "scoring bubbleUp" {
         \\      }
         \\ }
     , &mem);
-    defer scoring.deinit();
+    defer scoring.deinit(true);
 
     var exec = try ExecutionThread.initFromText("(a b X c d)", "bubbleUp", &scoring);
     defer exec.deinit();
@@ -1065,7 +1065,7 @@ test "scoring with comptime" {
         \\      }
         \\  }
     , &mem);
-    defer scoring.deinit();
+    defer scoring.deinit(true);
 
     var exec = try ExecutionThread.initFromText("2", "stuff", &scoring);
     defer exec.deinit();

@@ -97,7 +97,7 @@ pub const PlayerData = struct {
 
     fn isSolved(level: BuiltinLevel, fnks: FnkCollection, mem: *VeryPermamentGameStuff) !bool {
         var score = try core.ScoringRun.initFromFnks(fnks, mem);
-        defer score.deinit();
+        defer score.deinit(false);
 
         for (level.manual_samples) |sample| {
             var exec = core.ExecutionThread.init(sample.input, level.fnk_name, &score) catch |err| switch (err) {
