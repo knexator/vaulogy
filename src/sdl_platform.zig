@@ -77,13 +77,13 @@ const SdlDrawer = struct {
             .h = screen_size.y,
         };
 
-        if (stroke) |col| {
-            setRenderDrawColor(col);
-            panickify(c.SDL_RenderRect(sdl_renderer, &sdl_rect));
-        }
         if (fill) |col| {
             setRenderDrawColor(col);
             panickify(c.SDL_RenderFillRect(sdl_renderer, &sdl_rect));
+        }
+        if (stroke) |col| {
+            setRenderDrawColor(col);
+            panickify(c.SDL_RenderRect(sdl_renderer, &sdl_rect));
         }
     }
 

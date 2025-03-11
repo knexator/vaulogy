@@ -1174,7 +1174,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         mem: *VeryPermamentGameStuff,
         camera: Camera = Camera{ .center = .new(7, 3), .height = 15.0 },
         ui_state: UI.State,
-        ui_state_for_camera: UI.State,
 
         // TODO: allow user-created Samples
         samples: []const Sample,
@@ -1578,12 +1577,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             const cases = try makeCasesPhysical(mem, fnk_body.cases);
             const main_input = try mem.storeSexpr(Sexpr.doPair(&Sexpr.nil, &Sexpr.input));
 
-            const ui_state = UI.State{ .buttons = try platform.gpa.dupe(UI.Button, &.{
-                .{ .pos = Rect{ .top_left = .new(2, 0), .size = .one }, .text = ">" },
-            }) };
-
-            const ui_state_for_camera = UI.State{ .buttons = try platform.gpa.dupe(UI.Button, &.{
-                .{ .pos = Rect{ .top_left = .new(0, 0), .size = .one }, .text = "Reset\nView" },
+            const ui_state = UI.State{ .buttons = try UI.Button.row(platform.gpa, .zero, .one, &.{
+                "Reset\nView",
+                ">",
             }) };
 
             return .{
@@ -1593,7 +1589,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .cases = cases,
                 .main_input = main_input,
                 .ui_state = ui_state,
-                .ui_state_for_camera = ui_state_for_camera,
                 .available_fnks = available_fnks,
             };
         }
@@ -1667,13 +1662,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .nothing => {
                     if (self.ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button| {
                         switch (pressed_button) {
-                            0 => return .launch_execution,
-                            else => @panic("oops"),
-                        }
-                    }
-                    if (self.ui_state_for_camera.update(platform.getMouse(), delta_seconds)) |pressed_button| {
-                        switch (pressed_button) {
                             0 => self.camera = std.meta.fieldInfo(Self, .camera).defaultValue().?,
+                            1 => return .launch_execution,
                             else => @panic("oops"),
                         }
                     }
@@ -1983,7 +1973,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             self.ui_state.draw(drawer);
-            self.ui_state_for_camera.draw(drawer);
         }
 
         fn drawCases(camera: Camera, is_first: bool, parent_point: Point, group: CaseGroup) OoM!void {
@@ -2817,6 +2806,14 @@ const UI = struct {
         hot_t: f32 = 0,
         active_t: f32 = 0,
         text: ?[:0]const u8 = null,
+
+        pub fn row(alloc: std.mem.Allocator, top_left: Vec2, size: Vec2, texts: []const ?[:0]const u8) ![]Button {
+            const result: []Button = try alloc.alloc(Button, texts.len);
+            for (texts, result, 0..) |text, *target, k| {
+                target.* = .{ .pos = Rect{ .top_left = top_left.addX(size.x * tof32(k)), .size = size }, .text = text };
+            }
+            return result;
+        }
     };
 };
 
