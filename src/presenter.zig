@@ -2398,6 +2398,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         anim_speed: f32 = 2.0,
         anim_paused: bool = false,
 
+        result: ?core.ExecutionThread.Result,
+
         pub fn init(
             input: *const Sexpr,
             fn_name: *const Sexpr,
@@ -2415,14 +2417,13 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     "Play/\nPause",
                     "Step",
                 }) },
+                .result = null,
             };
 
             // for now, skip the "start" anim
             // std.debug.assert(null == try result.thread.advanceTinyStep(result.scoring_run));
-            if (try result.thread.advanceTinyStep(result.scoring_run) != null) {
-                // TODO: hack
-                result.thread = try .init(input, fn_name, scoring_run);
-            }
+            const asdf = try result.thread.advanceTinyStep(result.scoring_run);
+            result.result = asdf;
 
             return result;
         }
@@ -2432,8 +2433,6 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             cancelled,
             finished: core.ExecutionThread.Result,
         } {
-            if (platform.getMouse().wasPressed(.right)) self.anim_t = 0.99;
-
             if (self.ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button|
                 switch (pressed_button) {
                     0 => return .cancelled,
@@ -2452,8 +2451,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             while (self.anim_t >= 1) {
                 self.anim_t -= 1;
                 // _ = try self.thread.advanceTinyStep(self.scoring_run);
-
-                if (try self.thread.advanceTinyStep(self.scoring_run)) |x| return .{ .finished = x };
+                if (self.result) |x| return .{ .finished = x };
+                self.result = try self.thread.advanceTinyStep(self.scoring_run);
             }
             return .nothing;
 
@@ -2468,15 +2467,6 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             const camera = self.camera;
 
             drawer.clear(Color.gray(128));
-
-            if (false) try artist.drawSexpr(
-                camera,
-                .{
-                    .pos = platform.getMouse().cur.pos(camera),
-                    .scale = 1 - self.anim_t,
-                },
-                &Sexpr.input,
-            );
 
             var parent_point = Point{};
 
@@ -2751,9 +2741,50 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         }
                     }
                 },
+                .ran_out_of_cases => {
+                    parent_point = parent_point.applyToLocalPoint(.{ .pos = .new(-self.anim_t * 12, 0) });
+                    const active_stack: core.StackThing = it.next().?;
+                    artist.drawOffscreenCableTo(camera, parent_point.applyToLocalPoint(MAIN_INPUT_POS));
+                    try artist.drawSexpr(camera, parent_point.applyToLocalPoint(MAIN_INPUT_POS), self.thread.active_value);
+                    try artist.drawHoldedFnk(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), 1, active_stack.cur_fnk_name);
+                },
+                .failed_to_find_or_compile_fnk => |asdf| {
+                    if (self.anim_t < 0.5) {
+                        const t = clamp01(remap(self.anim_t, 0, 0.4, 0, 1));
+                        const t2 = clamp01(remap(self.anim_t, 0.4, 0.5, 0, 1));
+
+                        artist.drawOffscreenCableTo(camera, MAIN_INPUT_POS);
+                        try artist.drawSexpr(
+                            camera,
+                            parent_point.applyToLocalPoint(MAIN_INPUT_POS),
+                            asdf.old_active_value,
+                        );
+                        try artist.drawHoldedFnk(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), 1, asdf.old_fnk_name);
+
+                        try drawCase(
+                            camera,
+                            1 - t2 * 0.5,
+                            parent_point
+                                .applyToLocalPoint(.{ .pos = .new(lerp(DIST_TO_TEMPLATE, 4, t2), lerp(3, 0, t)) }),
+                            asdf.case,
+                            true,
+                            true,
+                            0,
+                        );
+                    } else {
+                        const t = remap(self.anim_t, 0.5, 1, 0, 1);
+                        const cam = Camera.lerp(camera, DEFAULT_CAM, t);
+                        const p = Point.lerp(parent_point
+                            .applyToLocalPoint(.{ .pos = .new(4, 0) })
+                            .applyToLocalPoint(FNK_NAME_OFFSET), AfterExecutingFnk(platform, drawer).bad_fnk_pos, t);
+                        try artist.drawSexpr(cam, p, asdf.case.fnk_name);
+                    }
+                },
                 .ended => |result| {
-                    artist.drawOffscreenCableTo(camera, MAIN_INPUT_POS);
-                    try artist.drawSexpr(camera, parent_point.applyToLocalPoint(MAIN_INPUT_POS), result);
+                    const cam = Camera.lerp(camera, DEFAULT_CAM, self.anim_t);
+                    const p = Point.lerp(MAIN_INPUT_POS, AfterExecutingFnk(platform, drawer).result_pos, self.anim_t);
+                    artist.drawOffscreenCableTo(cam, p);
+                    try artist.drawSexpr(cam, p, result);
                 },
             }
             while (it.next()) |x| {
@@ -2838,7 +2869,10 @@ pub fn AfterExecutingFnk(platform: Platform, drawer: Drawer) type {
     return struct {
         const Self = @This();
         const artist = Artist(platform, drawer);
-        const camera: Camera = UI.cam;
+        const camera: Camera = DEFAULT_CAM;
+        const text_pos: Point = (Point{ .pos = camera.center, .scale = 3 }).applyToLocalPoint(.{ .pos = .new(0, -1) });
+        pub const result_pos: Point = text_pos.applyToLocalPoint(.{ .pos = .new(-1, 2) });
+        pub const bad_fnk_pos: Point = text_pos.applyToLocalPoint(.{ .pos = .new(0, 2), .turns = -0.25, .scale = 0.5 });
 
         ui_state: UI.State,
         result: core.ExecutionThread.Result,
@@ -2867,16 +2901,15 @@ pub fn AfterExecutingFnk(platform: Platform, drawer: Drawer) type {
         pub fn draw(self: Self) !void {
             drawer.clear(Color.gray(128));
 
-            const text_pos: Point = (Point{ .pos = camera.center, .scale = 3 }).applyToLocalPoint(.{ .pos = .new(0, -1) });
             switch (self.result) {
                 .result => |value| {
                     drawer.drawDebugText(camera, text_pos, "Result:", .black);
-                    try artist.drawSexpr(camera, text_pos.applyToLocalPoint(.{ .pos = .new(-1, 2) }), value);
+                    try artist.drawSexpr(camera, result_pos, value);
                 },
                 .no_matching_case => drawer.drawDebugText(camera, text_pos, "Ran out of cases!", .black),
                 .missing_or_uncompilable_fnk => |fnk_name| {
                     drawer.drawDebugText(camera, text_pos, "Could not find or compile this fnk:", .black);
-                    try artist.drawSexpr(camera, text_pos.applyToLocalPoint(.{ .pos = .new(0, 2), .turns = -0.25, .scale = 0.5 }), fnk_name);
+                    try artist.drawSexpr(camera, bad_fnk_pos, fnk_name);
                 },
             }
 

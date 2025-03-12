@@ -458,6 +458,12 @@ pub const ExecutionThread = struct {
     last_visual_state: VisualState = .just_started,
     pub const VisualState = union(enum) {
         just_started,
+        ran_out_of_cases,
+        failed_to_find_or_compile_fnk: struct {
+            case: MatchCaseDefinition,
+            old_fnk_name: *const Sexpr,
+            old_active_value: *const Sexpr,
+        },
         failed_to_match: MatchCaseDefinition,
         matched: struct {
             tail_optimized: bool,
@@ -524,7 +530,10 @@ pub const ExecutionThread = struct {
             const last_stack_ptr: *StackThing = &this.stack.items[this.stack.items.len - 1];
             const initial_bindings_count = last_stack_ptr.cur_bindings.items.len;
 
-            if (last_stack_ptr.cur_cases.len == 0) return .no_matching_case;
+            if (last_stack_ptr.cur_cases.len == 0) {
+                this.last_visual_state = .ran_out_of_cases;
+                return .no_matching_case;
+            }
 
             const case = last_stack_ptr.cur_cases[0];
             const rest_of_cases = last_stack_ptr.cur_cases[1..];
@@ -555,7 +564,14 @@ pub const ExecutionThread = struct {
             var added_new_fnk_to_stack: bool = undefined;
             const new_thing = StackThing.init(this.active_value, case.fnk_name, scoring_run) catch |err| switch (err) {
                 // TODO: more detail
-                error.FnkNotFound, error.NoMatchingCase, error.InvalidMetaFnk => return .{ .missing_or_uncompilable_fnk = case.fnk_name },
+                error.FnkNotFound, error.NoMatchingCase, error.InvalidMetaFnk => {
+                    this.last_visual_state = .{ .failed_to_find_or_compile_fnk = .{
+                        .case = case,
+                        .old_active_value = old_active_value,
+                        .old_fnk_name = old_fnk_name,
+                    } };
+                    return .{ .missing_or_uncompilable_fnk = case.fnk_name };
+                },
                 else => |e| return e,
             };
 
