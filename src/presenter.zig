@@ -404,24 +404,16 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             var player_data = (try platform.getPlayerData(&result.mem)) orelse PlayerData.empty(&result.mem);
 
             if (!player_data.first_time) return error.TODO;
-            const tutorial_fnk =
-                \\planetFromOlympian {
-                \\  // Hermes -> Mercury;
-                \\  Aphrodite -> Venus;
-                \\  Ares -> Mars;
-                \\  Zeus -> Jupiter;
-                \\  Kronos -> Saturn;
-                \\  Poseidon -> Neptune;
-                \\  Hades -> Pluto;
-                \\}
-            ;
-            var parser = parsing.Parser{ .remaining_text = tutorial_fnk };
-            const fnk = try parser.parseFnkNew(&result.mem.pool_for_sexprs, result.mem.arena_for_cases.allocator());
-            try player_data.fnks.put(fnk.name, fnk.body);
-            try player_data.updateSolvedStatus(0, &result.mem);
-            try platform.setPlayerData(player_data, &result.mem);
 
-            try player_data.fnks.put(try result.mem.storeSexpr(Sexpr.doLit("default2")), defaultFnkBody2(&result.mem));
+            for (builtin_levels) |level| {
+                if (level.premade_solution) |raw_fnk| {
+                    var parser = parsing.Parser{ .remaining_text = raw_fnk };
+                    const fnk = try parser.parseFnkNew(&result.mem.pool_for_sexprs, result.mem.arena_for_cases.allocator());
+                    std.debug.assert(fnk.name.equals(level.fnk_name));
+                    try player_data.fnks.put(fnk.name, fnk.body);
+                }
+            }
+            try platform.setPlayerData(player_data, &result.mem);
             result.persistence = player_data;
 
             // try player_data.fnks.put(builtin_levels[0].fnk_name, defaultFnkBody1(&result.mem));
@@ -557,6 +549,7 @@ const BuiltinLevel = struct {
     solution: *const fn (input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr,
     manual_samples: []const Sample,
     description: [:0]const u8,
+    premade_solution: ?[]const u8,
 
     // TODO: have a comptime pool of Sexprs so this works for solutions that actually use mem
     pub fn init(
@@ -564,6 +557,7 @@ const BuiltinLevel = struct {
         solution: *const fn (input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr,
         comptime manual_inputs: []const *const Sexpr,
         description: [:0]const u8,
+        premade_solution: ?[]const u8,
     ) BuiltinLevel {
         var manual_samples: [manual_inputs.len]Sample = undefined;
         for (manual_inputs, &manual_samples) |input, *sample| {
@@ -576,10 +570,12 @@ const BuiltinLevel = struct {
             .solution = solution,
             .manual_samples = &manual_samples_done,
             .description = description,
+            .premade_solution = premade_solution,
         };
     }
 };
 const builtin_levels: []const BuiltinLevel = &.{
+    // TODO: solutions
     .{ .fnk_name = &Sexpr.doLit("planetFromOlympian"), .solution = struct {
         fn anon(input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr {
             _ = mem;
@@ -588,13 +584,22 @@ const builtin_levels: []const BuiltinLevel = &.{
     }.anon, .manual_samples = &.{
         .{ .input = &Sexpr.doLit("Hermes"), .output = &Sexpr.doLit("Mercury") },
         .{ .input = &Sexpr.doLit("Aphrodite"), .output = &Sexpr.doLit("Venus") },
-    }, .description = "the tutorial level, etc." },
+        .{ .input = &Sexpr.doLit("Ares"), .output = &Sexpr.doLit("Mars") },
+        .{ .input = &Sexpr.doLit("Zeus"), .output = &Sexpr.doLit("Jupiter") },
+    }, .description = "the tutorial level, etc.", .premade_solution = 
+    \\planetFromOlympian {
+    \\  // Hermes -> Mercury;
+    \\  Aphrodite -> Venus;
+    \\  Ares -> Mars;
+    \\  Zeus -> Jupiter;
+    \\}
+    },
     .init(&Sexpr.doLit("default1"), struct {
         fn anon(input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr {
             _ = mem;
             return input;
         }
-    }.anon, &.{ &Sexpr.true, &Sexpr.false, &Sexpr.pair_nil_nil, &Sexpr.nil }, "etc"),
+    }.anon, &.{ &Sexpr.true, &Sexpr.false, &Sexpr.pair_nil_nil, &Sexpr.nil }, "etc", null),
 };
 
 // code smell
