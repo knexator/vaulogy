@@ -957,6 +957,7 @@ const SexprView = struct {
     }
 };
 
+const DEFAULT_CAM: Camera = .{ .center = .new(7, 3), .height = 15.0 };
 const DIST_TO_TEMPLATE = 5;
 const FNK_NAME_OFFSET = Point{
     .pos = .new(DIST_TO_TEMPLATE - 1, -0.75),
@@ -1107,14 +1108,8 @@ fn LevelSelectToEditingFnk(platform: Platform, drawer: Drawer) type {
     return struct {
         const Self = @This();
         const artist = Artist(platform, drawer);
+        const camera: Camera = DEFAULT_CAM;
 
-        const camera: Camera = std.meta.fieldInfo(EditingFnk(platform, drawer), .camera).defaultValue().?;
-
-        // prev: LevelSelect(platform, drawer),
-        // next: struct {
-        //     fnk_name: *const Sexpr,
-        //     builtin_samples: ?[]const Sample,
-        // },
         starting_point: Point,
         level: BuiltinLevel,
         t: f32,
@@ -1272,7 +1267,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         };
 
         mem: *VeryPermamentGameStuff,
-        camera: Camera = Camera{ .center = .new(7, 3), .height = 15.0 },
+        camera: Camera = DEFAULT_CAM,
         ui_state: UI.State,
         meta_enabled: bool,
         // TODO: allow user-created Samples
@@ -1763,7 +1758,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         // TODO: it would be nice to have the scale instantly correct when the camera zooms
                         Point{
                             .pos = platform.getMouse().cur.pos(camera),
-                            .scale = camera.height / std.meta.fieldInfo(Self, .camera).defaultValue().?.height,
+                            .scale = camera.height / DEFAULT_CAM.height,
                         }, 0.6, delta_seconds);
                     math.lerp_towards(&grabbing.is_pattern, if (grabbing.address_if_released) |goal|
                         if (goal.isPattern()) 1 else 0
@@ -1774,7 +1769,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     if (self.ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button| {
                         switch (pressed_button) {
                             0 => return .back_to_level_select,
-                            1 => self.camera = std.meta.fieldInfo(Self, .camera).defaultValue().?,
+                            1 => self.camera = DEFAULT_CAM,
                             2 => return .launch_execution,
                             else => @panic("oops"),
                         }
@@ -2442,7 +2437,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             if (self.ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button|
                 switch (pressed_button) {
                     0 => return .cancelled,
-                    1 => self.camera = std.meta.fieldInfo(EditingFnk(platform, drawer), .camera).defaultValue().?,
+                    1 => self.camera = DEFAULT_CAM,
                     2 => self.anim_paused = !self.anim_paused,
                     3 => self.anim_t = 1.1,
                     else => return error.TODO,
