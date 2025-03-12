@@ -446,10 +446,23 @@ pub const Camera = struct {
         };
     }
 
+    pub fn remap(old_cam: Camera, old_pos: Point, new_cam: Camera) Point {
+        return worldFromScreen(new_cam, old_cam.screenFromWorld(old_pos));
+    }
+
     /// relative_screen_pos is in ([0..aspect_ratio], [0..1])
     pub fn worldFromScreenPosition(self: Camera, relative_screen_pos: Vec2) Vec2 {
         const rect = self.toRect();
         return rect.top_left.add(relative_screen_pos.scale(self.height));
+    }
+
+    /// relative_screen_point.pos is in ([0..aspect_ratio], [0..1])
+    fn worldFromScreen(camera: Camera, relative_screen_point: Point) Point {
+        return .{
+            .pos = camera.worldFromScreenPosition(relative_screen_point.pos),
+            .scale = relative_screen_point.scale * camera.height,
+            .turns = relative_screen_point.turns,
+        };
     }
 
     /// assumes the screen as a height of 1

@@ -389,6 +389,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             /// not used for now
             intro: IntroSequence(platform, drawer),
             level_select: LevelSelect(platform, drawer),
+            level_select_to_editing_fnk: LevelSelectToEditingFnk(platform, drawer),
             editing_fnk: EditingFnk(platform, drawer),
             executing_fnk: ExecutingFnk(platform, drawer),
             after_executing_fnk: AfterExecutingFnk(platform, drawer),
@@ -449,8 +450,12 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             }
             switch (self.state) {
                 .level_select => |*ui| if (ui.update(delta_seconds)) |level_index| {
-                    const level = builtin_levels[level_index];
-                    try self.initEditing(level.fnk_name, level.manual_samples);
+                    self.state = .{
+                        .level_select_to_editing_fnk = .init(ui.*, level_index),
+                    };
+                },
+                .level_select_to_editing_fnk => |*anim| if (anim.update(delta_seconds)) {
+                    try self.initEditing(anim.level.fnk_name, anim.level.manual_samples);
                 },
                 .editing_fnk => |*editing| switch (try editing.update(delta_seconds)) {
                     .nothing => {},
@@ -1097,6 +1102,46 @@ const CaseGroup = struct {
         }
     }
 };
+
+fn LevelSelectToEditingFnk(platform: Platform, drawer: Drawer) type {
+    return struct {
+        const Self = @This();
+        const artist = Artist(platform, drawer);
+
+        const camera: Camera = std.meta.fieldInfo(EditingFnk(platform, drawer), .camera).defaultValue().?;
+
+        // prev: LevelSelect(platform, drawer),
+        // next: struct {
+        //     fnk_name: *const Sexpr,
+        //     builtin_samples: ?[]const Sample,
+        // },
+        starting_point: Point,
+        level: BuiltinLevel,
+        t: f32,
+
+        pub fn init(prev: LevelSelect(platform, drawer), level_index: usize) Self {
+            return .{
+                .level = builtin_levels[level_index],
+                .starting_point = Camera.remap(
+                    UI.cam,
+                    prev.getLevelButtonPoint(level_index),
+                    camera,
+                ),
+                .t = 0,
+            };
+        }
+
+        pub fn update(self: *Self, delta_seconds: f32) bool {
+            math.towards(&self.t, 1, delta_seconds / 0.5);
+            return self.t >= 1;
+        }
+
+        pub fn draw(self: Self) !void {
+            drawer.clear(Color.gray(128));
+            try artist.drawHoldedFnk(camera, Point.lerp(self.starting_point, MAIN_FNK_POS, self.t), 1, self.level.fnk_name);
+        }
+    };
+}
 
 pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
     return struct {
@@ -3013,6 +3058,14 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
                 drawer.drawDebugText(UI.cam, .{ .pos = UI.cam.center }, level.description, .black);
                 self.play_level_button.draw(drawer);
             }
+        }
+
+        pub fn getLevelButtonPoint(self: Self, level_index: usize) Point {
+            return .{
+                .pos = self.level_select_buttons.buttons[level_index].pos.top_left.add(.new(0.5, 1)),
+                .turns = -0.25,
+                .scale = 0.5,
+            };
         }
     };
 }
