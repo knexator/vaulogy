@@ -599,12 +599,22 @@ const builtin_levels: []const BuiltinLevel = &.{
     \\  Zeus -> Jupiter;
     \\}
     },
-    .init(&Sexpr.doLit("default1"), struct {
+    .{ .fnk_name = &Sexpr.doLit("wrapOlympian"), .solution = struct {
         fn anon(input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr {
             _ = mem;
             return input;
         }
-    }.anon, &.{ &Sexpr.true, &Sexpr.false, &Sexpr.pair_nil_nil, &Sexpr.nil }, "etc", null),
+    }.anon, .manual_samples = &.{
+        .{ .input = &Sexpr.doLit("Hermes"), .output = &Sexpr.doPair(&Sexpr.doPair(&Sexpr.doLit("top"), &Sexpr.doLit("Hermes")), &Sexpr.doLit("bottom")) },
+        .{ .input = &Sexpr.doLit("Aphrodite"), .output = &Sexpr.doPair(&Sexpr.doPair(&Sexpr.doLit("top"), &Sexpr.doLit("Aphrodite")), &Sexpr.doLit("bottom")) },
+        .{ .input = &Sexpr.doLit("Ares"), .output = &Sexpr.doPair(&Sexpr.doPair(&Sexpr.doLit("top"), &Sexpr.doLit("Ares")), &Sexpr.doLit("bottom")) },
+        .{ .input = &Sexpr.doLit("Zeus"), .output = &Sexpr.doPair(&Sexpr.doPair(&Sexpr.doLit("top"), &Sexpr.doLit("Zeus")), &Sexpr.doLit("bottom")) },
+    }, .description = "wrap stuff", .premade_solution = 
+    \\wrapOlympian {
+    \\  Ares -> ((top . Ares) . bottom);
+    \\  Zeus -> ((top . Zeus) . bottom);
+    \\}
+    },
 };
 
 // code smell
