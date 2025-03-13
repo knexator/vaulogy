@@ -1276,6 +1276,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         };
 
+        const TutorialState = union(enum) {
+            none,
+            first_level,
+
+            pub fn allow_other_vaus(self: TutorialState) bool {
+                return self == .none;
+            }
+        };
+
         mem: *VeryPermamentGameStuff,
         camera: Camera = DEFAULT_CAM,
         ui_state: UI.State,
@@ -1286,6 +1295,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         available_fnks: []const *const Sexpr,
         cases: CaseGroup,
         main_input: *const Sexpr,
+
+        tutorial_state: TutorialState,
 
         focus: union(enum) {
             nothing,
@@ -1705,6 +1716,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .available_fnks = available_fnks,
                 // TODO: figure out when to enable the meta features
                 .meta_enabled = false,
+                .tutorial_state = if (fnk_name.equals(builtin_levels[0].fnk_name)) .first_level else .none,
             };
         }
 
@@ -2033,9 +2045,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             try toolbar.draw(camera);
 
             try samples_reel.draw(camera, self.samples);
-            try fnks_reel.draw(camera, self.available_fnks);
-
-            try fnk_manager.draw(camera);
+            if (self.tutorial_state.allow_other_vaus()) {
+                try fnks_reel.draw(camera, self.available_fnks);
+                try fnk_manager.draw(camera);
+            }
             if (self.meta_enabled) try meta_converter.draw(camera);
 
             switch (self.focus) {
@@ -2090,6 +2103,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             self.ui_state.draw(drawer);
+
+            switch (self.tutorial_state) {
+                .none => {},
+                .first_level => {
+                    drawer.drawDebugText(camera, .{ .pos = .new(10, 0) }, "← That gray thing is the current Data;\nfeel free to change it", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(8, -3.5), .scale = 0.75 }, "pick new Cases from here ↓", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(-3.25, 7), .scale = 0.75 }, "↑\nThese are the Data\ntransformations your Vau\nmust achieve.", .black);
+                },
+            }
         }
 
         fn drawCases(camera: Camera, is_first: bool, parent_point: Point, group: CaseGroup) OoM!void {
