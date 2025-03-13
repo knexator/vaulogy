@@ -591,7 +591,7 @@ const builtin_levels: []const BuiltinLevel = &.{
         .{ .input = &Sexpr.doLit("Aphrodite"), .output = &Sexpr.doLit("Venus") },
         .{ .input = &Sexpr.doLit("Ares"), .output = &Sexpr.doLit("Mars") },
         .{ .input = &Sexpr.doLit("Zeus"), .output = &Sexpr.doLit("Jupiter") },
-    }, .description = "the tutorial level, etc.", .premade_solution = 
+    }, .description = "The simplest Vau: a hardcoded translation", .premade_solution = 
     \\planetFromOlympian {
     \\  // Hermes -> Mercury;
     \\  Aphrodite -> Venus;
@@ -609,7 +609,7 @@ const builtin_levels: []const BuiltinLevel = &.{
         .{ .input = &Sexpr.doLit("Aphrodite"), .output = &Sexpr.doPair(&Sexpr.doPair(&Sexpr.doLit("top"), &Sexpr.doLit("Aphrodite")), &Sexpr.doLit("bottom")) },
         .{ .input = &Sexpr.doLit("Ares"), .output = &Sexpr.doPair(&Sexpr.doPair(&Sexpr.doLit("top"), &Sexpr.doLit("Ares")), &Sexpr.doLit("bottom")) },
         .{ .input = &Sexpr.doLit("Zeus"), .output = &Sexpr.doPair(&Sexpr.doPair(&Sexpr.doLit("top"), &Sexpr.doLit("Zeus")), &Sexpr.doLit("bottom")) },
-    }, .description = "wrap stuff", .premade_solution = 
+    }, .description = "This Vau takes unstable Data and wraps it safely", .premade_solution = 
     \\wrapOlympian {
     \\  Ares -> ((top . Ares) . bottom);
     \\  Zeus -> ((top . Zeus) . bottom);
@@ -3095,6 +3095,12 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
                 const level = builtin_levels[selected];
                 drawer.drawDebugText(UI.cam, .{ .pos = UI.cam.center }, level.description, .black);
                 self.play_level_button.draw(drawer);
+            } else {
+                drawer.drawDebugText(UI.cam, .{ .pos = UI.cam.center },
+                    \\Welcome to the Vaulogy lab! 
+                    \\Vaus are simple machines for transforming Data into Data.
+                    \\Your goal is to fill in all these Vaus.
+                , .black);
             }
         }
 
