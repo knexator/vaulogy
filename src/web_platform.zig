@@ -202,6 +202,10 @@ const WebDrawer = struct {
         );
     }
 
+    pub fn setTransparency(alpha: f32) void {
+        js.canvas.setGlobalAlpha(alpha);
+    }
+
     pub fn drawLine(camera: Camera, points: []const Vec2, color: Color) void {
         const screen_positions = gpa.allocator().alloc(Vec2, points.len) catch @panic("OoM");
         defer gpa.allocator().free(screen_positions);
@@ -568,6 +572,7 @@ const web_platform = presenter.Platform{
 };
 const web_drawer = presenter.Drawer{
     .clear = js_better.canvas.clear,
+    .setTransparency = WebDrawer.setTransparency,
     .drawLine = WebDrawer.drawLine,
     .drawRect = WebDrawer.drawRect,
     .drawDebugText = WebDrawer.drawDebugText,

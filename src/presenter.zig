@@ -195,6 +195,7 @@ pub const AtomVisuals = struct {
 
 pub const Drawer = struct {
     clear: fn (color: Color) void,
+    setTransparency: fn (alpha: f32) void,
     drawLine: fn (camera: Camera, points: []const Vec2, color: Color) void,
     drawRect: fn (camera: Camera, rect: Rect, stroke: ?Color, fill: ?Color) void,
     drawDebugText: fn (camera: Camera, center: Point, text: [:0]const u8, color: Color) void,
@@ -243,6 +244,12 @@ pub const Drawer = struct {
     };
     pub const dummy = Drawer{
         .clear = dummySignatures.color,
+        .setTransparency = struct {
+            pub fn anon(alpha: f32) void {
+                _ = alpha;
+                unreachable;
+            }
+        }.anon,
         .drawLine = struct {
             pub fn anon(camera: Camera, points: []const Vec2, color: Color) void {
                 _ = camera;
@@ -1199,8 +1206,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         const CaseAddressWithPoint = struct {
             address: core.CaseAddress,
-            // TODO NOW
-            // pattern_point: Point,
+            pattern_point_relative_to_parent: Point,
         };
         const CasePlace = union(enum) {
             main_fnk: union(enum) {
@@ -2066,10 +2072,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             .main_fnk => |unfolded| {
                                 const global_point = try self.cases.getPatternGlobalPoint(.{}, unfolded.existing);
                                 var asdf = try self.cases.removeAt(unfolded.existing);
+                                const old_point = asdf.pattern_point_relative_to_parent;
                                 asdf.pattern_point_relative_to_parent = global_point;
                                 self.focus = .{ .grabbing_case = .{
                                     .case = asdf,
-                                    .address_if_released = .{ .main_fnk = .{ .ghost = .{ .address = unfolded.existing } } },
+                                    .address_if_released = .{ .main_fnk = .{ .ghost = .{
+                                        .address = unfolded.existing,
+                                        .pattern_point_relative_to_parent = old_point,
+                                    } } },
                                 } };
                             },
                             .meta_converter => {
@@ -2187,15 +2197,27 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .grabbing_case => |grabbing| {
                     if (grabbing.address_if_released) |place| {
                         switch (place) {
-                            // .main_fnk => |address| {
-                            //     const pattern_point = try self.cases.getPatternGlobalPoint(.{}, address);
-                            //     try artist.drawPatternSexpr(
-                            //         camera,
-                            //         pattern_point,
-                            //         grabbing.case.pattern,
-                            //     );
-                            //     // try drawCaseExtra(camera, pattern_point, grabbing.case);
-                            // },
+                            .main_fnk => |address| {
+                                drawer.setTransparency(0.5);
+                                const pattern_point = (try self.cases
+                                    .getPatternGlobalPoint(.{}, address.ghost.address[0 .. address.ghost.address.len - 1]))
+                                    .applyToLocalPoint(address.ghost.pattern_point_relative_to_parent);
+                                try artist.drawPatternSexpr(
+                                    camera,
+                                    pattern_point,
+                                    grabbing.case.pattern,
+                                );
+                                try drawCaseExtra(camera, pattern_point, grabbing.case);
+                                const pos = pattern_point.applyToLocalPosition(.new(0, 1));
+                                drawer.drawCable(
+                                    camera,
+                                    pos.sub(.new(if (address.ghost.address.len == 1) 5 else 3, 0)),
+                                    pos,
+                                    1,
+                                    0,
+                                );
+                                drawer.setTransparency(1);
+                            },
                             else => {}, // TODO
                         }
                     }
@@ -2289,13 +2311,16 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 else
                     null;
                 try doGrabbingCaseFirstPass(self.mem, main_fnk_address_if_released, &.{}, self.cases, delta_seconds);
-                const asdf: ?CaseAddressWithPoint = if (self.cases.cases.items.len == 0) .{ .address = try self.debugMakeAddress(0) } else try doGrabbingCaseSecondPass(
-                    mouse_pos,
-                    main_fnk_address_if_released,
-                    self.mem,
-                    &.{},
-                    &self.cases,
-                );
+                const asdf: ?CaseAddressWithPoint = if (self.cases.cases.items.len == 0)
+                    .{ .address = try self.debugMakeAddress(0), .pattern_point_relative_to_parent = @panic("TODO NOW") }
+                else
+                    try doGrabbingCaseSecondPass(
+                        mouse_pos,
+                        main_fnk_address_if_released,
+                        self.mem,
+                        &.{},
+                        &self.cases,
+                    );
                 if (asdf) |x| {
                     return OverlapResult{ .case = .{ .ghost = x } };
                 } else {
@@ -2321,6 +2346,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             sexpr: core.FullAddress,
         };
 
+        fn relativePatternPoint(is_gen0: bool, is_folded: bool, cur_top_line: f32) Point {
+            return .{
+                .pos = .new(if (is_gen0) 5 else 4, cur_top_line + if (is_folded) tof32(0.5) else 1.0),
+                .scale = if (is_folded) 0.5 else 1,
+            };
+        }
+
         fn updateCasePositionsAndReturnMouseOverlap(mem: *VeryPermamentGameStuff, parent_address: core.CaseAddress, relative_mouse_pos: Vec2, group: CaseGroup, delta_seconds: f32) !?OverlapResult {
             const is_gen0 = parent_address.len == 0;
             var cur_top_line: f32 = 2;
@@ -2330,10 +2362,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             for (group.cases.items, 0..) |*case, k| {
                 const is_folded: bool = k != unfolded;
                 defer cur_top_line += if (is_folded) 1.5 else 2.5;
-                const relative_pattern_point = Point{
-                    .pos = .new(if (is_gen0) 5 else 4, cur_top_line + if (is_folded) tof32(0.5) else 1.0),
-                    .scale = if (is_folded) 0.5 else 1,
-                };
+                const relative_pattern_point = relativePatternPoint(is_gen0, is_folded, cur_top_line);
                 case.pattern_point_relative_to_parent.lerp_towards(relative_pattern_point, 0.6, delta_seconds);
 
                 const local_mouse_pos = relative_pattern_point.inverseApplyGetLocalPosition(relative_mouse_pos);
@@ -2487,7 +2516,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         -5.0 / case.pattern_point_relative_to_parent.scale,
                         0,
                     )) {
-                        return .{ .address = try childAddress(mem, parent_address, k) };
+                        return .{
+                            .address = try childAddress(mem, parent_address, k),
+                            .pattern_point_relative_to_parent = case
+                                .pattern_point_relative_to_parent
+                                .applyToLocalPoint(.{ .scale = 1.5, .pos = .new(0, -3) }),
+                        };
                     }
                 } else {
                     if (group.cases.items.len > 0) {
@@ -2501,7 +2535,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             -5.0 / last_case.pattern_point_relative_to_parent.scale,
                             0,
                         )) {
-                            return .{ .address = try childAddress(mem, parent_address, group.cases.items.len) };
+                            return .{
+                                .address = try childAddress(mem, parent_address, group.cases.items.len),
+                                .pattern_point_relative_to_parent = last_case
+                                    .pattern_point_relative_to_parent
+                                    .applyToLocalPoint(.{ .scale = 1.5, .pos = .new(0, 3) }),
+                            };
                         }
                     }
 
@@ -2526,7 +2565,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     return x;
                                 }
                             } else if (inRange(cur_relative_mouse.x, 0, 5) and cur_relative_mouse.y > 0) {
-                                return .{ .address = try childAddress(mem, cur_address, 0) };
+                                return .{
+                                    .address = try childAddress(mem, cur_address, 0),
+                                    .pattern_point_relative_to_parent = relativePatternPoint(false, false, 2),
+                                };
                             } else {
                                 return null;
                             }

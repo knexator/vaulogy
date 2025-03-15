@@ -66,6 +66,11 @@ const SdlDrawer = struct {
         panickify(c.SDL_RenderClear(sdl_renderer));
     }
 
+    pub fn setTransparency(alpha: f32) void {
+        // TODO
+        _ = alpha;
+    }
+
     pub fn drawLine(camera: Camera, points: []const Vec2, color: Color) void {
         const screen_positions = gpa.allocator().alloc(Vec2, points.len) catch @panic("OoM");
         defer gpa.allocator().free(screen_positions);
@@ -468,6 +473,7 @@ const sdl_platform = presenter.Platform{
 };
 const sdl_drawer = presenter.Drawer{
     .clear = SdlDrawer.clear,
+    .setTransparency = SdlDrawer.setTransparency,
     .drawLine = SdlDrawer.drawLine,
     .drawRect = SdlDrawer.drawRect,
     .drawDebugText = SdlDrawer.drawDebugText,

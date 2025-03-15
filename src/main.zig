@@ -1066,7 +1066,7 @@ test "scoring bubbleUp" {
             &Sexpr.doLit("c"),
             &Sexpr.doPair(
                 &Sexpr.doLit("d"),
-                &Sexpr.nil,
+                Sexpr.builtin.nil,
             ),
         )),
     ));
