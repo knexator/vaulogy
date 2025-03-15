@@ -1198,14 +1198,34 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         const artist = Artist(platform, drawer);
 
         const CasePlace = union(enum) {
-            main_fnk: core.CaseAddress,
+            main_fnk: union(enum) {
+                existing: core.CaseAddress,
+                ghost: core.CaseAddress,
+                // TODO NOW:
+                // ghost: struct {
+                //     address: core.CaseAddress,
+                //     pattern_point: Point,
+                // },
+
+                // pub fn plainAddress(self: @This()) core.CaseAddress {
+                //     return switch (self) {
+                //         .existing => |x| x,
+                //         .ghost => |x| x,
+                //     };
+                // }
+            },
             toolbar_special_case,
             meta_converter,
 
             pub fn equals(self: @This(), other: @This()) bool {
                 if (std.meta.activeTag(self) != std.meta.activeTag(other)) return false;
                 return switch (self) {
-                    .main_fnk => |self_case| std.mem.eql(usize, self_case, other.main_fnk),
+                    .main_fnk => |self_case| if (std.meta.activeTag(self_case) != std.meta.activeTag(other.main_fnk))
+                        false
+                    else switch (self_case) {
+                        .existing => |self_existing| std.mem.eql(usize, self_existing, other.main_fnk.existing),
+                        .ghost => |self_ghost| std.mem.eql(usize, self_ghost, other.main_fnk.ghost),
+                    },
                     .toolbar_special_case => true,
                     .meta_converter => true,
                 };
@@ -1897,7 +1917,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .hovering_case => |*hovering| {
                     if (std.meta.activeTag(hovering.address) == .main_fnk) {
-                        try self.cases.setUnfolded(hovering.address.main_fnk);
+                        try self.cases.setUnfolded(hovering.address.main_fnk.existing);
                     }
                     math.lerp_towards(&hovering.hot, 1, 0.6, delta_seconds);
                 },
@@ -1957,7 +1977,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         switch (overlapped) {
                             .case => |place| {
                                 if (std.meta.activeTag(place) == .main_fnk) {
-                                    try self.cases.setUnfolded(place.main_fnk);
+                                    try self.cases.setUnfolded(place.main_fnk.existing);
                                 }
                                 grabbing.address_if_released = null;
                             },
@@ -2008,12 +2028,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .grabbing_case => |*grabbing| {
                         if (grabbing.address_if_released) |place| {
                             switch (place) {
-                                .main_fnk => |address| {
+                                .main_fnk => |case| {
+                                    const address = case.ghost;
                                     const global_point = grabbing.case.pattern_point_relative_to_parent;
                                     const parent_point = try self.cases.getPatternGlobalPoint(.{}, address[0 .. address.len - 1]);
                                     grabbing.case.pattern_point_relative_to_parent = parent_point.inverseApplyGetLocal(global_point);
                                     try self.cases.insertAt(self.mem, address, grabbing.case);
-                                    self.focus = .{ .hovering_case = .{ .address = place, .hot = 1 } };
+                                    self.focus = .{ .hovering_case = .{ .address = .{ .main_fnk = .{ .existing = address } }, .hot = 1 } };
                                 },
                                 .meta_converter => {
                                     try meta_converter.setCase(self.mem, try makeCaseVirtual(self.mem, grabbing.case));
@@ -2043,12 +2064,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .hovering_case => |hovering| {
                         switch (hovering.address) {
                             .main_fnk => |unfolded| {
-                                const global_point = try self.cases.getPatternGlobalPoint(.{}, unfolded);
-                                var asdf = try self.cases.removeAt(unfolded);
+                                const global_point = try self.cases.getPatternGlobalPoint(.{}, unfolded.existing);
+                                var asdf = try self.cases.removeAt(unfolded.existing);
                                 asdf.pattern_point_relative_to_parent = global_point;
                                 self.focus = .{ .grabbing_case = .{
                                     .case = asdf,
-                                    .address_if_released = hovering.address,
+                                    .address_if_released = .{ .main_fnk = .{ .ghost = unfolded.existing } },
                                 } };
                             },
                             .meta_converter => {
@@ -2142,7 +2163,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .nothing => {},
                 .hovering_case => |hovering| switch (hovering.address) {
                     .main_fnk => |unfolded| {
-                        const pattern_point = try self.cases.getPatternGlobalPoint(.{}, unfolded);
+                        const pattern_point = try self.cases.getPatternGlobalPoint(.{}, unfolded.existing);
                         drawer.drawCaseHolder(camera, .{
                             .pos = pattern_point.pos.sub(.new(3, 0)),
                             .scale = hovering.hot,
@@ -2164,6 +2185,20 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     );
                 },
                 .grabbing_case => |grabbing| {
+                    if (grabbing.address_if_released) |place| {
+                        switch (place) {
+                            // .main_fnk => |address| {
+                            //     const pattern_point = try self.cases.getPatternGlobalPoint(.{}, address);
+                            //     try artist.drawPatternSexpr(
+                            //         camera,
+                            //         pattern_point,
+                            //         grabbing.case.pattern,
+                            //     );
+                            //     // try drawCaseExtra(camera, pattern_point, grabbing.case);
+                            // },
+                            else => {}, // TODO
+                        }
+                    }
                     // grabbing case parent is the nothing!
                     const pattern_point = grabbing.case.pattern_point_relative_to_parent;
                     try artist.drawPatternSexpr(
@@ -2248,7 +2283,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             if (std.meta.activeTag(self.focus) == .grabbing_case) {
                 const main_fnk_address_if_released = if (self.focus.grabbing_case.address_if_released) |address_if_released|
                     switch (address_if_released) {
-                        .main_fnk => |x| x,
+                        .main_fnk => |x| x.ghost,
                         else => null,
                     }
                 else
@@ -2262,7 +2297,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     &self.cases,
                 );
                 if (asdf) |x| {
-                    return OverlapResult{ .case = x };
+                    return OverlapResult{ .case = .{ .ghost = x } };
                 } else {
                     return null;
                 }
@@ -2278,7 +2313,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         const OverlapResult = union(enum) {
-            case: core.CaseAddress,
+            case: @FieldType(CasePlace, "main_fnk"),
+            // case: union(enum) {
+            //     existing: core.CaseAddress,
+            //     ghost: core.CaseAddress,
+            // },
             sexpr: core.FullAddress,
         };
 
@@ -2343,7 +2382,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 } else if (inRange(local_mouse_pos.y, -1, 1) and
                     inRange(local_mouse_pos.x, -5 / case.pattern_point_relative_to_parent.scale, 0))
                 {
-                    overlapped = .{ .case = cur_address };
+                    overlapped = .{ .case = .{ .existing = cur_address } };
                 }
 
                 if (!is_folded) if (case.next) |next| {
