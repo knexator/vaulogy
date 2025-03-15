@@ -1466,7 +1466,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             const rect: Rect = .{ .top_left = top_left.pos, .size = Vec2.new(7, 7.5).scale(top_left.scale) };
 
-            pub fn update_scroll(main: Self, delta_seconds: f32) void {
+            pub fn updateScroll(main: Self, delta_seconds: f32) void {
                 math.lerp_towards_range(&samples_reel.scroll, 0, @max(0, tof32(main.samples.len) - 3), 0.1, delta_seconds);
             }
 
@@ -1546,7 +1546,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 local: core.SexprAddress,
             };
 
-            pub fn update_scroll(main: Self, delta_seconds: f32) void {
+            pub fn updateScroll(main: Self, delta_seconds: f32) void {
                 math.lerp_towards_range(&fnks_reel.scroll, 0, @max(0, tof32(std.math.divCeil(usize, main.available_fnks.len, N_FNKS_PER_ROW) catch unreachable) - 2), 0.1, delta_seconds);
             }
 
@@ -1789,7 +1789,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     x.scroll -= delta_seconds * 10 * mouse.cur.scrolled.toNumber();
                     mouse.cur.scrolled = .none;
                 }
-                x.update_scroll(self.*, delta_seconds);
+                x.updateScroll(self.*, delta_seconds);
             }
             moveCamera(&self.camera, delta_seconds, platform.getKeyboard(), mouse);
 
