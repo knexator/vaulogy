@@ -414,25 +414,6 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                     try player_data.fnks.put(fnk.name, fnk.body);
                 }
             }
-            inline for (.{
-                Sexpr.builtin.true,
-                Sexpr.builtin.false,
-                Sexpr.builtin.@"eqAtoms?",
-                &Sexpr.doLit("x"),
-                &Sexpr.doLit("y"),
-                &Sexpr.doLit("z"),
-                &Sexpr.doLit("w"),
-
-                &Sexpr.doLit("t"),
-                &Sexpr.doLit("t1"),
-                &Sexpr.doLit("t2"),
-
-                &Sexpr.doLit("a0"),
-                // &Sexpr.doLit("a1"),
-                // &Sexpr.doLit("a2"),
-            }) |v| {
-                try player_data.fnks.put(v, defaultFnkBody1(&result.mem));
-            }
             try platform.setPlayerData(player_data, &result.mem);
             result.persistence = player_data;
 

@@ -240,7 +240,7 @@ const WebDrawer = struct {
     pub fn drawDebugText(camera: Camera, center: Point, text: [:0]const u8, color: Color) void {
         const screen_point = screenFromWorld(camera, center);
         js_better.canvas.setFillColor(color);
-        std.log.debug("scale: {d}", .{screen_point.scale});
+        // std.log.debug("scale: {d}", .{screen_point.scale});
         js.canvas.fillText(text.ptr, text.len, screen_point.pos.x, screen_point.pos.y, screen_point.scale * 0.7);
     }
 
