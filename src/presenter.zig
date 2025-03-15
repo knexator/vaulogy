@@ -630,20 +630,24 @@ fn Artist(platform: Platform, drawer: Drawer) type {
     const AtomVisualCache = struct {
         var visuals_cache: std.StringHashMap(AtomVisuals) = std.StringHashMap(AtomVisuals).init(platform.gpa);
 
+        const HardcodedAtomVisuals = struct {
+            profile: ?[]const Vec2,
+            color: Color,
+        };
         const hardcoded_visuals = .{
-            .identity = AtomVisuals{
+            .identity = HardcodedAtomVisuals{
                 .color = Color.white,
                 .profile = &.{},
             },
-            .nil = AtomVisuals{
+            .nil = HardcodedAtomVisuals{
                 .color = .from01(0.45, 0.45, 0.45),
                 .profile = &.{.new(0.75, -0.25)},
             },
-            .input = AtomVisuals{
+            .input = HardcodedAtomVisuals{
                 .color = .from01(0.1, 0.6, 0.6),
                 .profile = &.{ .new(0.2, 0.2), .new(0.8, 0.2) },
             },
-            .true = AtomVisuals{
+            .true = HardcodedAtomVisuals{
                 .color = .from01(0.5, 0.9, 0.5),
                 .profile = &blk: {
                     const N = 10;
@@ -656,16 +660,54 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                     break :blk res;
                 },
             },
-            .false = AtomVisuals{
+            .false = HardcodedAtomVisuals{
                 .color = .from01(0.9, 0.5, 0.5),
                 .profile = &.{ .new(1.0 / 6.0, 0.2), .new(0.5, -0.2), .new(5.0 / 6.0, 0.2) },
+            },
+
+            //  Zeus -> Jupiter;
+            .Hermes = HardcodedAtomVisuals{
+                .color = .fromHex("#FA00FF"),
+                .profile = null,
+            },
+            .Mercury = HardcodedAtomVisuals{
+                .color = .fromHex("#FF8EEC"),
+                .profile = null,
+            },
+            .Aphrodite = HardcodedAtomVisuals{
+                .color = .fromHex("#FFB600"),
+                .profile = null,
+            },
+            .Venus = HardcodedAtomVisuals{
+                .color = .fromHex("#FFE18E"),
+                .profile = null,
+            },
+            .Ares = HardcodedAtomVisuals{
+                .color = .fromHex("#00E5FF"),
+                .profile = null,
+            },
+            .Mars = HardcodedAtomVisuals{
+                .color = .fromHex("#9EFFF2"),
+                .profile = null,
+            },
+            .Zeus = HardcodedAtomVisuals{
+                .color = .fromHex("#97F200"),
+                .profile = null,
+            },
+            .Jupiter = HardcodedAtomVisuals{
+                .color = .fromHex("#C8ED8F"),
+                .profile = null,
             },
         };
 
         pub fn init() !void {
             inline for (std.meta.fields(@TypeOf(hardcoded_visuals))) |field| {
                 const atom_name = field.name;
-                const atom_visuals = @field(hardcoded_visuals, field.name);
+                const input = @field(hardcoded_visuals, field.name);
+                const atom_visuals: AtomVisuals = .{
+                    .color = input.color,
+                    .profile = input.profile orelse try newAtomProfile(atom_name),
+                };
                 try visuals_cache.put(atom_name, atom_visuals);
             }
         }
