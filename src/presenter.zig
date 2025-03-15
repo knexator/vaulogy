@@ -718,7 +718,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             drawer.drawFnkHolder(camera, fnk_point
                 .applyToLocalPoint(.{ .scale = lerp(1, 0.5, is_main) })
                 .applyToLocalPoint(.{ .pos = .new(lerp(-1.5, -2.5, is_main), 0), .turns = 0.25 }));
-            if (!value.equals(&Sexpr.identity)) {
+            if (!value.equals(Sexpr.builtin.identity)) {
                 try drawSexpr(
                     camera,
                     fnk_point,
@@ -1351,15 +1351,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         const toolbar = struct {
-            const atom_values = [_]Sexpr{
+            const atom_values = [_]*const Sexpr{
                 Sexpr.pair_nil_nil,
-                Sexpr.nil,
-                Sexpr.true,
-                Sexpr.false,
+                Sexpr.builtin.nil,
+                Sexpr.builtin.true,
+                Sexpr.builtin.false,
             };
             const things = blk: {
                 var result: [atom_values.len]struct { value: *const Sexpr, point: Point, index: usize } = undefined;
-                for (&atom_values, 0..) |*atom, k| {
+                for (atom_values, 0..) |atom, k| {
                     result[k] = .{ .value = atom, .point = .{
                         .pos = .new(tof32(k) * 1.6 + 3.5, -2.5),
                         .scale = 0.5,
@@ -1383,9 +1383,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             const special_case_point = Point{ .pos = .new(11, -2.5), .scale = 0.5 };
             const special_case_value = CaseState{
-                .fnk_name = &Sexpr.identity,
-                .pattern = &Sexpr.var_v1,
-                .template = &Sexpr.var_v1,
+                .fnk_name = Sexpr.builtin.identity,
+                .pattern = Sexpr.builtin.vars.v1,
+                .template = Sexpr.builtin.vars.v1,
                 .next = null,
                 .pattern_point_relative_to_parent = special_case_point,
             };
@@ -1698,7 +1698,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         pub fn init(fnk_name: *const Sexpr, builtin_samples: []const Sample, available_fnks: []const *const Sexpr, fnk_body: core.FnkBody, mem: *VeryPermamentGameStuff) !Self {
             const cases = try makeCasesPhysical(mem, fnk_body.cases);
-            const main_input: *const Sexpr = &Sexpr.nil;
+            const main_input: *const Sexpr = Sexpr.builtin.nil;
 
             const ui_state = UI.State{ .buttons = try UI.Button.row(platform.gpa, .zero, .one, &.{
                 "Back",
@@ -1994,7 +1994,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             };
 
                             if (std.meta.activeTag(hovering.address) == .full_address and hovering.address.full_address.which == .fnk_name) {
-                                (try self.cases.caseRefAt(hovering.address.full_address.case_address)).fnk_name = &Sexpr.identity;
+                                (try self.cases.caseRefAt(hovering.address.full_address.case_address)).fnk_name = Sexpr.builtin.identity;
                             } else if (std.meta.activeTag(hovering.address) == .toolbar_special_var) {
                                 try toolbar.special_var_state.next(self.mem);
                             }
@@ -2008,7 +2008,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .hovering_sexpr => |hovering| {
                         if (hovering.address.acceptsDrop()) {
                             if (try hovering.address.getSexpr(self.*)) |old_value| {
-                                const new_value = try self.mem.storeSexpr(Sexpr.doPair(old_value, &Sexpr.nil));
+                                const new_value = try self.mem.storeSexpr(Sexpr.doPair(old_value, Sexpr.builtin.nil));
                                 try hovering.address.setSexpr(self, new_value);
                             }
                         }

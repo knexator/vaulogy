@@ -25,21 +25,29 @@ pub const Sexpr = union(enum) {
     atom_lit: Atom,
     pair: Pair,
 
-    pub const debug = Sexpr.doLit("DEBUGGG");
-    pub const @"return" = Sexpr.doLit("return");
-    pub const @"var" = Sexpr.doLit("var");
-    // TODO: change this to 'lit'
-    pub const atom = Sexpr.doLit("atom");
-    pub const nil = Sexpr.doLit("nil");
-    pub const identity = Sexpr.doLit("identity");
-    pub const @"eqAtoms?" = Sexpr.doLit("eqAtoms?");
-    pub const @"true" = Sexpr.doLit("true");
-    pub const @"false" = Sexpr.doLit("false");
-    pub const input = Sexpr.doLit("input");
+    pub const builtin: struct {
+        true: *const Sexpr = &Sexpr.doLit("true"),
+        false: *const Sexpr = &Sexpr.doLit("false"),
+        nil: *const Sexpr = &Sexpr.doLit("nil"),
 
-    pub const var_v1 = Sexpr.doVar("v1");
+        input: *const Sexpr = &Sexpr.doLit("input"),
+        debug: *const Sexpr = &Sexpr.doLit("DEBUGGG"),
+        identity: *const Sexpr = &Sexpr.doLit("identity"),
+        @"eqAtoms?": *const Sexpr = &Sexpr.doLit("eqAtoms?"),
 
-    pub const pair_nil_nil = Sexpr.doPair(&Sexpr.nil, &Sexpr.nil);
+        vars: struct {
+            v1: *const Sexpr = &Sexpr.doVar("v1"),
+        } = .{},
+
+        meta: struct {
+            @"return": *const Sexpr = &Sexpr.doLit("return"),
+            @"var": *const Sexpr = &Sexpr.doLit("var"),
+            // TODO: change this to "lit"
+            atom: *const Sexpr = &Sexpr.doLit("atom"),
+        } = .{},
+    } = .{};
+
+    pub const pair_nil_nil: *const Sexpr = &Sexpr.doPair(Sexpr.builtin.nil, Sexpr.builtin.nil);
 
     pub fn doPair(a: *const Sexpr, b: *const Sexpr) Sexpr {
         return .{ .pair = .{ .left = a, .right = b } };
@@ -98,7 +106,7 @@ pub const Sexpr = union(enum) {
     }
 
     pub fn fromBool(b: bool) *const Sexpr {
-        return if (b) &Sexpr.true else &Sexpr.false;
+        return if (b) Sexpr.builtin.true else Sexpr.builtin.false;
     }
 
     pub fn getAt(this: *const Sexpr, address: SexprAddress) ?*const Sexpr {
@@ -142,7 +150,7 @@ pub const Sexpr = union(enum) {
     pub fn changeAllVariablesToNil(self: *const Sexpr, mem: *VeryPermamentGameStuff) !*const Sexpr {
         return switch (self.*) {
             .atom_lit => self,
-            .atom_var => &Sexpr.nil,
+            .atom_var => Sexpr.builtin.nil,
             .pair => |p| if (p.left.isFullyResolved() and p.right.isFullyResolved())
                 self
             else
@@ -171,7 +179,7 @@ pub const Sexpr = union(enum) {
                     try rest.pair.left.format("", options, writer);
                     rest = rest.pair.right;
                 }
-                if (!rest.equals(&Sexpr.nil)) {
+                if (!rest.equals(Sexpr.builtin.nil)) {
                     try writer.writeAll(" . ");
                     try rest.format("", options, writer);
                 }
@@ -232,7 +240,7 @@ pub const MatchCaseDefinition = struct {
     pub fn format(value: MatchCaseDefinition, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: std.io.AnyWriter) !void {
         std.debug.assert(std.mem.eql(u8, fmt, ""));
         std.debug.assert(std.meta.eql(options, .{}));
-        if (value.fnk_name.equals(&Sexpr.identity)) {
+        if (value.fnk_name.equals(Sexpr.builtin.identity)) {
             try writer.print("{any} -> {any}", .{ value.pattern, value.template });
         } else {
             try writer.print("{any} -> {any}: {any}", .{ value.pattern, value.fnk_name, value.template });
@@ -277,8 +285,8 @@ const FnkSet = std.ArrayHashMap(*const Sexpr, void, SexprContext, true);
 pub const FnkCollection = std.ArrayHashMap(*const Sexpr, FnkBody, SexprContext, true);
 
 const builtin_fnks = [_]struct { name: *const Sexpr, fnk: fn (v: *const Sexpr) *const Sexpr }{
-    .{ .name = &Sexpr.identity, .fnk = builtin_fnk_identity },
-    .{ .name = &Sexpr.@"eqAtoms?", .fnk = @"builtin_fnk_eqAtoms?" },
+    .{ .name = Sexpr.builtin.identity, .fnk = builtin_fnk_identity },
+    .{ .name = Sexpr.builtin.@"eqAtoms?", .fnk = @"builtin_fnk_eqAtoms?" },
 };
 
 fn builtin_fnk_identity(v: *const Sexpr) *const Sexpr {
@@ -858,7 +866,7 @@ pub fn main() !u8 {
                 },
             } = .{ .score = .{ .time = 0, .max_stack = 0 } };
             for (fnk_body.cases.items) |case| {
-                std.debug.assert(case.fnk_name.equals(&Sexpr.identity));
+                std.debug.assert(case.fnk_name.equals(Sexpr.builtin.identity));
                 std.debug.assert(case.next == null);
                 Sexpr.assertLit(case.pattern);
                 Sexpr.assertLit(case.template);
@@ -1250,11 +1258,11 @@ pub fn sexprFromCase(case: MatchCaseDefinition, pool: *MemoryPool(Sexpr)) error{
     }, if (case.next) |next|
         try sexprFromCases(next.items, pool)
     else
-        &Sexpr.@"return", pool);
+        Sexpr.builtin.meta.@"return", pool);
 }
 
 pub fn sexprFromCases(cases: []MatchCaseDefinition, pool: *MemoryPool(Sexpr)) !*const Sexpr {
-    if (cases.len == 0) return &Sexpr.nil;
+    if (cases.len == 0) return Sexpr.builtin.nil;
     return try storeSexprInPool(pool, Sexpr.doPair(
         try sexprFromCase(cases[0], pool),
         try sexprFromCases(cases[1..], pool),
@@ -1281,7 +1289,7 @@ pub fn caseFromSexpr(cur: *const Sexpr, arena: std.mem.Allocator, pool: *MemoryP
 fn fnkFromSexprHelper(s: *const Sexpr, arena: std.mem.Allocator, pool: *MemoryPool(Sexpr)) error{ InvalidMetaFnk, OutOfMemory, BAD_INPUT }!?MatchCases {
     var cases = std.ArrayListUnmanaged(MatchCaseDefinition){};
     switch (s.*) {
-        .atom_lit => return if (s.equals(&Sexpr.@"return")) null else error.InvalidMetaFnk,
+        .atom_lit => return if (s.equals(Sexpr.builtin.meta.@"return")) null else error.InvalidMetaFnk,
         .atom_var => return error.BAD_INPUT,
         .pair => |p| {
             var cur_parent = p;
@@ -1290,7 +1298,7 @@ fn fnkFromSexprHelper(s: *const Sexpr, arena: std.mem.Allocator, pool: *MemoryPo
                 try cases.append(arena, try caseFromSexpr(cur, arena, pool));
                 switch (cur_parent.right.*) {
                     .atom_lit => |a| {
-                        if (a.equals(Sexpr.nil.atom_lit)) {
+                        if (a.equals(Sexpr.builtin.nil.atom_lit)) {
                             break;
                         } else {
                             return error.InvalidMetaFnk;
@@ -1312,9 +1320,9 @@ fn internalFromExternal(s: *const Sexpr, pool: *MemoryPool(Sexpr)) !*const Sexpr
     switch (s.*) {
         .atom_var, .atom_lit => return error.InvalidMetaFnk,
         .pair => |p| {
-            if (p.left.equals(&Sexpr.atom)) {
+            if (p.left.equals(Sexpr.builtin.meta.atom)) {
                 return p.right;
-            } else if (p.left.equals(&Sexpr.@"var")) {
+            } else if (p.left.equals(Sexpr.builtin.meta.@"var")) {
                 switch (p.right.*) {
                     .pair => return error.InvalidMetaFnk,
                     .atom_var => return error.BAD_INPUT,
@@ -1339,8 +1347,8 @@ fn internalFromExternal(s: *const Sexpr, pool: *MemoryPool(Sexpr)) !*const Sexpr
 // (aaa . @bbb) => ((atom . aaa) . (var . bbb))
 fn externalFromInternal(s: *const Sexpr, pool: *MemoryPool(Sexpr)) !*const Sexpr {
     return switch (s.*) {
-        .atom_var => |v| storeSexprInPool(pool, Sexpr.doPair(&Sexpr.@"var", try storeSexprInPool(pool, Sexpr.doLit(v.value)))),
-        .atom_lit => storeSexprInPool(pool, Sexpr.doPair(&Sexpr.atom, s)),
+        .atom_var => |v| storeSexprInPool(pool, Sexpr.doPair(Sexpr.builtin.meta.@"var", try storeSexprInPool(pool, Sexpr.doLit(v.value)))),
+        .atom_lit => storeSexprInPool(pool, Sexpr.doPair(Sexpr.builtin.meta.atom, s)),
         .pair => |p| storeSexprInPool(pool, Sexpr.doPair(
             try externalFromInternal(p.left, pool),
             try externalFromInternal(p.right, pool),

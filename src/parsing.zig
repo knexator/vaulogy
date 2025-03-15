@@ -44,7 +44,7 @@ fn parseSexprInsideParens(input: []const u8, pool: *MemoryPool(Sexpr)) !struct {
     skipWhitespace(&rest);
     if (rest.len == 0) return error.BAD_INPUT;
     if (rest[0] == ')') {
-        return .{ .sexpr = &Sexpr.nil, .rest = rest[1..] };
+        return .{ .sexpr = Sexpr.builtin.nil, .rest = rest[1..] };
     } else if (rest[0] == '.') {
         const final_asdf = try parseSexprTrue(rest[1..], pool);
         rest = final_asdf.rest;
@@ -110,7 +110,7 @@ fn parseMatchCases(input: *[]const u8, pool: *MemoryPool(Sexpr), allocator_for_c
             template = try parseSexpr(input, pool);
             skipWhitespace(input);
         } else {
-            fnk_name = &Sexpr.identity;
+            fnk_name = Sexpr.builtin.identity;
             template = fnk_name_or_template;
         }
         var next: ?MatchCases = undefined;
