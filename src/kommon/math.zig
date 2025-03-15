@@ -239,9 +239,10 @@ pub const Rect = struct {
         return self.top_left.add(self.size.scale(0.5));
     }
 
-    pub fn get(self: Rect, which: enum { top_center }) Vec2 {
+    pub fn get(self: Rect, which: enum { top_center, top_right }) Vec2 {
         return switch (which) {
             .top_center => self.top_left.addX(self.size.x / 2),
+            .top_right => self.top_left.addX(self.size.x),
         };
     }
 

@@ -414,10 +414,28 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                     try player_data.fnks.put(fnk.name, fnk.body);
                 }
             }
+            inline for (.{
+                Sexpr.builtin.true,
+                Sexpr.builtin.false,
+                Sexpr.builtin.@"eqAtoms?",
+                &Sexpr.doLit("x"),
+                &Sexpr.doLit("y"),
+                &Sexpr.doLit("z"),
+                &Sexpr.doLit("w"),
+
+                &Sexpr.doLit("t"),
+                &Sexpr.doLit("t1"),
+                &Sexpr.doLit("t2"),
+
+                &Sexpr.doLit("a0"),
+                // &Sexpr.doLit("a1"),
+                // &Sexpr.doLit("a2"),
+            }) |v| {
+                try player_data.fnks.put(v, defaultFnkBody1(&result.mem));
+            }
             try platform.setPlayerData(player_data, &result.mem);
             result.persistence = player_data;
 
-            // try player_data.fnks.put(builtin_levels[0].fnk_name, defaultFnkBody1(&result.mem));
             // try result.initEditing(builtin_levels[0].fnk_name, builtin_levels[0].manual_samples);
 
             result.state = .{
@@ -1462,12 +1480,19 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         const samples_reel = struct {
             const top_left: Point = .{ .pos = .new(-6, 0.25), .scale = 0.75 };
-            var scroll: f32 = 0;
+            // TODO: the -1 is a tutorial hack, make it 0 once the scroll bar is finished
+            var scroll: f32 = -1;
 
             const rect: Rect = .{ .top_left = top_left.pos, .size = Vec2.new(7, 7.5).scale(top_left.scale) };
 
+            const N_VISIBLE_SAMPLES = 3;
+
+            fn getMaxScroll(samples_len: usize) f32 {
+                return @max(0, tof32(samples_len) - N_VISIBLE_SAMPLES);
+            }
+
             pub fn updateScroll(main: Self, delta_seconds: f32) void {
-                math.lerp_towards_range(&samples_reel.scroll, 0, @max(0, tof32(main.samples.len) - 3), 0.1, delta_seconds);
+                math.lerp_towards_range(&samples_reel.scroll, 0, getMaxScroll(main.samples.len), 0.1, delta_seconds);
             }
 
             fn getPoint(k: usize, which: Sample.Part) Point {
@@ -1529,7 +1554,23 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         return error.TODO;
                     }
                 }
+                drawScrollBar(camera, samples.len);
                 drawer.drawDebugText(camera, .{ .pos = rect.get(.top_center).addY(0.2) }, "tests", .black);
+            }
+
+            // TODO: mouse-interactable scrollbar
+            fn drawScrollBar(camera: Camera, samples_len: usize) void {
+                const scroll_perc = scroll / getMaxScroll(samples_len);
+                const bar_height = N_VISIBLE_SAMPLES / getMaxScroll(samples_len);
+                drawer.drawRect(
+                    camera,
+                    .{
+                        .top_left = rect.get(.top_right).addY((rect.size.y - bar_height) * scroll_perc),
+                        .size = .new(0.2, bar_height),
+                    },
+                    null,
+                    .black,
+                );
             }
         };
 
@@ -1540,14 +1581,19 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             const rect: Rect = .{ .top_left = top_left.pos, .size = Vec2.new(7, 5.5).scale(top_left.scale) };
             const N_FNKS_PER_ROW = 3;
+            const N_VISIBLE_FNKS = 2;
 
             pub const Address = struct {
                 index: usize,
                 local: core.SexprAddress,
             };
 
+            fn getMaxScroll(fnks_len: usize) f32 {
+                return @max(0, tof32(std.math.divCeil(usize, fnks_len, N_FNKS_PER_ROW) catch unreachable) - N_VISIBLE_FNKS);
+            }
+
             pub fn updateScroll(main: Self, delta_seconds: f32) void {
-                math.lerp_towards_range(&fnks_reel.scroll, 0, @max(0, tof32(std.math.divCeil(usize, main.available_fnks.len, N_FNKS_PER_ROW) catch unreachable) - 2), 0.1, delta_seconds);
+                math.lerp_towards_range(&fnks_reel.scroll, 0, getMaxScroll(main.available_fnks.len), 0.1, delta_seconds);
             }
 
             fn getPoint(k: usize) Point {
@@ -1584,7 +1630,22 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 for (available_fnks, 0..) |fnk_name, k| {
                     try artist.drawSexpr(camera, getPoint(k), fnk_name);
                 }
+                drawScrollBar(camera, available_fnks.len);
                 drawer.drawDebugText(camera, .{ .pos = rect.get(.top_center).addY(0.2) }, "vaus", .black);
+            }
+
+            fn drawScrollBar(camera: Camera, fnks_len: usize) void {
+                const scroll_perc = scroll / getMaxScroll(fnks_len);
+                const bar_height = N_VISIBLE_FNKS / getMaxScroll(fnks_len);
+                drawer.drawRect(
+                    camera,
+                    .{
+                        .top_left = rect.get(.top_right).addY((rect.size.y - bar_height) * scroll_perc),
+                        .size = .new(0.2, bar_height),
+                    },
+                    null,
+                    .black,
+                );
             }
         };
 
