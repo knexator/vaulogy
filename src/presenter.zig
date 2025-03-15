@@ -1350,8 +1350,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             none,
             first_level,
 
-            pub fn allow_other_vaus(self: TutorialState) bool {
+            pub fn allowOtherVaus(self: TutorialState) bool {
                 return self == .none;
+            }
+
+            pub fn getToolbar(self: TutorialState) toolbar.Modifier {
+                return switch (self) {
+                    .none => .normal,
+                    .first_level => .hidden,
+                };
             }
         };
 
@@ -1460,15 +1467,21 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .pattern_point_relative_to_parent = special_case_point,
             };
 
-            pub fn overlapsWithSpecialVar(mouse_pos: Vec2) bool {
-                return SexprView.overlapsPatternAtom(special_var_point, mouse_pos, .atom);
+            pub const Modifier = enum { normal, hidden };
+
+            pub fn overlapsWithSpecialVar(mouse_pos: Vec2, modifier: Modifier) bool {
+                return switch (modifier) {
+                    .normal => SexprView.overlapsPatternAtom(special_var_point, mouse_pos, .atom),
+                    .hidden => false,
+                };
             }
 
-            pub fn overlapsWithSpecialCase(mouse_pos: Vec2) bool {
-                return overlapsWithTinyCase(mouse_pos, special_case_point);
+            pub fn overlapsWithSpecialCase(mouse_pos: Vec2, modifier: Modifier) bool {
+                return modifier == .normal and overlapsWithTinyCase(mouse_pos, special_case_point);
             }
 
-            pub fn findOverlap(mouse_pos: Vec2) ?std.meta.Elem(@TypeOf(things)) {
+            pub fn findOverlap(mouse_pos: Vec2, modifier: Modifier) ?std.meta.Elem(@TypeOf(things)) {
+                if (modifier != .normal) return null;
                 for (things) |thing| {
                     if (SexprView.overlapsAtom(thing.point, mouse_pos, .atom)) {
                         return thing;
@@ -1477,7 +1490,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 return null;
             }
 
-            pub fn draw(camera: Camera) !void {
+            pub fn draw(camera: Camera, modifier: Modifier) !void {
+                if (modifier == .hidden) return;
+
                 try artist.drawPatternSexpr(camera, special_var_point, special_var_state.next_value);
 
                 for (things) |thing| {
@@ -1945,24 +1960,24 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         .case => |case| .{ .case = .{ .main_fnk = case } },
                         .sexpr => |sexpr| .{ .sexpr = .{ .full_address = sexpr } },
                     }
-                else if (toolbar.findOverlap(mouse_pos)) |overlap|
+                else if (toolbar.findOverlap(mouse_pos, self.tutorial_state.getToolbar())) |overlap|
                     .{ .sexpr = .{ .toolbar = overlap.index } }
                 else if (try samples_reel.findOverlap(mouse_pos, self.samples)) |overlap|
                     .{ .sexpr = .{ .sample = overlap } }
-                else if (try fnks_reel.findOverlap(mouse_pos, self.available_fnks)) |overlap|
+                else if (if (self.tutorial_state.allowOtherVaus()) try fnks_reel.findOverlap(mouse_pos, self.available_fnks) else null) |overlap|
                     .{ .sexpr = .{ .external_fnk = overlap } }
-                else if (fnk_manager.findOverlap(mouse_pos))
+                else if (self.tutorial_state.allowOtherVaus() and fnk_manager.findOverlap(mouse_pos))
                     .{ .sexpr = .fnk_manager }
                 else if (if (self.meta_enabled) try meta_converter.findOverlap(mouse_pos) else null) |overlap| switch (overlap) {
                     .sexpr => |local| .{ .sexpr = .{ .meta_converter = local } },
                     .case => .{ .case = .meta_converter },
-                } else if (toolbar.overlapsWithSpecialVar(mouse_pos))
+                } else if (toolbar.overlapsWithSpecialVar(mouse_pos, self.tutorial_state.getToolbar()))
                     .{ .sexpr = .toolbar_special_var }
                 else if (try SexprView.overlapsSexpr(self.mem.gpa, self.main_input, MAIN_INPUT_POS, mouse_pos)) |overlap|
                     .{ .sexpr = .{ .main_input = overlap } }
                 else if (try SexprView.overlapsSexpr(self.mem.gpa, self.fnk_name, MAIN_FNK_POS, mouse_pos)) |overlap|
                     .{ .sexpr = .{ .main_fnk_name = overlap } }
-                else if (toolbar.overlapsWithSpecialCase(mouse_pos))
+                else if (toolbar.overlapsWithSpecialCase(mouse_pos, self.tutorial_state.getToolbar()))
                     .{ .case = .toolbar_special_case }
                 else
                     null;
@@ -2160,11 +2175,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             try drawCases(camera, true, .{}, self.cases);
-
-            try toolbar.draw(camera);
+            try toolbar.draw(camera, self.tutorial_state.getToolbar());
+            // switch (self.tutorial_state.getToolbar()) {
+            //     .normal =>
+            //     .hidden => {},
+            // }
 
             try samples_reel.draw(camera, self.samples);
-            if (self.tutorial_state.allow_other_vaus()) {
+            if (self.tutorial_state.allowOtherVaus()) {
                 try fnks_reel.draw(camera, self.available_fnks);
                 try fnk_manager.draw(camera);
             }
