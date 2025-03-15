@@ -2149,7 +2149,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             switch (self.tutorial_state) {
                 .none => {},
                 .first_level => {
-                    drawer.drawDebugText(camera, .{ .pos = .new(10, 0) }, "← That gray thing is the current Data;\nfeel free to change it", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(-3.55, -2), .scale = 0.75 }, "That's the name of →\nthe Vau you're editing.", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(8, 0), .scale = 0.75 }, "← That gray thing is the current Data;\nfeel free to change it", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(8, -3.5), .scale = 0.75 }, "pick new Cases from here ↓", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(-3.25, 7), .scale = 0.75 }, "↑\nThese are the Data\ntransformations your Vau\nmust achieve.", .black);
                 },
