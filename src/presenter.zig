@@ -1855,6 +1855,16 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             change_to: *const Sexpr,
         } {
             var mouse = platform.getMouse();
+
+            if (self.ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button| {
+                switch (pressed_button) {
+                    0 => return .back_to_level_select,
+                    1 => self.camera = DEFAULT_CAM,
+                    2 => return .launch_execution,
+                    else => @panic("oops"),
+                }
+            }
+
             inline for (.{ samples_reel, fnks_reel }) |x| {
                 if (x.rect.contains(mouse.cur.pos(self.camera))) {
                     x.scroll -= delta_seconds * 10 * mouse.cur.scrolled.toNumber();
@@ -1900,16 +1910,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     else
                         @round(grabbing.is_pattern), 0.6, delta_seconds);
                 },
-                .nothing => {
-                    if (self.ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button| {
-                        switch (pressed_button) {
-                            0 => return .back_to_level_select,
-                            1 => self.camera = DEFAULT_CAM,
-                            2 => return .launch_execution,
-                            else => @panic("oops"),
-                        }
-                    }
-                },
+                .nothing => {},
                 .hovering_sexpr => |*hovering| {
                     if (std.meta.activeTag(hovering.address) == .full_address) {
                         const unfolded = hovering.address.full_address.case_address;
@@ -2312,7 +2313,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     null;
                 try doGrabbingCaseFirstPass(self.mem, main_fnk_address_if_released, &.{}, self.cases, delta_seconds);
                 const asdf: ?CaseAddressWithPoint = if (self.cases.cases.items.len == 0)
-                    .{ .address = try self.debugMakeAddress(0), .pattern_point_relative_to_parent = @panic("TODO NOW") }
+                    .{ .address = try self.debugMakeAddress(0), .pattern_point_relative_to_parent = relativePatternPoint(true, false, 2) }
                 else
                     try doGrabbingCaseSecondPass(
                         mouse_pos,
