@@ -1831,7 +1831,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             const ui_state = UI.State{ .buttons = try UI.Button.row(platform.gpa, .zero, .one, &.{
                 "Back",
                 "Reset\nView",
-                ">",
+                "⏵",
             }) };
 
             return .{
@@ -2271,9 +2271,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .none => {},
                 .first_level => {
                     drawer.drawDebugText(camera, .{ .pos = .new(-3.55, -2), .scale = 0.75 }, "That's the name of →\nthe Vau you're editing.", .black);
-                    drawer.drawDebugText(camera, .{ .pos = .new(8, 0), .scale = 0.75 }, "← That gray thing is the current Data;\nfeel free to change it", .black);
-                    drawer.drawDebugText(camera, .{ .pos = .new(8, -3.5), .scale = 0.75 }, "pick new Cases from here ↓", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(8, 0), .scale = 0.75 }, "← That gray thing is the current Data;\nfeel free to change it by\ndropping some other Data on it.", .black);
+                    // drawer.drawDebugText(camera, .{ .pos = .new(6, -1.85), .scale = 0.75 }, "↓ That gray thing is the current Data;\nfeel free to change it by\ndropping some other Data on it.", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(3.5, -4), .scale = 0.75 }, "← Click Play to see the Vau applied to the current Data.", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(-3.25, 7), .scale = 0.75 }, "↑\nThese are the Data\ntransformations your Vau\nmust achieve.", .black);
+                    // drawer.drawDebugText(camera, .{ .pos = .new(10, 1), .scale = 0.75 }, "↓ These are the Cases that make up the Vau.", .black);
                 },
             }
         }
@@ -2632,10 +2634,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 .anim_t = 0.0,
                 .camera = camera,
                 .ui_state = .{ .buttons = try UI.Button.row(platform.gpa, .zero, .one, &.{
-                    "Stop",
+                    "⏹",
                     "Reset\nView",
-                    "Play/\nPause",
-                    "Step",
+                    "⏯",
+                    "⏭",
                 }) },
                 .result = null,
             };
