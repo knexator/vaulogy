@@ -1197,15 +1197,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         const Self = @This();
         const artist = Artist(platform, drawer);
 
+        const CaseAddressWithPoint = struct {
+            address: core.CaseAddress,
+            // TODO NOW
+            // pattern_point: Point,
+        };
         const CasePlace = union(enum) {
             main_fnk: union(enum) {
                 existing: core.CaseAddress,
-                ghost: core.CaseAddress,
-                // TODO NOW:
-                // ghost: struct {
-                //     address: core.CaseAddress,
-                //     pattern_point: Point,
-                // },
+                ghost: CaseAddressWithPoint,
 
                 // pub fn plainAddress(self: @This()) core.CaseAddress {
                 //     return switch (self) {
@@ -1224,7 +1224,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         false
                     else switch (self_case) {
                         .existing => |self_existing| std.mem.eql(usize, self_existing, other.main_fnk.existing),
-                        .ghost => |self_ghost| std.mem.eql(usize, self_ghost, other.main_fnk.ghost),
+                        .ghost => |self_ghost| std.mem.eql(usize, self_ghost.address, other.main_fnk.ghost.address),
                     },
                     .toolbar_special_case => true,
                     .meta_converter => true,
@@ -2029,7 +2029,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         if (grabbing.address_if_released) |place| {
                             switch (place) {
                                 .main_fnk => |case| {
-                                    const address = case.ghost;
+                                    const address = case.ghost.address;
                                     const global_point = grabbing.case.pattern_point_relative_to_parent;
                                     const parent_point = try self.cases.getPatternGlobalPoint(.{}, address[0 .. address.len - 1]);
                                     grabbing.case.pattern_point_relative_to_parent = parent_point.inverseApplyGetLocal(global_point);
@@ -2069,7 +2069,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 asdf.pattern_point_relative_to_parent = global_point;
                                 self.focus = .{ .grabbing_case = .{
                                     .case = asdf,
-                                    .address_if_released = .{ .main_fnk = .{ .ghost = unfolded.existing } },
+                                    .address_if_released = .{ .main_fnk = .{ .ghost = .{ .address = unfolded.existing } } },
                                 } };
                             },
                             .meta_converter => {
@@ -2283,13 +2283,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             if (std.meta.activeTag(self.focus) == .grabbing_case) {
                 const main_fnk_address_if_released = if (self.focus.grabbing_case.address_if_released) |address_if_released|
                     switch (address_if_released) {
-                        .main_fnk => |x| x.ghost,
+                        .main_fnk => |x| x.ghost.address,
                         else => null,
                     }
                 else
                     null;
                 try doGrabbingCaseFirstPass(self.mem, main_fnk_address_if_released, &.{}, self.cases, delta_seconds);
-                const asdf = if (self.cases.cases.items.len == 0) try self.debugMakeAddress(0) else try doGrabbingCaseSecondPass(
+                const asdf: ?CaseAddressWithPoint = if (self.cases.cases.items.len == 0) .{ .address = try self.debugMakeAddress(0) } else try doGrabbingCaseSecondPass(
                     mouse_pos,
                     main_fnk_address_if_released,
                     self.mem,
@@ -2456,7 +2456,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             mem: *VeryPermamentGameStuff,
             parent_address: core.CaseAddress,
             group: *CaseGroup,
-        ) !?core.CaseAddress {
+        ) !?CaseAddressWithPoint {
             // second pass to update the grabbing state
             for (group.cases.items, 0..) |*case, k| {
                 const grabbing_pos_relative_to_cur = Point.inverseApplyGetLocalPosition(
@@ -2487,7 +2487,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         -5.0 / case.pattern_point_relative_to_parent.scale,
                         0,
                     )) {
-                        return try childAddress(mem, parent_address, k);
+                        return .{ .address = try childAddress(mem, parent_address, k) };
                     }
                 } else {
                     if (group.cases.items.len > 0) {
@@ -2501,7 +2501,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             -5.0 / last_case.pattern_point_relative_to_parent.scale,
                             0,
                         )) {
-                            return try childAddress(mem, parent_address, group.cases.items.len);
+                            return .{ .address = try childAddress(mem, parent_address, group.cases.items.len) };
                         }
                     }
 
@@ -2526,7 +2526,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     return x;
                                 }
                             } else if (inRange(cur_relative_mouse.x, 0, 5) and cur_relative_mouse.y > 0) {
-                                return try childAddress(mem, cur_address, 0);
+                                return .{ .address = try childAddress(mem, cur_address, 0) };
                             } else {
                                 return null;
                             }
