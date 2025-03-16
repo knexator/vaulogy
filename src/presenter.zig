@@ -620,7 +620,6 @@ const Vals = struct {
     }
 };
 const builtin_levels: []const BuiltinLevel = &.{
-    // TODO: solutions
     .{ .fnk_name = &Sexpr.doLit("planetFromOlympian"), .manual_samples = &.{
         .{ .input = &Sexpr.doLit("Hermes"), .output = &Sexpr.doLit("Mercury") },
         .{ .input = &Sexpr.doLit("Aphrodite"), .output = &Sexpr.doLit("Venus") },
@@ -659,6 +658,23 @@ const builtin_levels: []const BuiltinLevel = &.{
     \\ // ((top . Aphrodite) . bottom) -> Venus;
     \\ // ((top . Ares) . bottom) -> Mars;
     \\ // ((top . Zeus) . bottom) -> Jupiter;
+    \\}
+    },
+    .{ .fnk_name = &Sexpr.doLit("wrappedPlanetFromOlympian"), .manual_samples = &.{
+        .{ .input = Vals.Hermes, .output = Vals.wrapped(Vals.Mercury) },
+        .{ .input = Vals.Aphrodite, .output = Vals.wrapped(Vals.Venus) },
+        .{ .input = Vals.Ares, .output = Vals.wrapped(Vals.Mars) },
+        .{ .input = Vals.Zeus, .output = Vals.wrapped(Vals.Jupiter) },
+    }, .description = "Translate the Data and the wrap it", .premade_solution = 
+    \\wrappedPlanetFromOlympian {
+    \\ @v -> planetFromOlympian: @v {
+    \\   Mercury -> ((top . Mercury) . bottom);
+    \\   Venus -> ((top . Venus) . bottom);
+    \\ }
+    \\ // Hermes -> ((top . Mercury) . bottom);
+    \\ // Aphrodite -> ((top . Venus) . bottom);
+    \\ // Ares -> ((top . Mars) . bottom);
+    \\ // Zeus -> ((top . Jupiter) . bottom);
     \\}
     },
 };
@@ -1391,9 +1407,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             second_level,
             /// apply hardcoded map to unwrapped
             third_level,
+            /// nested case
+            fourth_level,
 
             pub fn allowPickingVaus(self: TutorialState) bool {
-                return self == .none or self == .third_level;
+                return switch (self) {
+                    .first_level, .second_level => false,
+                    else => true,
+                };
             }
 
             pub fn allowCreatingVaus(self: TutorialState) bool {
@@ -1402,10 +1423,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             pub fn getToolbar(self: TutorialState) toolbar.Modifier {
                 return switch (self) {
-                    .none => .normal,
                     .first_level => .hidden,
                     .second_level => .only_special_var,
                     .third_level => .all_except_case,
+                    else => .normal,
                 };
             }
 
@@ -2396,6 +2417,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     drawer.drawDebugText(camera, .{ .pos = .new(2.5, 7.25), .scale = 0.75 }, "← your collection of Vaus.", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(14, 0.75), .scale = 0.75 }, "↓ Place a Vau name here to call it on the result.", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(2.5, -4), .scale = 0.75 }, "← Don't forget to hit Play to see the Vau in action!", .black);
+                },
+                .fourth_level => {
+                    // TODO NOW
                 },
             }
         }
@@ -3393,6 +3417,7 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
                         0 => true,
                         1 => persistence.is_builtin_level_solved[0],
                         2 => persistence.is_builtin_level_solved[1],
+                        3 => persistence.is_builtin_level_solved[2],
                         else => return error.TODO,
                     },
                 };
@@ -3457,6 +3482,8 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
                     else if (!self.persistence.is_builtin_level_solved[2])
                         \\Vaus can be combined. For the next one,
                         \\you will reuse the first one.
+                    else if (!self.persistence.is_builtin_level_solved[3])
+                        \\You can also call a Vau on the result of another one
                     else
                         "",
                     .black,
