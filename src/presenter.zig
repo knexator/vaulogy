@@ -2196,6 +2196,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
                             if (std.meta.activeTag(hovering.address) == .full_address and hovering.address.full_address.which == .fnk_name) {
                                 (try self.cases.caseRefAt(hovering.address.full_address.case_address)).fnk_name = Sexpr.builtin.identity;
+                                try self.updateSolvedSamplesHelper();
                             } else if (std.meta.activeTag(hovering.address) == .toolbar_special_var) {
                                 try toolbar.special_var_state.next(self.mem);
                             }
