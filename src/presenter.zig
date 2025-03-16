@@ -213,6 +213,12 @@ pub const Drawer = struct {
     drawVariable: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
     drawPatternVariable: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
 
+    pub fn drawCaseHolderExtended(self: Drawer, camera: Camera, world_point: Point, enabled: bool) void {
+        if (!enabled) self.setTransparency(0.5);
+        self.drawCaseHolder(camera, world_point);
+        if (!enabled) self.setTransparency(1);
+    }
+
     pub fn drawArrowForSample(self: Drawer, camera: Camera, center: Point, solved: bool) void {
         const color: Color = if (solved) .from01(0.2, 1, 0.5) else .from01(1, 0.2, 0.3);
         self.drawLine(camera, &.{
@@ -1364,6 +1370,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .second_level => .only_special_var,
                 };
             }
+
+            pub fn allowGrabbingCases(self: TutorialState) bool {
+                return self != .first_level;
+            }
         };
 
         persistence: *PlayerData,
@@ -2142,7 +2152,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             self.focus = .{ .nothing = {} };
                         }
                     },
-                    .hovering_case => |hovering| {
+                    .hovering_case => |hovering| if (self.tutorial_state.allowGrabbingCases()) {
                         switch (hovering.address) {
                             .main_fnk => |unfolded| {
                                 const global_point = try self.cases.getPatternGlobalPoint(.{}, unfolded.existing);
@@ -2254,10 +2264,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .hovering_case => |hovering| switch (hovering.address) {
                     .main_fnk => |unfolded| {
                         const pattern_point = try self.cases.getPatternGlobalPoint(.{}, unfolded.existing);
-                        drawer.drawCaseHolder(camera, .{
+                        drawer.drawCaseHolderExtended(camera, .{
                             .pos = pattern_point.pos.sub(.new(3, 0)),
                             .scale = hovering.hot,
-                        });
+                        }, self.tutorial_state != .first_level);
                     },
                     .meta_converter => if (meta_converter.case != null) {
                         drawTinyCaseHolder(camera, meta_converter.case_point, hovering.hot);
