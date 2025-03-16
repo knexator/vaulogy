@@ -3257,6 +3257,8 @@ const UI = struct {
             var result: ?usize = null;
 
             for (self.buttons, 0..) |button, k| {
+                if (!button.enabled) continue;
+
                 if (button.pos.contains(mouse.cur.pos(UI.cam))) {
                     self.hot = k;
                     if (self.active == null and mouse.cur.isDown(.left)) {
@@ -3295,6 +3297,9 @@ const UI = struct {
 
         pub fn draw(self: State, comptime drawer: Drawer) void {
             for (self.buttons) |button| {
+                if (!button.enabled) drawer.setTransparency(0.5);
+                defer if (!button.enabled) drawer.setTransparency(1);
+
                 drawer.drawRect(UI.cam, button.pos.plusMargin(
                     clamp01(button.hot_t - button.active_t) * 0.1,
                 ), .black, .white);
@@ -3313,6 +3318,7 @@ const UI = struct {
         hot_t: f32 = 0,
         active_t: f32 = 0,
         text: ?[:0]const u8 = null,
+        enabled: bool = true,
 
         pub fn row(alloc: std.mem.Allocator, top_left: Vec2, size: Vec2, texts: []const ?[:0]const u8) ![]Button {
             const result: []Button = try alloc.alloc(Button, texts.len);
@@ -3335,9 +3341,18 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
         persistence: *const PlayerData,
 
         pub fn init(persistence: *const PlayerData) !Self {
+            const solved_first = persistence.is_builtin_level_solved[0];
+
             const res = platform.gpa.alloc(UI.Button, builtin_levels.len) catch unreachable;
             for (res, 0..) |*b, k| {
-                b.* = .{ .pos = Rect{ .top_left = .new(2, 2.5 + 2.5 * @as(f32, @floatFromInt(k))), .size = .one } };
+                b.* = .{
+                    .pos = Rect{ .top_left = .new(2, 2.5 + 2.5 * @as(f32, @floatFromInt(k))), .size = .one },
+                    .enabled = switch (k) {
+                        0 => true,
+                        1 => solved_first,
+                        else => return error.TODO,
+                    },
+                };
             }
             return Self{
                 .level_select_buttons = .{ .buttons = res },
@@ -3364,6 +3379,9 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
         pub fn draw(self: Self) OoM!void {
             drawer.clear(Color.gray(128));
             for (self.level_select_buttons.buttons, 0..) |button, k| {
+                if (!button.enabled) drawer.setTransparency(0.5);
+                defer if (!button.enabled) drawer.setTransparency(1);
+
                 if (self.persistence.is_builtin_level_solved[k]) {
                     drawer.drawRect(UI.cam, button.pos.plusMargin(0.2), Color.fromHex("#55ff55"), null);
                 }
