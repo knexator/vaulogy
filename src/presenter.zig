@@ -213,16 +213,17 @@ pub const Drawer = struct {
     drawVariable: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
     drawPatternVariable: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
 
-    pub fn drawArrowForSample(self: Drawer, camera: Camera, center: Point) void {
+    pub fn drawArrowForSample(self: Drawer, camera: Camera, center: Point, solved: bool) void {
+        const color: Color = if (solved) .from01(0.2, 1, 0.5) else .from01(1, 0.2, 0.3);
         self.drawLine(camera, &.{
             center.applyToLocalPosition(.new(-1, 0)),
             center.applyToLocalPosition(.new(2, 0)),
-        }, .black);
+        }, color);
         self.drawLine(camera, &.{
             center.applyToLocalPosition(.new(1, -1)),
             center.applyToLocalPosition(.new(2, 0)),
             center.applyToLocalPosition(.new(1, 1)),
-        }, .black);
+        }, color);
     }
 
     const dummySignatures = struct {
@@ -445,6 +446,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                     self.persistence.allFnkNames(),
                     fnk_body,
                     &self.mem,
+                    &self.persistence,
                 ),
             };
             self.scoring_run = undefined;
@@ -1362,12 +1364,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         };
 
+        persistence: *PlayerData,
         mem: *VeryPermamentGameStuff,
         camera: Camera = DEFAULT_CAM,
         ui_state: UI.State,
         meta_enabled: bool,
         // TODO: allow user-created Samples
         samples: []const Sample,
+        solved_samples: []bool,
         fnk_name: *const Sexpr,
         available_fnks: []const *const Sexpr,
         cases: CaseGroup,
@@ -1557,13 +1561,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 return null;
             }
 
-            pub fn draw(camera: Camera, samples: []const Sample) !void {
+            pub fn draw(camera: Camera, samples: []const Sample, solved_status: []const bool) !void {
+                std.debug.assert(samples.len == solved_status.len);
                 drawer.drawRect(camera, rect, .black, null);
-                for (samples, 0..) |sample, k| {
+                for (samples, solved_status, 0..) |sample, solved, k| {
                     drawer.drawArrowForSample(camera, getPoint(k, .output).applyToLocalPoint(.{
                         .pos = .new(-1.25, 0),
                         .scale = 0.25,
-                    }));
+                    }), solved);
                     try artist.drawSexpr(
                         camera,
                         getPoint(k, .input),
@@ -1824,7 +1829,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             return result;
         }
 
-        pub fn init(fnk_name: *const Sexpr, builtin_samples: []const Sample, available_fnks: []const *const Sexpr, fnk_body: core.FnkBody, mem: *VeryPermamentGameStuff) !Self {
+        pub fn init(fnk_name: *const Sexpr, builtin_samples: []const Sample, available_fnks: []const *const Sexpr, fnk_body: core.FnkBody, mem: *VeryPermamentGameStuff, persistence: *PlayerData) !Self {
             const cases = try makeCasesPhysical(mem, fnk_body.cases);
             const main_input: *const Sexpr = Sexpr.builtin.nil;
 
@@ -1834,10 +1839,21 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 "⏵",
             }) };
 
+            const solved_samples = try mem.gpa.alloc(bool, builtin_samples.len);
+            try updateSolvedSamples(
+                .{ .name = fnk_name, .body = fnk_body },
+                builtin_samples,
+                persistence,
+                mem,
+                solved_samples,
+            );
+
             return .{
                 .fnk_name = fnk_name,
                 .samples = builtin_samples,
+                .solved_samples = solved_samples,
                 .mem = mem,
+                .persistence = persistence,
                 .cases = cases,
                 .main_input = main_input,
                 .ui_state = ui_state,
@@ -1846,6 +1862,36 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .meta_enabled = false,
                 .tutorial_state = if (fnk_name.equals(builtin_levels[0].fnk_name)) .first_level else .none,
             };
+        }
+
+        fn updateSolvedSamplesHelper(self: *Self) !void {
+            try updateSolvedSamples(try self.getFnk(), self.samples, self.persistence, self.mem, self.solved_samples);
+        }
+
+        fn updateSolvedSamples(fnk: Fnk, samples: []const Sample, persistence: *PlayerData, mem: *VeryPermamentGameStuff, buf: []bool) !void {
+            std.debug.assert(samples.len == buf.len);
+
+            try persistence.fnks.put(fnk.name, fnk.body);
+
+            var score = try core.ScoringRun.initFromFnks(persistence.fnks, mem);
+            defer score.deinit(false);
+
+            for (samples, buf) |sample, *target| {
+                target.* = blk: {
+                    var exec = core.ExecutionThread.init(sample.input, fnk.name, &score) catch |err| switch (err) {
+                        error.FnkNotFound => break :blk false,
+                        else => return err,
+                    };
+                    defer exec.deinit();
+
+                    const actual_output = exec.getFinalResult(&score) catch |err| switch (err) {
+                        error.FnkNotFound, error.NoMatchingCase, error.InvalidMetaFnk => break :blk false,
+                        error.OutOfMemory => return err,
+                        error.BAD_INPUT => return err,
+                    };
+                    break :blk actual_output.equals(sample.output.?);
+                };
+            }
         }
 
         // TODO: deinit
@@ -2056,6 +2102,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     const parent_point = try self.cases.getPatternGlobalPoint(.{}, address[0 .. address.len - 1]);
                                     grabbing.case.pattern_point_relative_to_parent = parent_point.inverseApplyGetLocal(global_point);
                                     try self.cases.insertAt(self.mem, address, grabbing.case);
+                                    try self.updateSolvedSamplesHelper();
                                     self.focus = .{ .hovering_case = .{ .address = .{ .main_fnk = .{ .existing = address } }, .hot = 1 } };
                                 },
                                 .meta_converter => {
@@ -2074,6 +2121,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 return .{ .change_to = try grabbing.sexpr.changeAllVariablesToNil(self.mem) };
                             } else {
                                 try address.setSexpr(self, grabbing.sexpr);
+                                try self.updateSolvedSamplesHelper();
                                 self.focus = .{ .hovering_sexpr = .{
                                     .address = address,
                                     .global_point = grabbing.point,
@@ -2088,6 +2136,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             .main_fnk => |unfolded| {
                                 const global_point = try self.cases.getPatternGlobalPoint(.{}, unfolded.existing);
                                 var asdf = try self.cases.removeAt(unfolded.existing);
+                                try self.updateSolvedSamplesHelper();
                                 const old_point = asdf.pattern_point_relative_to_parent;
                                 asdf.pattern_point_relative_to_parent = global_point;
                                 self.focus = .{ .grabbing_case = .{
@@ -2144,6 +2193,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             if (try hovering.address.getSexpr(self.*)) |old_value| {
                                 const new_value = try self.mem.storeSexpr(Sexpr.doPair(old_value, Sexpr.builtin.nil));
                                 try hovering.address.setSexpr(self, new_value);
+                                try self.updateSolvedSamplesHelper();
                             }
                         }
                     },
@@ -2181,7 +2231,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             //     .hidden => {},
             // }
 
-            try samples_reel.draw(camera, self.samples);
+            try samples_reel.draw(camera, self.samples, self.solved_samples);
             if (self.tutorial_state.allowOtherVaus()) {
                 try fnks_reel.draw(camera, self.available_fnks);
                 try fnk_manager.draw(camera);
@@ -2274,8 +2324,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     drawer.drawDebugText(camera, .{ .pos = .new(8, 0), .scale = 0.75 }, "← That gray thing is the current Data;\nfeel free to change it by\ndropping some other Data on it.", .black);
                     // drawer.drawDebugText(camera, .{ .pos = .new(6, -1.85), .scale = 0.75 }, "↓ That gray thing is the current Data;\nfeel free to change it by\ndropping some other Data on it.", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(3.5, -4), .scale = 0.75 }, "← Click Play to see the Vau applied to the current Data.", .black);
-                    drawer.drawDebugText(camera, .{ .pos = .new(-3.25, 7), .scale = 0.75 }, "↑\nThese are the Data\ntransformations your Vau\nmust achieve.", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(-3.25, 7), .scale = 0.75 }, "↑\nThese Tests are the Data\ntransformations your Vau\nmust achieve.", .black);
                     // drawer.drawDebugText(camera, .{ .pos = .new(10, 1), .scale = 0.75 }, "↓ These are the Cases that make up the Vau.", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(2, 9.5), .scale = 0.75 }, "Once all Tests are green, the Vau is done and you can go to the next one.", .black);
                 },
             }
         }
