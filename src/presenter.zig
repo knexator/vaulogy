@@ -2351,7 +2351,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .second_level => {
                     drawer.drawDebugText(camera, .{ .pos = .new(10.5, -3.5), .scale = 0.75 }, "↓ This special Data is called a Wildcard, and will match with any other Data.", .black);
-                    drawer.drawDebugText(camera, .{ .pos = .new(8, 7), .scale = 0.75 }, "All the Tests for this Vau have the same structure; use a Wildcard to solve them with a single Case.", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(8, 8), .scale = 0.75 }, "All the Tests for this Vau have the same structure; use a Wildcard to solve them with a single Case.", .black);
                 },
             }
         }
@@ -3402,11 +3402,19 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
                 drawer.drawDebugText(UI.cam, .{ .pos = UI.cam.center }, level.description, .black);
                 self.play_level_button.draw(drawer);
             } else {
-                drawer.drawDebugText(UI.cam, .{ .pos = UI.cam.center },
-                    \\Welcome to the Vaulogy lab! 
-                    \\Vaus are simple machines for transforming Data into Data.
-                    \\Your goal is to fill in all these Vaus.
-                , .black);
+                drawer.drawDebugText(
+                    UI.cam,
+                    .{ .pos = UI.cam.center },
+                    if (!self.persistence.is_builtin_level_solved[0])
+                        \\Welcome to the Vaulogy lab! 
+                        \\Vaus are simple machines for transforming Data into Data.
+                        \\Your goal is to fill in all these Vaus.
+                    else if (!self.persistence.is_builtin_level_solved[1])
+                        \\Good job! On to the next one...
+                    else
+                        "",
+                    .black,
+                );
             }
         }
 
