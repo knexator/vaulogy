@@ -1351,6 +1351,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         const TutorialState = union(enum) {
             none,
             first_level,
+            second_level,
 
             pub fn allowOtherVaus(self: TutorialState) bool {
                 return self == .none;
@@ -1360,6 +1361,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 return switch (self) {
                     .none => .normal,
                     .first_level => .hidden,
+                    .second_level => .only_special_var,
                 };
             }
         };
@@ -1471,11 +1473,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .pattern_point_relative_to_parent = special_case_point,
             };
 
-            pub const Modifier = enum { normal, hidden };
+            pub const Modifier = enum { normal, hidden, only_special_var };
 
             pub fn overlapsWithSpecialVar(mouse_pos: Vec2, modifier: Modifier) bool {
                 return switch (modifier) {
-                    .normal => SexprView.overlapsPatternAtom(special_var_point, mouse_pos, .atom),
+                    .normal, .only_special_var => SexprView.overlapsPatternAtom(special_var_point, mouse_pos, .atom),
                     .hidden => false,
                 };
             }
@@ -1499,11 +1501,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
                 try artist.drawPatternSexpr(camera, special_var_point, special_var_state.next_value);
 
+                if (modifier == .only_special_var) drawer.setTransparency(0.5);
+
                 for (things) |thing| {
                     try artist.drawSexpr(camera, thing.point, thing.value);
                 }
 
                 try drawTinyCase(camera, special_case_point, special_case_value.pattern, special_case_value.template);
+
+                if (modifier != .normal) drawer.setTransparency(1);
             }
         };
 
@@ -1860,7 +1866,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .available_fnks = available_fnks,
                 // TODO: figure out when to enable the meta features
                 .meta_enabled = false,
-                .tutorial_state = if (fnk_name.equals(builtin_levels[0].fnk_name)) .first_level else .none,
+                .tutorial_state = if (fnk_name.equals(builtin_levels[0].fnk_name))
+                    .first_level
+                else if (fnk_name.equals(builtin_levels[1].fnk_name))
+                    .second_level
+                else
+                    .none,
             };
         }
 
@@ -1886,8 +1897,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
                     const actual_output = exec.getFinalResult(&score) catch |err| switch (err) {
                         error.FnkNotFound, error.NoMatchingCase, error.InvalidMetaFnk => break :blk false,
+                        error.BAD_INPUT => break :blk false,
                         error.OutOfMemory => return err,
-                        error.BAD_INPUT => return err,
                     };
                     break :blk actual_output.equals(sample.output.?);
                 };
@@ -2326,7 +2337,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     drawer.drawDebugText(camera, .{ .pos = .new(3.5, -4), .scale = 0.75 }, "← Click Play to see the Vau applied to the current Data.", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(-3.25, 7), .scale = 0.75 }, "↑\nThese Tests are the Data\ntransformations your Vau\nmust achieve.", .black);
                     // drawer.drawDebugText(camera, .{ .pos = .new(10, 1), .scale = 0.75 }, "↓ These are the Cases that make up the Vau.", .black);
-                    drawer.drawDebugText(camera, .{ .pos = .new(2, 9.5), .scale = 0.75 }, "Once all Tests are green, the Vau is done and you can go to the next one.", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(3, 9.5), .scale = 0.75 }, "Once all Tests are green, the Vau is done and you can go to the next one.", .black);
+                },
+                .second_level => {
+                    drawer.drawDebugText(camera, .{ .pos = .new(10.5, -3.5), .scale = 0.75 }, "↓ This special Data is called a Wildcard, and will match with any other Data.", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(8, 7), .scale = 0.75 }, "All the Tests for this Vau have the same structure; use a Wildcard to solve them with a single Case.", .black);
                 },
             }
         }
