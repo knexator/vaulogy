@@ -565,7 +565,14 @@ const Sample = struct {
 const BuiltinLevel = struct {
     // TODO: remove fnk_name, making it a key in a hashmap?
     fnk_name: *const Sexpr,
-    solution: *const fn (input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr,
+    // TODO: remove the defaul value
+    solution: *const fn (input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr = struct {
+        fn anon(input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr {
+            _ = input;
+            _ = mem;
+            @panic("TODO");
+        }
+    }.anon,
     manual_samples: []const Sample,
     description: [:0]const u8,
     premade_solution: ?[]const u8,
@@ -595,12 +602,7 @@ const BuiltinLevel = struct {
 };
 const builtin_levels: []const BuiltinLevel = &.{
     // TODO: solutions
-    .{ .fnk_name = &Sexpr.doLit("planetFromOlympian"), .solution = struct {
-        fn anon(input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr {
-            _ = mem;
-            return input;
-        }
-    }.anon, .manual_samples = &.{
+    .{ .fnk_name = &Sexpr.doLit("planetFromOlympian"), .manual_samples = &.{
         .{ .input = &Sexpr.doLit("Hermes"), .output = &Sexpr.doLit("Mercury") },
         .{ .input = &Sexpr.doLit("Aphrodite"), .output = &Sexpr.doLit("Venus") },
         .{ .input = &Sexpr.doLit("Ares"), .output = &Sexpr.doLit("Mars") },
@@ -614,12 +616,7 @@ const builtin_levels: []const BuiltinLevel = &.{
     \\  Zeus -> Jupiter;
     \\}
     },
-    .{ .fnk_name = &Sexpr.doLit("wrapOlympian"), .solution = struct {
-        fn anon(input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr {
-            _ = mem;
-            return input;
-        }
-    }.anon, .manual_samples = &.{
+    .{ .fnk_name = &Sexpr.doLit("wrapOlympian"), .manual_samples = &.{
         .{ .input = &Sexpr.doLit("Hermes"), .output = &Sexpr.doPair(&Sexpr.doPair(&Sexpr.doLit("top"), &Sexpr.doLit("Hermes")), &Sexpr.doLit("bottom")) },
         .{ .input = &Sexpr.doLit("Aphrodite"), .output = &Sexpr.doPair(&Sexpr.doPair(&Sexpr.doLit("top"), &Sexpr.doLit("Aphrodite")), &Sexpr.doLit("bottom")) },
         .{ .input = &Sexpr.doLit("Ares"), .output = &Sexpr.doPair(&Sexpr.doPair(&Sexpr.doLit("top"), &Sexpr.doLit("Ares")), &Sexpr.doLit("bottom")) },
