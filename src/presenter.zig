@@ -81,13 +81,24 @@ pub const PlayerData = struct {
         return self.fnks.keys();
     }
 
-    pub fn empty(mem: *VeryPermamentGameStuff) PlayerData {
-        return PlayerData{
+    pub fn empty(mem: *VeryPermamentGameStuff) !PlayerData {
+        var player_data: PlayerData = .{
             .ascii_data = "",
             .fnks = FnkCollection.init(mem.gpa),
             .custom_samples = .init(mem.gpa),
             .is_builtin_level_solved = @splat(false),
         };
+
+        for (builtin_levels) |level| {
+            if (level.premade_solution) |raw_fnk| {
+                var parser = parsing.Parser{ .remaining_text = raw_fnk };
+                const fnk = try parser.parseFnkNew(&mem.pool_for_sexprs, mem.arena_for_cases.allocator());
+                std.debug.assert(fnk.name.equals(level.fnk_name));
+                try player_data.fnks.put(fnk.name, fnk.body);
+            }
+        }
+
+        return player_data;
     }
 
     pub fn updateSolvedStatusOfAll(self: *PlayerData, mem: *VeryPermamentGameStuff) !void {
@@ -416,22 +427,10 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
 
             const platform_alloc = platform.gpa;
             result.mem = VeryPermamentGameStuff.init(platform_alloc);
-            var player_data = (try platform.getPlayerData(&result.mem)) orelse PlayerData.empty(&result.mem);
-
+            const player_data = (try platform.getPlayerData(&result.mem)) orelse (try PlayerData.empty(&result.mem));
             if (!player_data.first_time) return error.TODO;
 
-            for (builtin_levels) |level| {
-                if (level.premade_solution) |raw_fnk| {
-                    var parser = parsing.Parser{ .remaining_text = raw_fnk };
-                    const fnk = try parser.parseFnkNew(&result.mem.pool_for_sexprs, result.mem.arena_for_cases.allocator());
-                    std.debug.assert(fnk.name.equals(level.fnk_name));
-                    try player_data.fnks.put(fnk.name, fnk.body);
-                }
-            }
-            try platform.setPlayerData(player_data, &result.mem);
             result.persistence = player_data;
-
-            // try result.initEditing(builtin_levels[0].fnk_name, builtin_levels[0].manual_samples);
 
             result.state = .{
                 .level_select = try .init(&result.persistence),
@@ -477,12 +476,14 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         const fnk = try editing.getFnk();
                         try self.persistence.fnks.put(fnk.name, fnk.body);
                         try self.persistence.updateSolvedStatusOfAll(&self.mem);
+                        try platform.setPlayerData(self.persistence, &self.mem);
                         self.state = .{ .level_select = try .init(&self.persistence) };
                     },
                     .launch_execution => {
                         // todo
                         const fnk = try editing.getFnk();
                         try self.persistence.fnks.put(fnk.name, fnk.body);
+                        try platform.setPlayerData(self.persistence, &self.mem);
                         self.prev_editing_state = editing.*;
                         self.scoring_run = try core.ScoringRun.initFromFnks(
                             self.persistence.fnks,
@@ -498,6 +499,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                     .change_to => |fnk_name| {
                         const fnk = try editing.getFnk();
                         try self.persistence.fnks.put(fnk.name, fnk.body);
+                        try platform.setPlayerData(self.persistence, &self.mem);
                         try self.initEditing(fnk_name, if (findBuiltinLevel(fnk_name)) |level|
                             level.manual_samples
                         else
@@ -600,6 +602,23 @@ const BuiltinLevel = struct {
         };
     }
 };
+const Vals = struct {
+    pub const Hermes: *const Sexpr = &Sexpr.doLit("Hermes");
+    pub const Mercury: *const Sexpr = &Sexpr.doLit("Mercury");
+    pub const Aphrodite: *const Sexpr = &Sexpr.doLit("Aphrodite");
+    pub const Venus: *const Sexpr = &Sexpr.doLit("Venus");
+    pub const Ares: *const Sexpr = &Sexpr.doLit("Ares");
+    pub const Mars: *const Sexpr = &Sexpr.doLit("Mars");
+    pub const Zeus: *const Sexpr = &Sexpr.doLit("Zeus");
+    pub const Jupiter: *const Sexpr = &Sexpr.doLit("Jupiter");
+
+    pub const top: *const Sexpr = &Sexpr.doLit("top");
+    pub const bottom: *const Sexpr = &Sexpr.doLit("bottom");
+
+    pub fn wrapped(comptime v: *const Sexpr) *const Sexpr {
+        return &Sexpr.doPair(&Sexpr.doPair(Vals.top, v), Vals.bottom);
+    }
+};
 const builtin_levels: []const BuiltinLevel = &.{
     // TODO: solutions
     .{ .fnk_name = &Sexpr.doLit("planetFromOlympian"), .manual_samples = &.{
@@ -627,6 +646,19 @@ const builtin_levels: []const BuiltinLevel = &.{
     \\  Aphrodite -> ((top . Aphrodite) . bottom);
     \\  // Ares -> ((top . Ares) . bottom);
     \\  // Zeus -> ((top . Zeus) . bottom);
+    \\}
+    },
+    .{ .fnk_name = &Sexpr.doLit("planetFromWrappedOlympian"), .manual_samples = &.{
+        .{ .input = Vals.wrapped(Vals.Hermes), .output = Vals.Mercury },
+        .{ .input = Vals.wrapped(Vals.Aphrodite), .output = Vals.Venus },
+        .{ .input = Vals.wrapped(Vals.Ares), .output = Vals.Mars },
+        .{ .input = Vals.wrapped(Vals.Zeus), .output = Vals.Jupiter },
+    }, .description = "Unwrap the unstable Data and then translate it", .premade_solution = 
+    \\planetFromWrappedOlympian {
+    \\ ((top . @v) . bottom) -> @v;
+    \\ // ((top . Aphrodite) . bottom) -> Venus;
+    \\ // ((top . Ares) . bottom) -> Mars;
+    \\ // ((top . Zeus) . bottom) -> Jupiter;
     \\}
     },
 };
@@ -1353,10 +1385,18 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         const TutorialState = union(enum) {
             none,
+            /// hardcoded map
             first_level,
+            /// wildcard
             second_level,
+            /// apply hardcoded map to unwrapped
+            third_level,
 
-            pub fn allowOtherVaus(self: TutorialState) bool {
+            pub fn allowPickingVaus(self: TutorialState) bool {
+                return self == .none or self == .third_level;
+            }
+
+            pub fn allowCreatingVaus(self: TutorialState) bool {
                 return self == .none;
             }
 
@@ -1365,6 +1405,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .none => .normal,
                     .first_level => .hidden,
                     .second_level => .only_special_var,
+                    .third_level => .all_except_case,
                 };
             }
 
@@ -1480,12 +1521,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .pattern_point_relative_to_parent = special_case_point,
             };
 
-            pub const Modifier = enum { normal, hidden, only_special_var };
+            pub const Modifier = enum { normal, hidden, only_special_var, all_except_case };
 
             pub fn overlapsWithSpecialVar(mouse_pos: Vec2, modifier: Modifier) bool {
                 return switch (modifier) {
-                    .normal, .only_special_var => SexprView.overlapsPatternAtom(special_var_point, mouse_pos, .atom),
                     .hidden => false,
+                    else => SexprView.overlapsPatternAtom(special_var_point, mouse_pos, .atom),
                 };
             }
 
@@ -1494,7 +1535,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             pub fn findOverlap(mouse_pos: Vec2, modifier: Modifier) ?std.meta.Elem(@TypeOf(things)) {
-                if (modifier != .normal) return null;
+                if (modifier == .hidden or modifier == .only_special_var) return null;
                 for (things) |thing| {
                     if (SexprView.overlapsAtom(thing.point, mouse_pos, .atom)) {
                         return thing;
@@ -1509,11 +1550,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 try artist.drawPatternSexpr(camera, special_var_point, special_var_state.next_value);
 
                 if (modifier == .only_special_var) drawer.setTransparency(0.5);
-
                 for (things) |thing| {
                     try artist.drawSexpr(camera, thing.point, thing.value);
                 }
 
+                if (modifier == .all_except_case) drawer.setTransparency(0.5);
                 try drawTinyCase(camera, special_case_point, special_case_value.pattern, special_case_value.template);
 
                 if (modifier != .normal) drawer.setTransparency(1);
@@ -1877,6 +1918,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .first_level
                 else if (fnk_name.equals(builtin_levels[1].fnk_name))
                     .second_level
+                else if (fnk_name.equals(builtin_levels[2].fnk_name))
+                    .third_level
                 else
                     .none,
             };
@@ -2028,9 +2071,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .{ .toolbar = overlap.index } }
                 else if (try samples_reel.findOverlap(mouse_pos, self.samples)) |overlap|
                     .{ .sexpr = .{ .sample = overlap } }
-                else if (if (self.tutorial_state.allowOtherVaus()) try fnks_reel.findOverlap(mouse_pos, self.available_fnks) else null) |overlap|
+                else if (if (self.tutorial_state.allowPickingVaus()) try fnks_reel.findOverlap(mouse_pos, self.available_fnks) else null) |overlap|
                     .{ .sexpr = .{ .external_fnk = overlap } }
-                else if (self.tutorial_state.allowOtherVaus() and fnk_manager.findOverlap(mouse_pos))
+                else if (self.tutorial_state.allowCreatingVaus() and fnk_manager.findOverlap(mouse_pos))
                     .{ .sexpr = .fnk_manager }
                 else if (if (self.meta_enabled) try meta_converter.findOverlap(mouse_pos) else null) |overlap| switch (overlap) {
                     .sexpr => |local| .{ .sexpr = .{ .meta_converter = local } },
@@ -2251,10 +2294,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             // }
 
             try samples_reel.draw(camera, self.samples, self.solved_samples);
-            if (self.tutorial_state.allowOtherVaus()) {
-                try fnks_reel.draw(camera, self.available_fnks);
-                try fnk_manager.draw(camera);
-            }
+            if (self.tutorial_state.allowPickingVaus()) try fnks_reel.draw(camera, self.available_fnks);
+            if (self.tutorial_state.allowCreatingVaus()) try fnk_manager.draw(camera);
             if (self.meta_enabled) try meta_converter.draw(camera);
 
             switch (self.focus) {
@@ -2350,6 +2391,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .second_level => {
                     drawer.drawDebugText(camera, .{ .pos = .new(10.5, -3.5), .scale = 0.75 }, "↓ This special Data is called a Wildcard, and will match with any other Data.", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(8, 8), .scale = 0.75 }, "All the Tests for this Vau have the same structure; use a Wildcard to solve them with a single Case.", .black);
+                },
+                .third_level => {
+                    drawer.drawDebugText(camera, .{ .pos = .new(2.5, 7.25), .scale = 0.75 }, "← your collection of Vaus.", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(14, 0.75), .scale = 0.75 }, "↓ Place a Vau name here to call it on the result.", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(2.5, -4), .scale = 0.75 }, "← Don't forget to hit Play to see the Vau in action!", .black);
                 },
             }
         }
@@ -3339,15 +3385,14 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
         persistence: *const PlayerData,
 
         pub fn init(persistence: *const PlayerData) !Self {
-            const solved_first = persistence.is_builtin_level_solved[0];
-
             const res = platform.gpa.alloc(UI.Button, builtin_levels.len) catch unreachable;
             for (res, 0..) |*b, k| {
                 b.* = .{
                     .pos = Rect{ .top_left = .new(2, 2.5 + 2.5 * @as(f32, @floatFromInt(k))), .size = .one },
                     .enabled = switch (k) {
                         0 => true,
-                        1 => solved_first,
+                        1 => persistence.is_builtin_level_solved[0],
+                        2 => persistence.is_builtin_level_solved[1],
                         else => return error.TODO,
                     },
                 };
@@ -3409,6 +3454,9 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
                         \\Your goal is to fill in all these Vaus.
                     else if (!self.persistence.is_builtin_level_solved[1])
                         \\Good job! On to the next one...
+                    else if (!self.persistence.is_builtin_level_solved[2])
+                        \\Vaus can be combined. For the next one,
+                        \\you will reuse the first one.
                     else
                         "",
                     .black,
