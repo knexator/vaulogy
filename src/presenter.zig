@@ -2421,7 +2421,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .first_level => {
                     drawer.drawDebugText(camera, .{ .pos = .new(-3.55, -2), .scale = 0.75 }, "That's the name of →\nthe Vau you're editing.", .black);
                     if (DESIGN.no_current_data) {
-                        drawer.drawDebugText(camera, .{ .pos = .new(9, 0), .scale = 0.75 }, "← Place some Data here to runs the Vau on it.", .black);
+                        drawer.drawDebugText(camera, .{ .pos = .new(9, 0), .scale = 0.75 }, "← Place some Data here to run the Vau on it.", .black);
                     } else {
                         drawer.drawDebugText(camera, .{ .pos = .new(8, 0), .scale = 0.75 }, "← That gray thing is the current Data;\nfeel free to change it by\ndropping some other Data on it.", .black);
                         // drawer.drawDebugText(camera, .{ .pos = .new(6, -1.85), .scale = 0.75 }, "↓ That gray thing is the current Data;\nfeel free to change it by\ndropping some other Data on it.", .black);
@@ -2437,7 +2437,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .third_level => {
                     drawer.drawDebugText(camera, .{ .pos = .new(2.5, 7.25), .scale = 0.75 }, "← your collection of Vaus.", .black);
-                    drawer.drawDebugText(camera, .{ .pos = .new(14, 0.75), .scale = 0.75 }, "↓ Place a Vau name here to call it on the result.", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(14.35, 0.75), .scale = 0.75 }, "↓ Place a Vau name here to call it on the result.", .black);
                     if (!DESIGN.no_current_data) drawer.drawDebugText(camera, .{ .pos = .new(2.5, -4), .scale = 0.75 }, "← Don't forget to hit Play to see the Vau in action!", .black);
                 },
                 .fourth_level => {

@@ -68,7 +68,7 @@ async function getWasm() {
       fillText: (text_ptr, text_len, x, y, h) => {
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.font = `${Math.floor(h)}px Arial`;
+        ctx.font = `${h}px Arial`;
 
         const text = getString(text_ptr, text_len);
         const lines = text.split("\n");
