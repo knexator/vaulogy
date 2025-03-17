@@ -3304,7 +3304,7 @@ pub fn AfterExecutingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .no_matching_case => drawer.drawDebugText(camera, text_pos, "Ran out of cases!", .black),
                 .missing_or_uncompilable_fnk => |fnk_name| {
-                    drawer.drawDebugText(camera, text_pos, "Could not find or compile this fnk:", .black);
+                    drawer.drawDebugText(camera, text_pos, "Could not find\nor compile this fnk:", .black);
                     try artist.drawSexpr(camera, bad_fnk_pos, fnk_name);
                 },
             }
