@@ -32,6 +32,10 @@ const parsing = @import("parsing.zig");
 
 const OoM = error{ OutOfMemory, TODO, BAD_INPUT };
 
+const DESIGN: struct {
+    no_current_data: bool = true,
+} = .{};
+
 pub const KeyboardButton = std.meta.FieldEnum(KeyboardState);
 pub const KeyboardState = struct {
     left: bool,
@@ -479,7 +483,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         try platform.setPlayerData(self.persistence, &self.mem);
                         self.state = .{ .level_select = try .init(&self.persistence) };
                     },
-                    .launch_execution => {
+                    .launch_execution => |input| {
                         // todo
                         const fnk = try editing.getFnk();
                         try self.persistence.fnks.put(fnk.name, fnk.body);
@@ -490,7 +494,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                             &self.mem,
                         );
                         self.state = .{ .executing_fnk = try .init(
-                            editing.main_input,
+                            if (DESIGN.no_current_data) input else editing.main_input,
                             fnk.name,
                             &self.scoring_run,
                             editing.camera,
@@ -939,6 +943,11 @@ fn Artist(platform: Platform, drawer: Drawer) type {
     };
 }
 
+const PhysicalSexpr = struct {
+    value: *const Sexpr,
+    pos: Point,
+    is_pattern: f32,
+};
 const SexprView = struct {
     pub fn overlapsPatternAtom(atom_point: Point, needle_pos: Vec2, kind: enum { atom, pair }) bool {
         const p = atom_point.inverseApplyGetLocal(.{ .pos = needle_pos }).pos;
@@ -1303,7 +1312,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             full_address: core.FullAddress,
             toolbar: usize,
             toolbar_special_var,
-            main_input: core.SexprAddress,
+            main_input: if (DESIGN.no_current_data) void else core.SexprAddress,
             main_fnk_name: core.SexprAddress,
             sample: Sample.Address,
             external_fnk: fnks_reel.Address,
@@ -1315,7 +1324,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 return switch (self) {
                     .full_address => |self_full| self_full.equals(other.full_address),
                     .toolbar => |self_toolbar| self_toolbar == other.toolbar,
-                    .main_input => |self_local| core.equalSexprAddress(self_local, other.main_input),
+                    .main_input => |self_local| if (DESIGN.no_current_data) true else core.equalSexprAddress(self_local, other.main_input),
                     .main_fnk_name => |self_local| core.equalSexprAddress(self_local, other.main_fnk_name),
                     .sample => |self_sample| self_sample.index == other.sample.index and
                         self_sample.which == other.sample.which and
@@ -1335,7 +1344,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         full_address,
                     ),
                     .toolbar => |index| toolbar.things[index].point,
-                    .main_input => |local| SexprView.sexprChildView(MAIN_INPUT_POS, local),
+                    .main_input => |local| if (DESIGN.no_current_data) MAIN_INPUT_POS else SexprView.sexprChildView(MAIN_INPUT_POS, local),
                     .main_fnk_name => |local| SexprView.sexprChildView(MAIN_FNK_POS, local),
                     .toolbar_special_var => toolbar.special_var_point,
                     .sample => |sample| SexprView.sexprChildView(samples_reel.getPoint(sample.index, sample.which), sample.local),
@@ -1349,7 +1358,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 return switch (address) {
                     .full_address => |full_address| try self.cases.getSexprAt(full_address),
                     .toolbar => |index| toolbar.things[index].value,
-                    .main_input => |local| self.main_input.getAt(local).?,
+                    .main_input => |local| if (DESIGN.no_current_data) null else self.main_input.getAt(local).?,
                     .main_fnk_name => |local| self.fnk_name.getAt(local).?,
                     .toolbar_special_var => toolbar.special_var_state.next_value,
                     .sample => |sample| self.samples[sample.index].get(sample.which).?.getAt(sample.local).?,
@@ -1365,6 +1374,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 switch (address) {
                     .full_address => |full_address| try self.cases.setSexprAt(self.mem, full_address, value),
                     .main_input => |local_address| {
+                        if (DESIGN.no_current_data) unreachable;
                         const value_without_variables = try value.changeAllVariablesToNil(self.mem);
                         self.main_input = try self.main_input.setAt(self.mem, local_address, value_without_variables);
                     },
@@ -1446,7 +1456,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         fnk_name: *const Sexpr,
         available_fnks: []const *const Sexpr,
         cases: CaseGroup,
-        main_input: *const Sexpr,
+        main_input: if (DESIGN.no_current_data) enum { invalid_field } else *const Sexpr,
 
         tutorial_state: TutorialState,
 
@@ -1908,11 +1918,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             const cases = try makeCasesPhysical(mem, fnk_body.cases);
             const main_input: *const Sexpr = Sexpr.builtin.nil;
 
-            const ui_state = UI.State{ .buttons = try UI.Button.row(platform.gpa, .zero, .one, &.{
+            const ui_state = UI.State{ .buttons = try UI.Button.row(platform.gpa, .zero, .one, &(.{
                 "Back",
                 "Reset\nView",
+            } ++ if (DESIGN.no_current_data) .{} else .{
                 "⏵",
-            }) };
+            })) };
 
             const solved_samples = try mem.gpa.alloc(bool, builtin_samples.len);
             try updateSolvedSamples(
@@ -1930,7 +1941,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .mem = mem,
                 .persistence = persistence,
                 .cases = cases,
-                .main_input = main_input,
+                .main_input = if (DESIGN.no_current_data) .invalid_field else main_input,
                 .ui_state = ui_state,
                 .available_fnks = available_fnks,
                 // TODO: figure out when to enable the meta features
@@ -1994,7 +2005,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         pub fn update(self: *Self, delta_seconds: f32) !union(enum) {
             nothing,
             back_to_level_select,
-            launch_execution,
+            launch_execution: if (DESIGN.no_current_data) PhysicalSexpr else void,
             change_to: *const Sexpr,
         } {
             var mouse = platform.getMouse();
@@ -2003,7 +2014,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 switch (pressed_button) {
                     0 => return .back_to_level_select,
                     1 => self.camera = DEFAULT_CAM,
-                    2 => return .launch_execution,
+                    2 => if (DESIGN.no_current_data) unreachable else return .launch_execution,
                     else => @panic("oops"),
                 }
             }
@@ -2101,7 +2112,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .case => .{ .case = .meta_converter },
                 } else if (toolbar.overlapsWithSpecialVar(mouse_pos, self.tutorial_state.getToolbar()))
                     .{ .sexpr = .toolbar_special_var }
-                else if (try SexprView.overlapsSexpr(self.mem.gpa, self.main_input, MAIN_INPUT_POS, mouse_pos)) |overlap|
+                else if (DESIGN.no_current_data and SexprView.overlapsAtom(MAIN_INPUT_POS, mouse_pos, .atom))
+                    .{ .sexpr = .main_input }
+                else if (if (DESIGN.no_current_data) null else try SexprView.overlapsSexpr(self.mem.gpa, self.main_input, MAIN_INPUT_POS, mouse_pos)) |overlap|
                     .{ .sexpr = .{ .main_input = overlap } }
                 else if (try SexprView.overlapsSexpr(self.mem.gpa, self.fnk_name, MAIN_FNK_POS, mouse_pos)) |overlap|
                     .{ .sexpr = .{ .main_fnk_name = overlap } }
@@ -2201,6 +2214,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         if (grabbing.address_if_released) |address| {
                             if (address == .fnk_manager) {
                                 return .{ .change_to = try grabbing.sexpr.changeAllVariablesToNil(self.mem) };
+                            } else if (DESIGN.no_current_data and address == .main_input) {
+                                self.focus = .nothing;
+                                return .{ .launch_execution = .{ .value = grabbing.sexpr, .pos = grabbing.point, .is_pattern = grabbing.is_pattern } };
                             } else {
                                 try address.setSexpr(self, grabbing.sexpr);
                                 try self.updateSolvedSamplesHelper();
@@ -2299,7 +2315,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             drawer.clear(Color.gray(128));
             {
                 artist.drawOffscreenCableTo(camera, MAIN_INPUT_POS);
-                try artist.drawSexpr(
+                if (!DESIGN.no_current_data) try artist.drawSexpr(
                     camera,
                     MAIN_INPUT_POS,
                     self.main_input,
@@ -2402,9 +2418,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .none => {},
                 .first_level => {
                     drawer.drawDebugText(camera, .{ .pos = .new(-3.55, -2), .scale = 0.75 }, "That's the name of →\nthe Vau you're editing.", .black);
-                    drawer.drawDebugText(camera, .{ .pos = .new(8, 0), .scale = 0.75 }, "← That gray thing is the current Data;\nfeel free to change it by\ndropping some other Data on it.", .black);
-                    // drawer.drawDebugText(camera, .{ .pos = .new(6, -1.85), .scale = 0.75 }, "↓ That gray thing is the current Data;\nfeel free to change it by\ndropping some other Data on it.", .black);
-                    drawer.drawDebugText(camera, .{ .pos = .new(3.5, -4), .scale = 0.75 }, "← Click Play to see the Vau applied to the current Data.", .black);
+                    if (DESIGN.no_current_data) {
+                        drawer.drawDebugText(camera, .{ .pos = .new(9, 0), .scale = 0.75 }, "← Place some Data here to runs the Vau on it.", .black);
+                    } else {
+                        drawer.drawDebugText(camera, .{ .pos = .new(8, 0), .scale = 0.75 }, "← That gray thing is the current Data;\nfeel free to change it by\ndropping some other Data on it.", .black);
+                        // drawer.drawDebugText(camera, .{ .pos = .new(6, -1.85), .scale = 0.75 }, "↓ That gray thing is the current Data;\nfeel free to change it by\ndropping some other Data on it.", .black);
+                        drawer.drawDebugText(camera, .{ .pos = .new(3.5, -4), .scale = 0.75 }, "← Click Play to see the Vau applied to the current Data.", .black);
+                    }
                     drawer.drawDebugText(camera, .{ .pos = .new(-3.25, 7), .scale = 0.75 }, "↑\nThese Tests are the Data\ntransformations your Vau\nmust achieve.", .black);
                     // drawer.drawDebugText(camera, .{ .pos = .new(10, 1), .scale = 0.75 }, "↓ These are the Cases that make up the Vau.", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(3, 9.5), .scale = 0.75 }, "Once all Tests are green, the Vau is done and you can go to the next one.", .black);
@@ -2765,15 +2785,16 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         anim_paused: bool = false,
 
         result: ?core.ExecutionThread.Result,
+        main_input: if (DESIGN.no_current_data) PhysicalSexpr else enum { invalid_field },
 
         pub fn init(
-            input: *const Sexpr,
+            input: if (DESIGN.no_current_data) PhysicalSexpr else *const Sexpr,
             fn_name: *const Sexpr,
             scoring_run: *core.ScoringRun,
             camera: Camera,
         ) !Self {
             var result = Self{
-                .thread = try .init(input, fn_name, scoring_run),
+                .thread = try .init(if (DESIGN.no_current_data) input.value else input, fn_name, scoring_run),
                 .scoring_run = scoring_run,
                 .anim_t = 0.0,
                 .camera = camera,
@@ -2784,6 +2805,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     "⏭",
                 }) },
                 .result = null,
+                .main_input = if (DESIGN.no_current_data) input else .invalid_field,
             };
 
             // for now, skip the "start" anim
@@ -2813,6 +2835,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
             if (!self.anim_paused) {
                 self.anim_t += self.anim_speed * delta_seconds / 2.0;
+                if (DESIGN.no_current_data) {
+                    self.main_input.pos.lerp_towards(MAIN_INPUT_POS, 0.6, delta_seconds);
+                    math.lerp_towards(&self.main_input.is_pattern, 0, 0.6, delta_seconds);
+                }
             }
             while (self.anim_t >= 1) {
                 self.anim_t -= 1;
@@ -2836,6 +2862,9 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
             var parent_point = Point{};
 
+            // TODO: take the is_pattern into account
+            const input_pos = if (DESIGN.no_current_data) self.main_input.pos else MAIN_INPUT_POS;
+
             // std.log.debug("cur state: {s}", .{@tagName(self.thread.last_visual_state)});
             var it = std.mem.reverseIterator(self.thread.stack.items);
             switch (self.thread.last_visual_state) {
@@ -2848,7 +2877,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 .failed_to_match => |discarded_case| {
                     const active_stack: core.StackThing = it.next().?;
                     artist.drawOffscreenCableTo(camera, MAIN_INPUT_POS);
-                    try artist.drawSexpr(camera, parent_point.applyToLocalPoint(MAIN_INPUT_POS), self.thread.active_value);
+                    // TODO: is the parent_point.apply required here?
+                    try artist.drawSexpr(camera, parent_point.applyToLocalPoint(input_pos), self.thread.active_value);
                     try artist.drawHoldedFnk(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), 1, active_stack.cur_fnk_name);
                     if (self.anim_t < 0.5) {
                         const t = clamp01(remap(self.anim_t, 0, 0.4, 0, 1));
@@ -2916,7 +2946,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         artist.drawOffscreenCableTo(camera, MAIN_INPUT_POS);
                         try artist.drawSexpr(
                             camera,
-                            parent_point.applyToLocalPoint(MAIN_INPUT_POS),
+                            parent_point.applyToLocalPoint(input_pos),
                             matched.old_active_value,
                         );
                         try artist.drawHoldedFnk(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), 1, matched.old_fnk_name);
@@ -3111,7 +3141,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     parent_point = parent_point.applyToLocalPoint(.{ .pos = .new(-self.anim_t * 12, 0) });
                     const active_stack: core.StackThing = it.next().?;
                     artist.drawOffscreenCableTo(camera, parent_point.applyToLocalPoint(MAIN_INPUT_POS));
-                    try artist.drawSexpr(camera, parent_point.applyToLocalPoint(MAIN_INPUT_POS), self.thread.active_value);
+                    try artist.drawSexpr(camera, parent_point.applyToLocalPoint(input_pos), self.thread.active_value);
                     try artist.drawHoldedFnk(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), 1, active_stack.cur_fnk_name);
                 },
                 .failed_to_find_or_compile_fnk => |asdf| {
