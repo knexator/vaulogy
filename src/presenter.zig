@@ -19,6 +19,7 @@ const clamp = math.clamp;
 const clamp01 = math.clamp01;
 const remap = math.remap;
 const inRange = math.inRange;
+const funk = @import("kommon/funktional.zig");
 
 const core = @import("main.zig");
 const Atom = core.Atom;
@@ -86,23 +87,16 @@ pub const PlayerData = struct {
     }
 
     pub fn empty(mem: *VeryPermamentGameStuff) !PlayerData {
-        var player_data: PlayerData = .{
+        var asdf: FnkCollection = .init(mem.gpa);
+        // TODO: WITHOUT THIS LINE, IT CRASHES WHEN ADDING A 5th FNK
+        try asdf.ensureTotalCapacity(1000);
+        return .{
             .ascii_data = "",
-            .fnks = FnkCollection.init(mem.gpa),
+            .fnks = asdf,
+            // .fnks = FnkCollection.init(mem.gpa),
             .custom_samples = .init(mem.gpa),
             .is_builtin_level_solved = @splat(false),
         };
-
-        for (builtin_levels) |level| {
-            if (level.premade_solution) |raw_fnk| {
-                var parser = parsing.Parser{ .remaining_text = raw_fnk };
-                const fnk = try parser.parseFnkNew(&mem.pool_for_sexprs, mem.arena_for_cases.allocator());
-                std.debug.assert(fnk.name.equals(level.fnk_name));
-                try player_data.fnks.put(fnk.name, fnk.body);
-            }
-        }
-
-        return player_data;
     }
 
     pub fn updateSolvedStatusOfAll(self: *PlayerData, mem: *VeryPermamentGameStuff) !void {
@@ -444,7 +438,24 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
         }
 
         fn initEditing(self: *Self, fnk_name: *const Sexpr, builtin_samples: ?[]const Sample) !void {
-            const fnk_body = (try self.persistence.fnks.getOrPutValue(fnk_name, defaultFnkBody(&self.mem))).value_ptr.*;
+            const res = try self.persistence.fnks.getOrPut(fnk_name);
+            if (!res.found_existing) {
+                // TODO: change the loop into hashmap?
+                for (builtin_levels) |level| {
+                    if (!level.fnk_name.equals(fnk_name)) continue;
+                    if (level.premade_solution) |raw_fnk| {
+                        var parser = parsing.Parser{ .remaining_text = raw_fnk };
+                        const fnk = try parser.parseFnkNew(&self.mem.pool_for_sexprs, self.mem.arena_for_cases.allocator());
+                        std.debug.assert(fnk.name.equals(level.fnk_name));
+                        res.value_ptr.* = fnk.body;
+                        break;
+                    }
+                } else {
+                    res.value_ptr.* = defaultFnkBody(&self.mem);
+                }
+            }
+            const fnk_body = res.value_ptr.*;
+
             // TODO: include both the builtin & the user created samples
             // const samples = self.persistence.custom_samples.get(fnk_name) orelse PlayerData.no_samples;
 
@@ -572,8 +583,8 @@ const BuiltinLevel = struct {
     // TODO: remove fnk_name, making it a key in a hashmap?
     fnk_name: *const Sexpr,
     // TODO: remove the defaul value
-    solution: *const fn (input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr = struct {
-        fn anon(input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr {
+    solution: *const fn (input: *const Sexpr, mem: *VeryPermamentGameStuff) OoM!?*const Sexpr = struct {
+        fn anon(input: *const Sexpr, mem: *VeryPermamentGameStuff) OoM!?*const Sexpr {
             _ = input;
             _ = mem;
             @panic("TODO");
@@ -586,7 +597,7 @@ const BuiltinLevel = struct {
     // TODO: have a comptime pool of Sexprs so this works for solutions that actually use mem
     pub fn init(
         fnk_name: *const Sexpr,
-        solution: *const fn (input: *const Sexpr, mem: *VeryPermamentGameStuff) ?*const Sexpr,
+        solution: *const fn (input: *const Sexpr, mem: *VeryPermamentGameStuff) OoM!?*const Sexpr,
         comptime manual_inputs: []const *const Sexpr,
         description: [:0]const u8,
         premade_solution: ?[]const u8,
@@ -622,7 +633,16 @@ const Vals = struct {
     pub fn wrapped(comptime v: *const Sexpr) *const Sexpr {
         return &Sexpr.doPair(&Sexpr.doPair(Vals.top, v), Vals.bottom);
     }
+
+    pub fn planetFromOlympian(input: *const Sexpr) ?*const Sexpr {
+        if (input.equals(Vals.Hermes)) return Vals.Mercury;
+        if (input.equals(Vals.Aphrodite)) return Vals.Venus;
+        if (input.equals(Vals.Ares)) return Vals.Mars;
+        if (input.equals(Vals.Zeus)) return Vals.Jupiter;
+        return null;
+    }
 };
+
 const builtin_levels: []const BuiltinLevel = &.{
     .{ .fnk_name = &Sexpr.doLit("planetFromOlympian"), .manual_samples = &.{
         .{ .input = &Sexpr.doLit("Hermes"), .output = &Sexpr.doLit("Mercury") },
@@ -681,6 +701,21 @@ const builtin_levels: []const BuiltinLevel = &.{
     \\ // Zeus -> ((top . Jupiter) . bottom);
     \\}
     },
+    .{ .fnk_name = &Sexpr.doLit("planetPairFromOlympianPair"), .manual_samples = &funk.map(struct {
+        pub fn anon(comptime v: *const Sexpr) Sample {
+            return .{ .input = v, .output = &Sexpr.doPair(
+                Vals.planetFromOlympian(v.pair.left).?,
+                Vals.planetFromOlympian(v.pair.right).?,
+            ) };
+        }
+    }.anon, &.{
+        &Sexpr.doPair(Vals.Hermes, Vals.Aphrodite),
+        &Sexpr.doPair(Vals.Ares, Vals.Zeus),
+        &Sexpr.doPair(Vals.Ares, Vals.Ares),
+        &Sexpr.doPair(Vals.Zeus, Vals.Hermes),
+        &Sexpr.doPair(Vals.Aphrodite, Vals.Hermes),
+        &Sexpr.doPair(Vals.Zeus, Vals.Ares),
+    }), .description = "Translate two Datas at once", .premade_solution = null },
 };
 
 // code smell
@@ -3450,6 +3485,7 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
                         1 => persistence.is_builtin_level_solved[0],
                         2 => persistence.is_builtin_level_solved[1],
                         3 => persistence.is_builtin_level_solved[2],
+                        4 => persistence.is_builtin_level_solved[3],
                         else => return error.TODO,
                     },
                 };
