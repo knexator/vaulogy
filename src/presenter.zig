@@ -1579,13 +1579,26 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             } = .{};
 
             const special_case_point = Point{ .pos = .new(11, -2.5), .scale = 0.5 };
-            const special_case_value = CaseState{
-                .fnk_name = Sexpr.builtin.identity,
-                .pattern = Sexpr.builtin.vars.v1,
-                .template = Sexpr.builtin.vars.v1,
-                .next = null,
-                .pattern_point_relative_to_parent = special_case_point,
-            };
+            var special_case_state: struct {
+                random_instance: std.Random.DefaultPrng = std.Random.DefaultPrng.init(1),
+                next_var: *const Sexpr = &Sexpr.doVar("first_var"),
+
+                pub fn next(self: *@This(), mem: *VeryPermamentGameStuff) !void {
+                    const new_name = try mem.gpa.alloc(u8, 10);
+                    self.random_instance.random().bytes(new_name);
+                    self.next_var = try mem.storeSexpr(Sexpr.doVar(new_name));
+                }
+
+                pub fn value(self: @This()) CaseState {
+                    return .{
+                        .fnk_name = Sexpr.builtin.identity,
+                        .pattern = self.next_var,
+                        .template = self.next_var,
+                        .next = null,
+                        .pattern_point_relative_to_parent = special_case_point,
+                    };
+                }
+            } = .{};
 
             pub const Modifier = enum { normal, hidden, only_special_var, all_except_case };
 
@@ -1621,7 +1634,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
 
                 if (modifier == .all_except_case) drawer.setTransparency(0.5);
-                try drawTinyCase(camera, special_case_point, special_case_value.pattern, special_case_value.template);
+                try drawTinyCase(camera, special_case_point, special_case_state.value().pattern, special_case_state.value().template);
 
                 if (modifier != .normal) drawer.setTransparency(1);
             }
@@ -2294,9 +2307,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             },
                             .toolbar_special_case => {
                                 self.focus = .{ .grabbing_case = .{
-                                    .case = toolbar.special_case_value,
+                                    .case = toolbar.special_case_state.value(),
                                     .address_if_released = null,
                                 } };
+                                try toolbar.special_case_state.next(self.mem);
                             },
                         }
                     },
