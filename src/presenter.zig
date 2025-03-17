@@ -2216,7 +2216,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 return .{ .change_to = try grabbing.sexpr.changeAllVariablesToNil(self.mem) };
                             } else if (DESIGN.no_current_data and address == .main_input) {
                                 self.focus = .nothing;
-                                return .{ .launch_execution = .{ .value = grabbing.sexpr, .pos = grabbing.point, .is_pattern = grabbing.is_pattern } };
+                                return .{ .launch_execution = .{ .value = try grabbing.sexpr.changeAllVariablesToNil(self.mem), .pos = grabbing.point, .is_pattern = grabbing.is_pattern } };
                             } else {
                                 try address.setSexpr(self, grabbing.sexpr);
                                 try self.updateSolvedSamplesHelper();
