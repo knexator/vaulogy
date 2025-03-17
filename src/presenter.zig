@@ -1627,7 +1627,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
                 pub fn next(self: *@This(), mem: *VeryPermamentGameStuff) !void {
                     const new_name = try mem.gpa.alloc(u8, 10);
-                    self.random_instance.random().bytes(new_name);
+                    Random.init(self.random_instance.random()).alphanumeric_bytes(new_name);
                     self.next_value = try mem.storeSexpr(Sexpr.doVar(new_name));
                 }
             } = .{};
@@ -1639,7 +1639,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
                 pub fn next(self: *@This(), mem: *VeryPermamentGameStuff) !void {
                     const new_name = try mem.gpa.alloc(u8, 10);
-                    self.random_instance.random().bytes(new_name);
+                    Random.init(self.random_instance.random()).alphanumeric_bytes(new_name);
                     self.next_var = try mem.storeSexpr(Sexpr.doVar(new_name));
                 }
 

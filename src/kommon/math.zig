@@ -584,6 +584,15 @@ pub const Random = struct {
         return .{ .rnd = rnd };
     }
 
+    pub fn alphanumeric_bytes(this: Random, buf: []u8) void {
+        this.rnd.bytes(buf);
+        for (buf) |*v| {
+            while (!std.ascii.isAlphanumeric(v.*)) {
+                v.* = this.rnd.int(u8);
+            }
+        }
+    }
+
     pub fn between(this: Random, at_least: f32, less_than: f32) f32 {
         return this.rnd.float(f32) * (less_than - at_least) + at_least;
     }
