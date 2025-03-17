@@ -669,7 +669,7 @@ const builtin_levels: []const BuiltinLevel = &.{
         .{ .input = Vals.Aphrodite, .output = Vals.wrapped(Vals.Venus) },
         .{ .input = Vals.Ares, .output = Vals.wrapped(Vals.Mars) },
         .{ .input = Vals.Zeus, .output = Vals.wrapped(Vals.Jupiter) },
-    }, .description = "Translate the Data and the wrap it", .premade_solution = 
+    }, .description = "Translate the Data and then wrap it", .premade_solution = 
     \\wrappedPlanetFromOlympian {
     \\ @v -> planetFromOlympian: @v {
     \\   Mercury -> ((top . Mercury) . bottom);
@@ -1952,6 +1952,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .second_level
                 else if (fnk_name.equals(builtin_levels[2].fnk_name))
                     .third_level
+                else if (fnk_name.equals(builtin_levels[3].fnk_name))
+                    .fourth_level
                 else
                     .none,
             };
@@ -2436,10 +2438,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .third_level => {
                     drawer.drawDebugText(camera, .{ .pos = .new(2.5, 7.25), .scale = 0.75 }, "← your collection of Vaus.", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(14, 0.75), .scale = 0.75 }, "↓ Place a Vau name here to call it on the result.", .black);
-                    drawer.drawDebugText(camera, .{ .pos = .new(2.5, -4), .scale = 0.75 }, "← Don't forget to hit Play to see the Vau in action!", .black);
+                    if (!DESIGN.no_current_data) drawer.drawDebugText(camera, .{ .pos = .new(2.5, -4), .scale = 0.75 }, "← Don't forget to hit Play to see the Vau in action!", .black);
                 },
                 .fourth_level => {
-                    // TODO NOW
+                    drawer.drawDebugText(camera, .{ .pos = .new(3, 6), .scale = 0.75 }, "Nested Cases will\nbe called on the result →", .black);
                 },
             }
         }
