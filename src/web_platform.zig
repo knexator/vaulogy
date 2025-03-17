@@ -46,6 +46,9 @@ const js = struct {
         extern fn fillText(text_ptr: [*]const u8, text_len: usize, x: f32, y: f32, h: f32) void;
         extern fn getWidth() u32;
         extern fn getHeight() u32;
+        extern fn save() void;
+        extern fn restore() void;
+        extern fn clip() void;
 
         // TODO: save/restore, translate/rotate/scale/resetTransform, rect
     };
@@ -204,6 +207,28 @@ const WebDrawer = struct {
 
     pub fn setTransparency(alpha: f32) void {
         js.canvas.setGlobalAlpha(alpha);
+    }
+
+    pub fn clipAtomRegion(camera: Camera, world_point: Point) void {
+        const screen_point = screenFromWorld(camera, world_point);
+        const local_positions = [_]Vec2{
+            Vec2.new(-0.5, 0),
+            Vec2.new(0, 1),
+            Vec2.new(2.3, 1),
+            Vec2.new(2.3, -1),
+            Vec2.new(0, -1),
+        };
+        var screen_positions: [local_positions.len]Vec2 = undefined;
+        for (local_positions, 0..) |pos, i| {
+            screen_positions[i] = screen_point.applyToLocalPosition(pos);
+        }
+        js.canvas.save();
+        js_better.canvas.pathLoop(&screen_positions);
+        js.canvas.clip();
+    }
+
+    pub fn endClip() void {
+        js.canvas.restore();
     }
 
     pub fn drawLine(camera: Camera, points: []const Vec2, color: Color) void {
@@ -573,6 +598,8 @@ const web_platform = presenter.Platform{
 const web_drawer = presenter.Drawer{
     .clear = js_better.canvas.clear,
     .setTransparency = WebDrawer.setTransparency,
+    .clipAtomRegion = WebDrawer.clipAtomRegion,
+    .endClip = WebDrawer.endClip,
     .drawLine = WebDrawer.drawLine,
     .drawRect = WebDrawer.drawRect,
     .drawDebugText = WebDrawer.drawDebugText,

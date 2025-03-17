@@ -70,7 +70,7 @@ pub const Platform = struct {
     getKeyboard: fn () Keyboard,
 };
 
-// TODO: update this after EditingFnk
+// TODO NOW: allow non-ascii sexpr names
 pub const PlayerData = struct {
     // TODO: this field should not be here.
     ascii_data: []const u8,
@@ -207,6 +207,8 @@ pub const Drawer = struct {
     setTransparency: fn (alpha: f32) void,
     drawLine: fn (camera: Camera, points: []const Vec2, color: Color) void,
     drawRect: fn (camera: Camera, rect: Rect, stroke: ?Color, fill: ?Color) void,
+    clipAtomRegion: fn (camera: Camera, point: Point) void,
+    endClip: fn () void,
     drawDebugText: fn (camera: Camera, center: Point, text: [:0]const u8, color: Color) void,
     drawAtomDebug: fn (camera: Camera, world_point: Point) void,
     drawAtom: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
@@ -283,6 +285,7 @@ pub const Drawer = struct {
                 unreachable;
             }
         }.anon,
+        .clipAtomRegion = dummySignatures.camera_point,
         .drawAtomDebug = dummySignatures.camera_point,
         .drawAtom = dummySignatures.camera_point_visuals,
         .drawVariable = dummySignatures.camera_point_visuals,
@@ -903,6 +906,50 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             drawer.drawPatternAtom(camera, world_point, visuals);
         }
 
+        pub fn drawSexprWithBindings(camera: Camera, world_point: Point, sexpr: *const Sexpr, bindings: BindingsState) !void {
+            switch (sexpr.*) {
+                .atom_lit => |lit| {
+                    try drawAtom(camera, world_point, lit.value);
+                },
+                .pair => |pair| {
+                    try drawSexprWithBindings(camera, world_point.applyToLocalPoint(.{
+                        .pos = .new(0.5, -0.5),
+                        .scale = 0.5,
+                    }), pair.left, bindings);
+                    try drawSexprWithBindings(camera, world_point.applyToLocalPoint(.{
+                        .pos = .new(0.5, 0.5),
+                        .scale = 0.5,
+                    }), pair.right, bindings);
+                    drawer.drawPairHolder(camera, world_point);
+                },
+                .atom_var => |x| {
+                    // TODO: check that compiler skips the loop if anim_t is null
+                    for (bindings.new) |binding| {
+                        if (bindings.anim_t) |anim_t| {
+                            if (std.mem.eql(u8, binding.name, x.value)) {
+                                drawer.clipAtomRegion(camera, world_point);
+                                const t = math.smoothstep(anim_t, 0, 0.4);
+                                try drawSexpr(camera, world_point.applyToLocalPoint(.{ .pos = .new(remap(t, 0, 1, -2.3, 0), 0) }), binding.value);
+                                drawer.endClip();
+
+                                drawer.setTransparency(1 - anim_t);
+                                try drawVariable(camera, world_point, x.value);
+                                drawer.setTransparency(1);
+                                break;
+                            }
+                        }
+                    } else for (bindings.old) |binding| {
+                        if (std.mem.eql(u8, binding.name, x.value)) {
+                            try drawSexpr(camera, world_point, binding.value);
+                            break;
+                        }
+                    } else {
+                        try drawVariable(camera, world_point, x.value);
+                    }
+                },
+            }
+        }
+
         pub fn drawSexpr(camera: Camera, world_point: Point, sexpr: *const Sexpr) !void {
             switch (sexpr.*) {
                 .atom_lit => |lit| {
@@ -977,6 +1024,11 @@ fn Artist(platform: Platform, drawer: Drawer) type {
         }
     };
 }
+const BindingsState = struct {
+    new: []const core.Binding,
+    old: []const core.Binding,
+    anim_t: ?f32,
+};
 
 const PhysicalSexpr = struct {
     value: *const Sexpr,
@@ -2893,6 +2945,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
             if (!self.anim_paused) {
                 self.anim_t += self.anim_speed * delta_seconds / 2.0;
+                // self.anim_t += @as(f32, if (self.anim_t < 0.4) 1.0 else 0.1) * self.anim_speed * delta_seconds / 2.0;
                 if (DESIGN.no_current_data) {
                     self.main_input.pos.lerp_towards(MAIN_INPUT_POS, 0.6, delta_seconds);
                     math.lerp_towards(&self.main_input.is_pattern, 0, 0.6, delta_seconds);
@@ -2948,6 +3001,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             active_stack.cur_cases,
                             false,
                             0,
+                            .{ .anim_t = null, .new = &.{}, .old = active_stack.cur_bindings.items },
                         );
                         try drawCase(
                             camera,
@@ -2958,6 +3012,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             true,
                             true,
                             0,
+                            .{ .anim_t = null, .new = &.{}, .old = active_stack.cur_bindings.items },
                         );
                     } else {
                         const t = remap(self.anim_t, 0.5, 1, 0, 1);
@@ -2966,7 +3021,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             .{ .pos = .new(4, 0) },
                             .{ .pos = .new(12, -4), .scale = 0, .turns = -0.65 },
                             t,
-                        )), discarded_case, true, false, 0);
+                        )), discarded_case, true, false, 0, .{ .anim_t = null, .new = &.{}, .old = active_stack.cur_bindings.items });
                         if (active_stack.cur_cases.len > 0) {
                             try drawCase(
                                 camera,
@@ -2977,6 +3032,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                 true,
                                 true,
                                 0,
+                                .{ .anim_t = null, .new = &.{}, .old = active_stack.cur_bindings.items },
                             );
                             try drawCases(
                                 camera,
@@ -2985,6 +3041,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                 active_stack.cur_cases[1..],
                                 false,
                                 0,
+                                .{ .anim_t = null, .new = &.{}, .old = active_stack.cur_bindings.items },
                             );
                         }
                     }
@@ -3016,6 +3073,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             matched.discarded_cases,
                             false,
                             0,
+                            .{ .anim_t = null, .new = matched.new_bindings, .old = matched.old_bindings },
                         );
                         try drawCase(
                             camera,
@@ -3026,6 +3084,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             true,
                             true,
                             0,
+                            .{ .anim_t = null, .new = matched.new_bindings, .old = matched.old_bindings },
                         );
                     } else {
                         const t = remap(self.anim_t, 0.5, 1, 0, 1);
@@ -3068,11 +3127,11 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             t,
                         ));
                         artist.drawCableTo(camera, cable_asdf_pos, active_value_cur_pos);
-                        try artist.drawSexpr(
+                        try artist.drawSexprWithBindings(
                             camera,
                             active_value_cur_pos,
-                            // TODO: smoothly anim this, and also on the child cases
-                            if (t > 0.5) self.thread.active_value else matched.case.template,
+                            matched.case.template,
+                            .{ .anim_t = t, .new = matched.new_bindings, .old = matched.old_bindings },
                         );
 
                         if (matched.added_new_fnk_to_stack) {
@@ -3094,6 +3153,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                 active_stack.cur_cases,
                                 true,
                                 0,
+                                .{ .anim_t = null, .new = &.{}, .old = active_stack.cur_bindings.items },
                             );
                         }
 
@@ -3146,6 +3206,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                         prev_stack.cur_cases,
                                         true,
                                         1 - t,
+                                        .{ .anim_t = t, .new = &.{}, .old = prev_stack.cur_bindings.items },
+                                        // .{ .anim_t = t, .new = matched.new_bindings, .old = matched.old_bindings },
                                     );
                                 }
                             }
@@ -3172,6 +3234,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                     prev_stack.cur_cases,
                                     true,
                                     t2,
+                                    // TODO: revise, might be prev_stack.cur_bindings.items
+                                    .{ .anim_t = t, .new = matched.new_bindings, .old = matched.old_bindings },
                                 );
                             } else {
                                 try artist.drawHoldedFnk(
@@ -3190,6 +3254,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                     prev_stack.cur_cases,
                                     true,
                                     0,
+                                    .{ .anim_t = t, .new = matched.new_bindings, .old = matched.old_bindings },
                                 );
                             }
                         }
@@ -3224,6 +3289,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             true,
                             true,
                             0,
+                            // TODO NOW
+                            .{ .anim_t = null, .new = &.{}, .old = undefined },
                         );
                     } else {
                         const t = remap(self.anim_t, 0.5, 1, 0, 1);
@@ -3252,6 +3319,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     x.cur_cases,
                     true,
                     1,
+                    .{ .anim_t = null, .new = &.{}, .old = x.cur_bindings.items },
                 );
             }
 
@@ -3259,7 +3327,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         // TODO: remove this duplication from EditingFnk
-        fn drawCases(camera: Camera, is_gen0: f32, parent_point: Point, cases: []const core.MatchCaseDefinition, first_unfolded: bool, hiding_children: f32) OoM!void {
+        fn drawCases(camera: Camera, is_gen0: f32, parent_point: Point, cases: []const core.MatchCaseDefinition, first_unfolded: bool, hiding_children: f32, bindings: BindingsState) OoM!void {
             for (cases, 0..) |case, k| {
                 const relative_pattern_point = if (first_unfolded and k == 0) Point{
                     .pos = .new(lerp(4, 5, is_gen0), 3),
@@ -3272,19 +3340,28 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
                 // TODO: constant cable should be true except when whooshing away
                 // try drawCase(is_gen0, pattern_point, case, first_unfolded and k == 0, true, hiding_children);
-                try drawCase(camera, is_gen0, pattern_point, case, first_unfolded and k == 0, is_gen0 > 0.5, hiding_children);
+                try drawCase(camera, is_gen0, pattern_point, case, first_unfolded and k == 0, is_gen0 > 0.5, hiding_children, bindings);
             }
         }
 
         // TODO: join with_extra and constant_cable into a single struct? so constant cable can have a default value
-        fn drawCase(camera: Camera, is_gen0: f32, pattern_point: Point, case: core.MatchCaseDefinition, with_extra: bool, constant_cable: bool, hiding_children: f32) OoM!void {
+        fn drawCase(
+            camera: Camera,
+            is_gen0: f32,
+            pattern_point: Point,
+            case: core.MatchCaseDefinition,
+            with_extra: bool,
+            constant_cable: bool,
+            hiding_children: f32,
+            bindings: BindingsState,
+        ) OoM!void {
             try artist.drawPatternSexpr(
                 camera,
                 pattern_point,
                 case.pattern,
             );
             if (with_extra) {
-                try drawCaseExtra(camera, pattern_point.applyToLocalPoint(.{ .scale = 1 - hiding_children }), case);
+                try drawCaseExtra(camera, pattern_point.applyToLocalPoint(.{ .scale = 1 - hiding_children }), case, bindings);
             }
 
             const cable_from = pattern_point.applyToLocalPosition(.new((lerp(-3, -5, is_gen0)) / if (constant_cable) pattern_point.scale else 1, 1));
@@ -3298,7 +3375,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             );
         }
 
-        fn drawCaseExtra(camera: Camera, pattern_point: Point, case: core.MatchCaseDefinition) !void {
+        fn drawCaseExtra(camera: Camera, pattern_point: Point, case: core.MatchCaseDefinition, bindings: BindingsState) !void {
             try artist.drawSexpr(
                 camera,
                 pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
@@ -3313,7 +3390,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 0,
             );
             if (case.next) |next| {
-                try drawCases(camera, 0, pattern_point, next.items, true, 0);
+                try drawCases(camera, 0, pattern_point, next.items, true, 0, bindings);
             }
         }
     };

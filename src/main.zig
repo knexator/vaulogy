@@ -253,7 +253,7 @@ pub const MatchCaseDefinition = struct {
     }
 };
 
-const Binding = struct {
+pub const Binding = struct {
     name: []const u8,
     value: *const Sexpr,
 };
@@ -481,6 +481,10 @@ pub const ExecutionThread = struct {
             // TODO: redundant if tail_optimized = false
             old_fnk_name: *const Sexpr,
             discarded_cases: []const MatchCaseDefinition,
+            // TODO: memory leak
+            new_bindings: []const Binding,
+            // TODO: memory leak
+            old_bindings: []const Binding,
         },
         ended: *const Sexpr,
     };
@@ -536,7 +540,6 @@ pub const ExecutionThread = struct {
         var permanent_stuff = scoring_run.mem;
         if (this.stack.items.len > 0) {
             const last_stack_ptr: *StackThing = &this.stack.items[this.stack.items.len - 1];
-            const initial_bindings_count = last_stack_ptr.cur_bindings.items.len;
 
             if (last_stack_ptr.cur_cases.len == 0) {
                 this.last_visual_state = .ran_out_of_cases;
@@ -546,12 +549,15 @@ pub const ExecutionThread = struct {
             const case = last_stack_ptr.cur_cases[0];
             const rest_of_cases = last_stack_ptr.cur_cases[1..];
 
-            if (!(try generateBindings(case.pattern, this.active_value, &last_stack_ptr.cur_bindings))) {
-                undoLastBindings(&last_stack_ptr.cur_bindings, initial_bindings_count);
+            var new_bindings: Bindings = .init(permanent_stuff.gpa);
+            if (!(try generateBindings(case.pattern, this.active_value, &new_bindings))) {
+                // undoLastBindings(&last_stack_ptr.cur_bindings, initial_bindings_count);
                 last_stack_ptr.cur_cases = rest_of_cases;
                 this.last_visual_state = .{ .failed_to_match = case };
                 return null;
             }
+            const old_bindings = try permanent_stuff.gpa.dupe(Binding, last_stack_ptr.cur_bindings.items);
+            try last_stack_ptr.cur_bindings.appendSlice(new_bindings.items);
 
             const old_fnk_name = last_stack_ptr.cur_fnk_name;
             const old_active_value = this.active_value;
@@ -602,6 +608,8 @@ pub const ExecutionThread = struct {
                 .old_active_value = old_active_value,
                 .old_fnk_name = old_fnk_name,
                 .discarded_cases = rest_of_cases,
+                .new_bindings = try new_bindings.toOwnedSlice(),
+                .old_bindings = old_bindings,
             } };
 
             return null;

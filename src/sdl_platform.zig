@@ -71,6 +71,16 @@ const SdlDrawer = struct {
         _ = alpha;
     }
 
+    pub fn clipAtomRegion(camera: Camera, world_point: Point) void {
+        // TODO
+        _ = camera;
+        _ = world_point;
+    }
+
+    pub fn endClip() void {
+        // TODO
+    }
+
     pub fn drawLine(camera: Camera, points: []const Vec2, color: Color) void {
         const screen_positions = gpa.allocator().alloc(Vec2, points.len) catch @panic("OoM");
         defer gpa.allocator().free(screen_positions);
@@ -474,6 +484,8 @@ const sdl_platform = presenter.Platform{
 const sdl_drawer = presenter.Drawer{
     .clear = SdlDrawer.clear,
     .setTransparency = SdlDrawer.setTransparency,
+    .clipAtomRegion = SdlDrawer.clipAtomRegion,
+    .endClip = SdlDrawer.endClip,
     .drawLine = SdlDrawer.drawLine,
     .drawRect = SdlDrawer.drawRect,
     .drawDebugText = SdlDrawer.drawDebugText,

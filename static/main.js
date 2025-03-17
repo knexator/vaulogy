@@ -86,6 +86,9 @@ async function getWasm() {
       },
       getWidth: () => canvas.width,
       getHeight: () => canvas.height,
+      save: () => ctx.save(),
+      restore: () => ctx.restore(),
+      clip: () => ctx.clip(),
 
       itemSize: (key_ptr, key_len) => {
         const key = getString(key_ptr, key_len);
