@@ -1454,6 +1454,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             third_level,
             /// nested case
             fourth_level,
+            /// free level: map a pair
+            fifth_level,
 
             pub fn allowPickingVaus(self: TutorialState) bool {
                 return switch (self) {
@@ -1581,7 +1583,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             const special_case_point = Point{ .pos = .new(11, -2.5), .scale = 0.5 };
             var special_case_state: struct {
                 random_instance: std.Random.DefaultPrng = std.Random.DefaultPrng.init(1),
-                next_var: *const Sexpr = &Sexpr.doVar("first_var"),
+                next_var: *const Sexpr = Sexpr.builtin.vars.v1,
 
                 pub fn next(self: *@This(), mem: *VeryPermamentGameStuff) !void {
                     const new_name = try mem.gpa.alloc(u8, 10);
@@ -2002,6 +2004,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .third_level
                 else if (fnk_name.equals(builtin_levels[3].fnk_name))
                     .fourth_level
+                else if (fnk_name.equals(builtin_levels[4].fnk_name))
+                    .fifth_level
                 else
                     .none,
             };
@@ -2491,6 +2495,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .fourth_level => {
                     drawer.drawDebugText(camera, .{ .pos = .new(3, 6), .scale = 0.75 }, "Nested Cases will\nbe called on the result →", .black);
+                },
+                .fifth_level => {
+                    drawer.drawDebugText(camera, .{ .pos = .new(5, 9.5), .scale = 0.75 }, "You're now on your own. Good luck!", .black);
                 },
             }
         }
