@@ -1547,6 +1547,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 };
             }
 
+            pub fn getFnksReel(self: TutorialState) fnks_reel.Modifier {
+                return switch (self) {
+                    .none => .normal,
+                    else => .only_first,
+                };
+            }
+
             pub fn allowGrabbingCases(self: TutorialState) bool {
                 return self != .first_level;
             }
@@ -1848,7 +1855,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 });
             }
 
-            pub fn findOverlap(mouse_pos: Vec2, available_fnks: []const *const Sexpr) !?Address {
+            pub const Modifier = enum { normal, only_first };
+
+            pub fn findOverlap(mouse_pos: Vec2, available_fnks: []const *const Sexpr, modifier: Modifier) !?Address {
                 for (available_fnks, 0..) |fnk_name, k| {
                     if (try SexprView.overlapsSexpr(
                         platform.gpa,
@@ -1858,15 +1867,18 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     )) |local| {
                         return .{ .index = k, .local = local };
                     }
+                    if (modifier == .only_first) break;
                 }
                 return null;
             }
 
-            pub fn draw(camera: Camera, available_fnks: []const *const Sexpr) !void {
+            pub fn draw(camera: Camera, available_fnks: []const *const Sexpr, modifier: Modifier) !void {
                 drawer.drawRect(camera, rect, .black, null);
                 for (available_fnks, 0..) |fnk_name, k| {
                     try artist.drawSexpr(camera, getPoint(k), fnk_name);
+                    if (modifier == .only_first and k == 0) drawer.setTransparency(0.5);
                 }
+                if (modifier == .only_first) drawer.setTransparency(1);
                 drawScrollBar(camera, available_fnks.len);
                 drawer.drawDebugText(camera, .{ .pos = rect.get(.top_center).addY(0.2) }, "vaus", .black);
             }
@@ -2229,7 +2241,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .{ .toolbar = overlap.index } }
                 else if (try samples_reel.findOverlap(mouse_pos, self.samples)) |overlap|
                     .{ .sexpr = .{ .sample = overlap } }
-                else if (if (self.tutorial_state.allowPickingVaus()) try fnks_reel.findOverlap(mouse_pos, self.available_fnks) else null) |overlap|
+                else if (if (self.tutorial_state.allowPickingVaus()) try fnks_reel.findOverlap(mouse_pos, self.available_fnks, self.tutorial_state.getFnksReel()) else null) |overlap|
                     .{ .sexpr = .{ .external_fnk = overlap } }
                 else if (self.tutorial_state.allowCreatingVaus() and fnk_manager.findOverlap(mouse_pos))
                     .{ .sexpr = .fnk_manager }
@@ -2458,7 +2470,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             // }
 
             try samples_reel.draw(camera, self.samples, self.solved_samples);
-            if (self.tutorial_state.allowPickingVaus()) try fnks_reel.draw(camera, self.available_fnks);
+            if (self.tutorial_state.allowPickingVaus()) try fnks_reel.draw(camera, self.available_fnks, self.tutorial_state.getFnksReel());
             if (self.tutorial_state.allowCreatingVaus()) try fnk_manager.draw(camera);
             if (self.meta_enabled) try meta_converter.draw(camera);
 
