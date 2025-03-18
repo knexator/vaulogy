@@ -396,6 +396,7 @@ pub const ScoringRun = struct {
         FnkNotFound,
         NoMatchingCase,
         InvalidMetaFnk,
+        UsedUndefinedVariable,
     }!*const FnkBody {
         if (this.all_fnks.getPtr(name)) |fnk| {
             if (this.used_fnks.get(name) == null) {
@@ -472,6 +473,11 @@ pub const ExecutionThread = struct {
             old_fnk_name: *const Sexpr,
             old_active_value: *const Sexpr,
         },
+        undefined_variable: struct {
+            case: MatchCaseDefinition,
+            old_fnk_name: *const Sexpr,
+            old_active_value: *const Sexpr,
+        },
         failed_to_match: MatchCaseDefinition,
         matched: struct {
             tail_optimized: bool,
@@ -533,6 +539,10 @@ pub const ExecutionThread = struct {
         result: *const Sexpr,
         no_matching_case,
         missing_or_uncompilable_fnk: *const Sexpr,
+        used_undefined_variable: struct {
+            template: *const Sexpr,
+            // TODO: var name
+        },
     };
 
     // TODO: remove duplication, maybe
@@ -561,7 +571,17 @@ pub const ExecutionThread = struct {
 
             const old_fnk_name = last_stack_ptr.cur_fnk_name;
             const old_active_value = this.active_value;
-            const argument = try fillTemplate(case.template, last_stack_ptr.cur_bindings, &permanent_stuff.pool_for_sexprs);
+            const argument = fillTemplate(case.template, last_stack_ptr.cur_bindings, &permanent_stuff.pool_for_sexprs) catch |err| switch (err) {
+                error.UsedUndefinedVariable => {
+                    this.last_visual_state = .{ .undefined_variable = .{
+                        .case = case,
+                        .old_active_value = old_active_value,
+                        .old_fnk_name = old_fnk_name,
+                    } };
+                    return .{ .used_undefined_variable = .{ .template = case.template } };
+                },
+                else => |x| return x,
+            };
             this.active_value = argument;
 
             var tail_optimized: bool = undefined;
@@ -578,7 +598,7 @@ pub const ExecutionThread = struct {
             var added_new_fnk_to_stack: bool = undefined;
             const new_thing = StackThing.init(this.active_value, case.fnk_name, scoring_run) catch |err| switch (err) {
                 // TODO: more detail
-                error.FnkNotFound, error.NoMatchingCase, error.InvalidMetaFnk => {
+                error.FnkNotFound, error.NoMatchingCase, error.InvalidMetaFnk, error.UsedUndefinedVariable => {
                     this.last_visual_state = .{ .failed_to_find_or_compile_fnk = .{
                         .case = case,
                         .old_active_value = old_active_value,
@@ -1223,7 +1243,7 @@ fn fillTemplate(template: *const Sexpr, bindings: Bindings, pool: *MemoryPool(Se
                     return bind.value;
                 }
             }
-            return error.BAD_INPUT;
+            return error.UsedUndefinedVariable;
         },
         .atom_lit => return template,
         .pair => |templ| {

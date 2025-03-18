@@ -122,7 +122,7 @@ pub const PlayerData = struct {
             defer exec.deinit();
 
             const actual_output = exec.getFinalResult(&score) catch |err| switch (err) {
-                error.FnkNotFound, error.NoMatchingCase, error.InvalidMetaFnk => return false,
+                error.FnkNotFound, error.NoMatchingCase, error.InvalidMetaFnk, error.UsedUndefinedVariable => return false,
                 error.OutOfMemory => return err,
                 error.BAD_INPUT => return err,
             };
@@ -2090,7 +2090,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     defer exec.deinit();
 
                     const actual_output = exec.getFinalResult(&score) catch |err| switch (err) {
-                        error.FnkNotFound, error.NoMatchingCase, error.InvalidMetaFnk => break :blk false,
+                        error.FnkNotFound, error.NoMatchingCase, error.InvalidMetaFnk, error.UsedUndefinedVariable => break :blk false,
                         error.BAD_INPUT => break :blk false,
                         error.OutOfMemory => return err,
                     };
@@ -3307,6 +3307,42 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         try artist.drawSexpr(cam, p, asdf.case.fnk_name);
                     }
                 },
+                .undefined_variable => |asdf| {
+                    // TODO: revisit
+                    _ = it.next();
+                    if (self.anim_t < 0.5) {
+                        const t = clamp01(remap(self.anim_t, 0, 0.4, 0, 1));
+                        const t2 = clamp01(remap(self.anim_t, 0.4, 0.5, 0, 1));
+
+                        artist.drawOffscreenCableTo(camera, MAIN_INPUT_POS);
+                        try artist.drawSexpr(
+                            camera,
+                            parent_point.applyToLocalPoint(MAIN_INPUT_POS),
+                            asdf.old_active_value,
+                        );
+                        try artist.drawHoldedFnk(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), 1, asdf.old_fnk_name);
+
+                        try drawCase(
+                            camera,
+                            1 - t2 * 0.5,
+                            parent_point
+                                .applyToLocalPoint(.{ .pos = .new(lerp(DIST_TO_TEMPLATE, 4, t2), lerp(3, 0, t)) }),
+                            asdf.case,
+                            true,
+                            true,
+                            0,
+                            // TODO NOW
+                            .{ .anim_t = null, .new = &.{}, .old = undefined },
+                        );
+                    } else {
+                        const t = remap(self.anim_t, 0.5, 1, 0, 1);
+                        const cam = Camera.lerp(camera, DEFAULT_CAM, t);
+                        const p = Point.lerp(parent_point
+                            .applyToLocalPoint(.{ .pos = .new(4, 0) })
+                            .applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }), AfterExecutingFnk(platform, drawer).result_pos, t);
+                        try artist.drawSexpr(cam, p, asdf.case.template);
+                    }
+                },
                 .ended => |result| {
                     const cam = Camera.lerp(camera, DEFAULT_CAM, self.anim_t);
                     const p = Point.lerp(MAIN_INPUT_POS, AfterExecutingFnk(platform, drawer).result_pos, self.anim_t);
@@ -3447,6 +3483,10 @@ pub fn AfterExecutingFnk(platform: Platform, drawer: Drawer) type {
                 .missing_or_uncompilable_fnk => |fnk_name| {
                     drawer.drawDebugText(camera, text_pos, "Could not find\nor compile this fnk:", .black);
                     try artist.drawSexpr(camera, bad_fnk_pos, fnk_name);
+                },
+                .used_undefined_variable => |asdf| {
+                    drawer.drawDebugText(camera, text_pos, "Could not fill in\nall Wildcards:", .black);
+                    try artist.drawSexpr(camera, result_pos, asdf.template);
                 },
             }
 
