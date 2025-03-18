@@ -246,6 +246,9 @@ pub const Drawer = struct {
     }
 
     const dummySignatures = struct {
+        pub fn nothing() void {
+            unreachable;
+        }
         pub fn color(c: Color) void {
             _ = c;
             unreachable;
@@ -288,6 +291,7 @@ pub const Drawer = struct {
             }
         }.anon,
         .clipAtomRegion = dummySignatures.camera_point,
+        .endClip = dummySignatures.nothing,
         .drawAtomDebug = dummySignatures.camera_point,
         .drawAtom = dummySignatures.camera_point_visuals,
         .drawVariable = dummySignatures.camera_point_visuals,
