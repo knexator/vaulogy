@@ -1198,6 +1198,18 @@ const CaseGroup = struct {
     cases: std.ArrayListUnmanaged(CaseState),
     unfolded: usize,
 
+    pub fn anyWildcardInPlay(self: CaseGroup) bool {
+        for (self.cases.items) |asdf| {
+            if (!asdf.fnk_name.isFullyResolved()) return true;
+            if (!asdf.pattern.isFullyResolved()) return true;
+            if (!asdf.template.isFullyResolved()) return true;
+            if (asdf.next) |next| {
+                if (next.anyWildcardInPlay()) return true;
+            }
+        }
+        return false;
+    }
+
     pub fn caseAt(self: CaseGroup, address: core.CaseAddress) !CaseState {
         return (try caseRefAt(self, address)).*;
     }
@@ -1662,10 +1674,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             pub const Modifier = enum { normal, hidden, only_special_var, all_except_case };
 
-            pub fn overlapsWithSpecialVar(mouse_pos: Vec2, modifier: Modifier) bool {
+            pub fn overlapsWithSpecialVar(mouse_pos: Vec2, modifier: Modifier, wildcard_in_play: bool) bool {
                 return switch (modifier) {
                     .hidden => false,
-                    else => SexprView.overlapsPatternAtom(special_var_point, mouse_pos, .atom),
+                    .normal => SexprView.overlapsPatternAtom(special_var_point, mouse_pos, .atom),
+                    else => !wildcard_in_play and SexprView.overlapsPatternAtom(special_var_point, mouse_pos, .atom),
                 };
             }
 
@@ -1683,9 +1696,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 return null;
             }
 
-            pub fn draw(camera: Camera, modifier: Modifier) !void {
+            pub fn draw(camera: Camera, modifier: Modifier, wildcard_in_play: bool) !void {
                 if (modifier == .hidden) return;
 
+                if (modifier != .normal and wildcard_in_play) drawer.setTransparency(0.5);
                 try artist.drawPatternSexpr(camera, special_var_point, special_var_state.next_value);
 
                 if (modifier == .only_special_var) drawer.setTransparency(0.5);
@@ -2222,7 +2236,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 else if (if (self.meta_enabled) try meta_converter.findOverlap(mouse_pos) else null) |overlap| switch (overlap) {
                     .sexpr => |local| .{ .sexpr = .{ .meta_converter = local } },
                     .case => .{ .case = .meta_converter },
-                } else if (toolbar.overlapsWithSpecialVar(mouse_pos, self.tutorial_state.getToolbar()))
+                } else if (toolbar.overlapsWithSpecialVar(mouse_pos, self.tutorial_state.getToolbar(), self.cases.anyWildcardInPlay()))
                     .{ .sexpr = .toolbar_special_var }
                 else if (DESIGN.no_current_data and SexprView.overlapsAtom(MAIN_INPUT_POS, mouse_pos, .atom))
                     .{ .sexpr = .main_input }
@@ -2437,7 +2451,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             try drawCases(camera, true, .{}, self.cases);
-            try toolbar.draw(camera, self.tutorial_state.getToolbar());
+            try toolbar.draw(camera, self.tutorial_state.getToolbar(), self.cases.anyWildcardInPlay());
             // switch (self.tutorial_state.getToolbar()) {
             //     .normal =>
             //     .hidden => {},
@@ -3481,7 +3495,7 @@ pub fn AfterExecutingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .no_matching_case => drawer.drawDebugText(camera, text_pos, "Ran out of cases!", .black),
                 .missing_or_uncompilable_fnk => |fnk_name| {
-                    drawer.drawDebugText(camera, text_pos, "Could not find\nor compile this fnk:", .black);
+                    drawer.drawDebugText(camera, text_pos, "Could not find\nor compile this vau:", .black);
                     try artist.drawSexpr(camera, bad_fnk_pos, fnk_name);
                 },
                 .used_undefined_variable => |asdf| {
