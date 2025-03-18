@@ -3366,7 +3366,11 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         const p = Point.lerp(parent_point
                             .applyToLocalPoint(.{ .pos = .new(4, 0) })
                             .applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }), AfterExecutingFnk(platform, drawer).result_pos, t);
-                        try artist.drawSexpr(cam, p, asdf.case.template);
+                        try artist.drawSexprWithBindings(cam, p, asdf.case.template, .{
+                            .new = asdf.new_bindings,
+                            .old = asdf.old_bindings,
+                            .anim_t = t,
+                        });
                     }
                 },
                 .ended => |result| {

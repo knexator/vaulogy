@@ -477,6 +477,10 @@ pub const ExecutionThread = struct {
             case: MatchCaseDefinition,
             old_fnk_name: *const Sexpr,
             old_active_value: *const Sexpr,
+            // TODO: memory leak
+            new_bindings: []const Binding,
+            // TODO: memory leak
+            old_bindings: []const Binding,
         },
         failed_to_match: MatchCaseDefinition,
         matched: struct {
@@ -541,7 +545,6 @@ pub const ExecutionThread = struct {
         missing_or_uncompilable_fnk: *const Sexpr,
         used_undefined_variable: struct {
             template: *const Sexpr,
-            // TODO: var name
         },
     };
 
@@ -571,16 +574,19 @@ pub const ExecutionThread = struct {
 
             const old_fnk_name = last_stack_ptr.cur_fnk_name;
             const old_active_value = this.active_value;
-            const argument = fillTemplate(case.template, last_stack_ptr.cur_bindings, &permanent_stuff.pool_for_sexprs) catch |err| switch (err) {
-                error.UsedUndefinedVariable => {
+            const argument = blk: {
+                const x = try partiallyFillTemplate(case.template, last_stack_ptr.cur_bindings, &permanent_stuff.pool_for_sexprs);
+                if (!x.complete) {
                     this.last_visual_state = .{ .undefined_variable = .{
                         .case = case,
                         .old_active_value = old_active_value,
                         .old_fnk_name = old_fnk_name,
+                        .new_bindings = try new_bindings.toOwnedSlice(),
+                        .old_bindings = old_bindings,
                     } };
-                    return .{ .used_undefined_variable = .{ .template = case.template } };
-                },
-                else => |x| return x,
+                    return .{ .used_undefined_variable = .{ .template = x.result } };
+                }
+                break :blk x.result;
             };
             this.active_value = argument;
 
@@ -1234,26 +1240,35 @@ fn generateBindings(pattern: *const Sexpr, value: *const Sexpr, bindings: *Bindi
     }
 }
 
-fn fillTemplate(template: *const Sexpr, bindings: Bindings, pool: *MemoryPool(Sexpr)) !*const Sexpr {
+fn partiallyFillTemplate(template: *const Sexpr, bindings: Bindings, pool: *MemoryPool(Sexpr)) OoM!struct {
+    result: *const Sexpr,
+    complete: bool,
+} {
     switch (template.*) {
         .atom_var => |templ| {
             for (0..bindings.items.len) |k| {
                 const bind = bindings.items[bindings.items.len - k - 1];
                 if (std.mem.eql(u8, bind.name, templ.value)) {
-                    return bind.value;
+                    return .{ .result = bind.value, .complete = true };
                 }
             }
-            return error.UsedUndefinedVariable;
+            return .{ .result = template, .complete = false };
         },
-        .atom_lit => return template,
+        .atom_lit => return .{ .result = template, .complete = true },
         .pair => |templ| {
-            const left = try fillTemplate(templ.left, bindings, pool);
-            const right = try fillTemplate(templ.right, bindings, pool);
+            const left = try partiallyFillTemplate(templ.left, bindings, pool);
+            const right = try partiallyFillTemplate(templ.right, bindings, pool);
             const result: *Sexpr = try pool.create();
-            result.* = Sexpr{ .pair = Pair{ .left = left, .right = right } };
-            return result;
+            result.* = Sexpr{ .pair = Pair{ .left = left.result, .right = right.result } };
+            return .{ .result = result, .complete = left.complete and right.complete };
         },
     }
+}
+
+fn fillTemplate(template: *const Sexpr, bindings: Bindings, pool: *MemoryPool(Sexpr)) !*const Sexpr {
+    const x = try partiallyFillTemplate(template, bindings, pool);
+    if (!x.complete) return error.UsedUndefinedVariable;
+    return x.result;
 }
 
 fn undoLastBindings(bindings: *Bindings, original_count: usize) void {
