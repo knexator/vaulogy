@@ -137,6 +137,8 @@ pub const PlayerData = struct {
         var parser = parsing.Parser{ .remaining_text = ascii_data };
         var fnks = FnkCollection.init(mem.gpa);
         errdefer fnks.deinit();
+        // TODO: WITHOUT THIS LINE, IT CRASHES WHEN ADDING A 5th FNK
+        try fnks.ensureTotalCapacity(1000);
         try parser.parseFnkCollection(&fnks, &mem.pool_for_sexprs, mem.arena_for_cases.allocator());
         var is_builtin_level_solved: [builtin_levels.len]bool = undefined;
         for (builtin_levels, &is_builtin_level_solved) |level, *target| {
