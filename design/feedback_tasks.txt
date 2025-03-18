@@ -1,0 +1,31 @@
+- exit out of ExecutionResult screen by clicking anywhere
+- confused about pattern/template rotation when moving a pattern to the main_input
+- say "Vau id" instead of "Vau name"
+- tests panel too close to main editing panel, no line between them
+- scroll bars not working
+- round vaus or ">.. .>" instead of the current "<.. .>", currently they look like arrows
+- by second level, had forgotten about placing data in main_input to run it
+- wants a "play" button
+- confused when putting wildcards in main_input
+- 1st tutorial: show a "late" case so the player sees failed matches
+- wildcard: keeps placing new wildcards, maybe rename them to "imitators" or "mimics"
+- didn't notice he had already solved the level
+- bug: forbid wildcard in fnk name
+- "i don't know what vaus to use" in level 3 when getting access to the previous ones
+- wants step-by-step execution
+- prefers permanent main_input
+- execution is too fast for nested cases
+- avoid solving the mapOlympianPair by hardcoding all cases
+- names for Data: Pieza, Conjunto
+- tut4 (nested cases): don't allow manipulating the parent case
+- editor: warn about repeated wildcards in patterns
+- editor: warn about undefined wildcards in templates
+- confused by copy/paste, maybe draw the old data "vanishing" after replacing it
+- teaching wildcards: having them match a pair could be useful
+- particle effect when a wildcard starts "resolving"
+- during tutorial, show a 'toast' notification when data binds a wildcard
+- particle effect on the incompatible parts of failed matches
+- cases should hang from a string!
+- mix ryhtms in animation, to highlight the important parts
+- wants some common graphical structure to all vau names vs general atoms
+- more atom options: patterns, animated patterns
