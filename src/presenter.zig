@@ -34,7 +34,7 @@ const parsing = @import("parsing.zig");
 const OoM = error{ OutOfMemory, TODO, BAD_INPUT };
 
 const DESIGN: struct {
-    no_current_data: bool = false,
+    no_current_data: bool = true,
 } = .{};
 
 pub const KeyboardButton = std.meta.FieldEnum(KeyboardState);
@@ -423,6 +423,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             level_select: LevelSelect(platform, drawer),
             level_select_to_editing_fnk: LevelSelectToEditingFnk(platform, drawer),
             editing_fnk: EditingFnk(platform, drawer),
+            editing_fnk_to_testing: EditingFnkToTesting(platform, drawer),
             executing_fnk: ExecutingFnk(platform, drawer),
             after_executing_fnk: AfterExecutingFnk(platform, drawer),
         },
@@ -494,6 +495,23 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 .level_select_to_editing_fnk => |*anim| if (anim.update(delta_seconds)) {
                     try self.initEditing(anim.level.fnk_name, anim.level.manual_samples);
                 },
+                .editing_fnk_to_testing => |*anim| if (try anim.update(delta_seconds, &self.mem)) {
+                    self.scoring_run = try core.ScoringRun.initFromFnks(
+                        self.persistence.fnks,
+                        &self.mem,
+                    );
+                    self.state = .{ .executing_fnk = try .init(
+                        if (DESIGN.no_current_data) .{
+                            .value = anim.input.value,
+                            .is_pattern = 0,
+                            .pos = MAIN_INPUT_POS,
+                        } else anim.input.value,
+                        anim.fnk_name,
+                        &self.scoring_run,
+                        anim.camera,
+                        anim.output.value,
+                    ) };
+                },
                 .editing_fnk => |*editing| switch (try editing.update(delta_seconds)) {
                     .nothing => {},
                     .back_to_level_select => {
@@ -502,6 +520,31 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         try self.persistence.updateSolvedStatusOfAll(&self.mem);
                         try platform.setPlayerData(self.persistence, &self.mem);
                         self.state = .{ .level_select = try .init(&self.persistence) };
+                    },
+                    .launch_test => {
+                        const fnk = try editing.getFnk();
+                        try self.persistence.fnks.put(fnk.name, fnk.body);
+                        try self.persistence.updateSolvedStatusOfAll(&self.mem);
+                        try platform.setPlayerData(self.persistence, &self.mem);
+                        self.prev_editing_state = editing.*;
+                        const sample_index: usize = blk: for (editing.solved_samples, 0..) |value, k| {
+                            if (!value) break :blk k;
+                        } else @intFromFloat(1.5 + @TypeOf(editing.*).samples_reel.scroll);
+                        self.state = .{ .editing_fnk_to_testing = .init(
+                            editing.camera,
+                            .{
+                                .value = editing.samples[sample_index].input,
+                                .pos = @TypeOf(editing.*).samples_reel.getPoint(sample_index, .input),
+                                .is_pattern = 0,
+                            },
+                            .{
+                                .value = editing.samples[sample_index].output.?,
+                                .pos = @TypeOf(editing.*).samples_reel.getPoint(sample_index, .output),
+                                .is_pattern = 0,
+                            },
+                            editing.fnk_name,
+                            editing.cases,
+                        ) };
                     },
                     .launch_execution => |input| {
                         // todo
@@ -518,6 +561,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                             fnk.name,
                             &self.scoring_run,
                             editing.camera,
+                            null,
                         ) };
                     },
                     .change_to => |fnk_name| {
@@ -535,7 +579,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                     .nothing => {},
                     .cancelled => self.state = .{ .editing_fnk = self.prev_editing_state.? },
                     .finished => |result| {
-                        self.state = .{ .after_executing_fnk = try .init(result) };
+                        self.state = .{ .after_executing_fnk = try .init(result, executing.expected_output) };
                     },
                 },
                 .after_executing_fnk => |*after| switch (try after.update(delta_seconds)) {
@@ -1262,6 +1306,15 @@ const CaseGroup = struct {
         }
     }
 
+    pub fn setAllUnfoldedToZero(self: *CaseGroup) void {
+        self.unfolded = 0;
+        for (self.cases.items) |*case| {
+            if (case.next) |*next| {
+                next.setAllUnfoldedToZero();
+            }
+        }
+    }
+
     pub fn setUnfolded(self: *CaseGroup, address: core.CaseAddress) !void {
         if (address.len == 0) {
             return error.BAD_INPUT;
@@ -1331,6 +1384,59 @@ const CaseGroup = struct {
         }
     }
 };
+
+fn EditingFnkToTesting(platform: Platform, drawer: Drawer) type {
+    return struct {
+        const Self = @This();
+        const artist = Artist(platform, drawer);
+
+        input: PhysicalSexpr,
+        output: PhysicalSexpr,
+        camera: Camera,
+        t: f32,
+        fnk_name: *const Sexpr,
+        // TODO: pointer?
+        cases: CaseGroup,
+
+        pub fn init(camera: Camera, input: PhysicalSexpr, output: PhysicalSexpr, fnk_name: *const Sexpr, fnk_cases: CaseGroup) Self {
+            var cases = fnk_cases;
+            cases.setAllUnfoldedToZero();
+            return .{
+                .t = 0,
+                .camera = camera,
+                .input = input,
+                .output = output,
+                .fnk_name = fnk_name,
+                .cases = cases,
+            };
+        }
+
+        pub fn update(self: *Self, delta_seconds: f32, mem: *VeryPermamentGameStuff) !bool {
+            _ = try EditingFnk(platform, drawer).updateCasePositionsAndReturnMouseOverlap(
+                mem,
+                &.{},
+                null,
+                self.cases,
+                delta_seconds,
+            );
+            math.towards(&self.t, 1, delta_seconds / 0.5);
+            return self.t >= 1;
+        }
+
+        pub fn draw(self: Self) !void {
+            drawer.clear(Color.gray(128));
+            try artist.drawSexpr(self.camera, .lerp(self.input.pos, MAIN_INPUT_POS, self.t), self.input.value);
+            try artist.drawSexpr(self.camera, .lerp(self.output.pos, AfterExecutingFnk(platform, drawer).expected_output_pos, self.t), self.output.value);
+            {
+                artist.drawOffscreenCableTo(self.camera, MAIN_INPUT_POS);
+                try artist.drawHoldedFnk(self.camera, MAIN_FNK_POS, 1, self.fnk_name);
+            }
+            try EditingFnk(platform, drawer).drawCases(self.camera, true, .{}, self.cases);
+            // _ = self;
+            // try EditingFnk(platform, drawer).samples_reel.draw(self.camera, &.{self.sample}, &.{true});
+        }
+    };
+}
 
 fn LevelSelectToEditingFnk(platform: Platform, drawer: Drawer) type {
     return struct {
@@ -1738,7 +1844,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 math.lerp_towards_range(&samples_reel.scroll, 0, getMaxScroll(main.samples.len), 0.1, delta_seconds);
             }
 
-            fn getPoint(k: usize, which: Sample.Part) Point {
+            pub fn getPoint(k: usize, which: Sample.Part) Point {
                 const index: f32 = tof32(k) - scroll;
                 const y = 1.25 + index * 2.5;
                 const scale = @min(
@@ -2055,6 +2161,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             const ui_state = UI.State{ .buttons = try UI.Button.row(platform.gpa, .zero, .one, &(.{
                 "Back",
                 "Reset\nView",
+                "Check",
             } ++ if (DESIGN.no_current_data) .{} else .{
                 "⏵",
             })) };
@@ -2143,6 +2250,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         pub fn update(self: *Self, delta_seconds: f32) !union(enum) {
             nothing,
             back_to_level_select,
+            launch_test,
             launch_execution: if (DESIGN.no_current_data) PhysicalSexpr else void,
             change_to: *const Sexpr,
         } {
@@ -2152,7 +2260,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 switch (pressed_button) {
                     0 => return .back_to_level_select,
                     1 => self.camera = DEFAULT_CAM,
-                    2 => if (DESIGN.no_current_data) unreachable else return .launch_execution,
+                    2 => return .launch_test,
+                    3 => if (DESIGN.no_current_data) unreachable else return .launch_execution,
                     else => @panic("oops"),
                 }
             }
@@ -2680,7 +2789,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             };
         }
 
-        fn updateCasePositionsAndReturnMouseOverlap(mem: *VeryPermamentGameStuff, parent_address: core.CaseAddress, relative_mouse_pos: Vec2, group: CaseGroup, delta_seconds: f32) !?OverlapResult {
+        fn updateCasePositionsAndReturnMouseOverlap(mem: *VeryPermamentGameStuff, parent_address: core.CaseAddress, maybe_relative_mouse_pos: ?Vec2, group: CaseGroup, delta_seconds: f32) !?OverlapResult {
             const is_gen0 = parent_address.len == 0;
             var cur_top_line: f32 = 2;
             const unfolded = group.unfolded;
@@ -2692,60 +2801,66 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 const relative_pattern_point = relativePatternPoint(is_gen0, is_folded, cur_top_line);
                 case.pattern_point_relative_to_parent.lerp_towards(relative_pattern_point, 0.6, delta_seconds);
 
-                const local_mouse_pos = relative_pattern_point.inverseApplyGetLocalPosition(relative_mouse_pos);
-
                 const cur_address = try childAddress(mem, parent_address, k);
 
-                if (try SexprView.overlapsPatternSexpr(
-                    platform.gpa,
-                    case.pattern,
-                    relative_pattern_point,
-                    relative_mouse_pos,
-                )) |local_address| {
-                    overlapped = .{ .sexpr = .{
-                        .case_address = cur_address,
-                        .sexpr_address = local_address,
-                        .which = .pattern,
-                    } };
-                } else if (blk: {
-                    if (is_folded) break :blk null;
-                    break :blk try SexprView.overlapsSexpr(
+                const maybe_local_mouse_pos = if (maybe_relative_mouse_pos) |relative_mouse_pos|
+                    relative_pattern_point.inverseApplyGetLocalPosition(relative_mouse_pos)
+                else
+                    null;
+
+                if (maybe_relative_mouse_pos) |relative_mouse_pos| {
+                    const local_mouse_pos = maybe_local_mouse_pos.?;
+                    if (try SexprView.overlapsPatternSexpr(
                         platform.gpa,
-                        case.template,
-                        relative_pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
+                        case.pattern,
+                        relative_pattern_point,
                         relative_mouse_pos,
-                    );
-                }) |local_address| {
-                    overlapped = .{ .sexpr = .{
-                        .case_address = cur_address,
-                        .sexpr_address = local_address,
-                        .which = .template,
-                    } };
-                } else if (blk: {
-                    if (is_folded) break :blk null;
-                    break :blk try SexprView.overlapsSexpr(
-                        platform.gpa,
-                        case.fnk_name,
-                        relative_pattern_point.applyToLocalPoint(FNK_NAME_OFFSET),
-                        relative_mouse_pos,
-                    );
-                }) |local_address| {
-                    overlapped = .{ .sexpr = .{
-                        .case_address = cur_address,
-                        .sexpr_address = local_address,
-                        .which = .fnk_name,
-                    } };
-                } else if (inRange(local_mouse_pos.y, -1, 1) and
-                    inRange(local_mouse_pos.x, -5 / case.pattern_point_relative_to_parent.scale, 0))
-                {
-                    overlapped = .{ .case = .{ .existing = cur_address } };
+                    )) |local_address| {
+                        overlapped = .{ .sexpr = .{
+                            .case_address = cur_address,
+                            .sexpr_address = local_address,
+                            .which = .pattern,
+                        } };
+                    } else if (blk: {
+                        if (is_folded) break :blk null;
+                        break :blk try SexprView.overlapsSexpr(
+                            platform.gpa,
+                            case.template,
+                            relative_pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
+                            relative_mouse_pos,
+                        );
+                    }) |local_address| {
+                        overlapped = .{ .sexpr = .{
+                            .case_address = cur_address,
+                            .sexpr_address = local_address,
+                            .which = .template,
+                        } };
+                    } else if (blk: {
+                        if (is_folded) break :blk null;
+                        break :blk try SexprView.overlapsSexpr(
+                            platform.gpa,
+                            case.fnk_name,
+                            relative_pattern_point.applyToLocalPoint(FNK_NAME_OFFSET),
+                            relative_mouse_pos,
+                        );
+                    }) |local_address| {
+                        overlapped = .{ .sexpr = .{
+                            .case_address = cur_address,
+                            .sexpr_address = local_address,
+                            .which = .fnk_name,
+                        } };
+                    } else if (inRange(local_mouse_pos.y, -1, 1) and
+                        inRange(local_mouse_pos.x, -5 / case.pattern_point_relative_to_parent.scale, 0))
+                    {
+                        overlapped = .{ .case = .{ .existing = cur_address } };
+                    }
                 }
 
                 if (!is_folded) if (case.next) |next| {
                     const child_overlap = try updateCasePositionsAndReturnMouseOverlap(
                         mem,
                         cur_address,
-                        local_mouse_pos,
+                        maybe_local_mouse_pos,
                         next,
                         delta_seconds,
                     );
@@ -2928,12 +3043,14 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
         result: ?core.ExecutionThread.Result,
         main_input: if (DESIGN.no_current_data) PhysicalSexpr else enum { invalid_field },
+        expected_output: ?*const Sexpr,
 
         pub fn init(
             input: if (DESIGN.no_current_data) PhysicalSexpr else *const Sexpr,
             fn_name: *const Sexpr,
             scoring_run: *core.ScoringRun,
             camera: Camera,
+            expected_output: ?*const Sexpr,
         ) !Self {
             var result = Self{
                 .thread = try .init(if (DESIGN.no_current_data) input.value else input, fn_name, scoring_run),
@@ -2948,6 +3065,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 }) },
                 .result = null,
                 .main_input = if (DESIGN.no_current_data) input else .invalid_field,
+                .expected_output = expected_output,
             };
 
             // for now, skip the "start" anim
@@ -3002,6 +3120,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             const camera = self.camera;
 
             drawer.clear(Color.gray(128));
+
+            if (self.expected_output) |expected_result| {
+                try AfterExecutingFnk(platform, drawer).drawExpected(expected_result);
+            }
 
             var parent_point = Point{};
 
@@ -3476,16 +3598,20 @@ pub fn AfterExecutingFnk(platform: Platform, drawer: Drawer) type {
         const text_pos: Point = (Point{ .pos = camera.center, .scale = 3 }).applyToLocalPoint(.{ .pos = .new(0, -1) });
         pub const result_pos: Point = text_pos.applyToLocalPoint(.{ .pos = .new(-1, 2) });
         pub const bad_fnk_pos: Point = text_pos.applyToLocalPoint(.{ .pos = .new(0, 2), .turns = -0.25, .scale = 0.5 });
+        pub const expected_output_pos: Point = text_pos.applyToLocalPoint(.{ .scale = 0.25, .pos = .new(3.25, -0.75) });
+        // pub const expected_output_pos: Point = text_pos.applyToLocalPoint(.{ .scale = 0.25, .pos = .new(-4, 3) });
 
         ui_state: UI.State,
         result: core.ExecutionThread.Result,
+        expected_result: ?*const Sexpr,
 
-        pub fn init(result: core.ExecutionThread.Result) !Self {
+        pub fn init(result: core.ExecutionThread.Result, expected_result: ?*const Sexpr) !Self {
             return Self{
                 .result = result,
                 .ui_state = .{ .buttons = try UI.Button.row(platform.gpa, .zero, .one, &.{
                     "Back",
                 }) },
+                .expected_result = expected_result,
             };
         }
 
@@ -3520,7 +3646,16 @@ pub fn AfterExecutingFnk(platform: Platform, drawer: Drawer) type {
                 },
             }
 
+            if (self.expected_result) |expected_result| {
+                try drawExpected(expected_result);
+            }
+
             self.ui_state.draw(drawer);
+        }
+
+        pub fn drawExpected(expected: *const Sexpr) !void {
+            drawer.drawDebugText(camera, expected_output_pos.applyToLocalPoint(.{ .pos = .new(1, -2) }), "Expected\nresult:", .black);
+            try artist.drawSexpr(camera, expected_output_pos, expected);
         }
     };
 }
