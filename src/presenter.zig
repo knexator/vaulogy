@@ -3571,10 +3571,11 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         fn drawCaseExtra(camera: Camera, pattern_point: Point, case: core.MatchCaseDefinition, bindings: BindingsState) !void {
-            try artist.drawSexpr(
+            try artist.drawSexprWithBindings(
                 camera,
                 pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
                 case.template,
+                bindings,
             );
             try artist.drawHoldedFnk(camera, pattern_point.applyToLocalPoint(FNK_NAME_OFFSET), 0, case.fnk_name);
             drawer.drawCable(
