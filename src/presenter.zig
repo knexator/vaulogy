@@ -2678,7 +2678,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     drawer.drawDebugText(camera, .{ .pos = .new(3, 9.5), .scale = 0.75 }, "Once all Tests are green, the Vau is done and you can go to the next one.", .black);
                 },
                 .second_level => {
-                    drawer.drawDebugText(camera, .{ .pos = .new(10.5, -3.5), .scale = 0.75 }, "↓ This special Data is called a Wildcard, and will match with any other Data.", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(11, -3.5), .scale = 0.75 }, "↓ This special Data is called a Wildcard, and will match with any other Data.", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(8, 8), .scale = 0.75 }, "All the Tests for this Vau have the same structure; use a Wildcard to solve them with a single Case.", .black);
                 },
                 .third_level => {

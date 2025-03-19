@@ -29,3 +29,21 @@
 - mix ryhtms in animation, to highlight the important parts
 - wants some common graphical structure to all vau names vs general atoms
 - more atom options: patterns, animated patterns
+
+###
+
+- too much toolbar on level 2
+- idea: start level two with @x -> (@x . @x)
+- idea: change wrapping to multiple copies and/or reordering
+- don't show sample status
+- forgot about what yellow vau does; show a preview of the tests when hovering it?
+- doesn't get that wildcards are connected
+- tell player about right click
+- didn't know how to delete cases
+- level 5: didn't think to call yellow vau twice
+- level 5: stuck at (@a . @b) -> yellow: @a { @x => @x; }
+- bug: don't allow two equal wildcards on pattern
+- confused due to assuming that there must be relation between pattern & template
+- level idea: x -> (x . map(x))
+- wants to draw numbers as 1, (1 . 1), ((1 . 1) . (1 . 0)), ((1.1).(1.1)), (((1.1).(1.1)),((1.0).(0.0))) ...
+- peano is extremely hard
