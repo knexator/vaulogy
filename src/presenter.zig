@@ -3038,7 +3038,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         ui_state: UI.State,
 
         anim_t: f32,
-        anim_speed: f32 = 2.0,
+        anim_speed: f32 = 1.0,
         anim_paused: bool = false,
 
         result: ?core.ExecutionThread.Result,
@@ -3245,6 +3245,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
                         // TODO: draw centered
                         const t2 = clamp01(remap(self.anim_t, 0.5, 0.8, 0, 1));
+                        const hiding_children_t = math.smoothstep(self.anim_t, 0.5, 0.65);
                         const dissolving_pattern_point = parent_point
                             .applyToLocalPoint(MAIN_INPUT_POS)
                             .applyToLocalPoint(.{ .scale = 1 - t2 });
@@ -3359,7 +3360,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                         }),
                                         prev_stack.cur_cases,
                                         true,
-                                        1 - t,
+                                        1 - hiding_children_t,
                                         .{ .anim_t = t, .new = &.{}, .old = prev_stack.cur_bindings.items },
                                         // .{ .anim_t = t, .new = matched.new_bindings, .old = matched.old_bindings },
                                     );
@@ -3387,7 +3388,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                     }),
                                     prev_stack.cur_cases,
                                     true,
-                                    t2,
+                                    hiding_children_t,
                                     // TODO: revise, might be prev_stack.cur_bindings.items
                                     .{ .anim_t = t, .new = matched.new_bindings, .old = matched.old_bindings },
                                 );
