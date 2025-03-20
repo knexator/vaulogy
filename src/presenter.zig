@@ -3029,6 +3029,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         const Self = @This();
         const artist = Artist(platform, drawer);
 
+        const BASE_SPEED = 0.5;
+        const SKIP_SPEED_MULT = 3;
+
+        // TODO: previous step, speed controls, different step speed
         // TODO: draw the variable name on bound values
 
         // TODO: remove this, probably
@@ -3038,8 +3042,13 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         ui_state: UI.State,
 
         anim_t: f32,
-        anim_speed: f32 = 1.0,
-        anim_paused: bool = false,
+        anim_state: union(enum) {
+            /// speed multiplier
+            normal: f32,
+            paused,
+            /// remaining fast advance
+            advancing: f32,
+        } = .{ .normal = 1 },
 
         result: ?core.ExecutionThread.Result,
         main_input: if (DESIGN.no_current_data) PhysicalSexpr else enum { invalid_field },
@@ -3085,22 +3094,38 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 switch (pressed_button) {
                     0 => return .cancelled,
                     1 => self.camera = DEFAULT_CAM,
-                    2 => self.anim_paused = !self.anim_paused,
-                    3 => self.anim_t = 1.1,
+                    2 => self.anim_state = switch (self.anim_state) {
+                        .paused => .{ .normal = 1 },
+                        else => .paused,
+                    },
+                    3 => self.anim_state = .{ .advancing = 1.01 - self.anim_t },
                     else => return error.TODO,
                 };
 
             // move camera
             moveCamera(&self.camera, delta_seconds, platform.getKeyboard(), platform.getMouse());
 
-            if (!self.anim_paused) {
-                self.anim_t += self.anim_speed * delta_seconds / 2.0;
-                // self.anim_t += @as(f32, if (self.anim_t < 0.4) 1.0 else 0.1) * self.anim_speed * delta_seconds / 2.0;
-                if (DESIGN.no_current_data) {
-                    self.main_input.pos.lerp_towards(MAIN_INPUT_POS, 0.6, delta_seconds);
-                    math.lerp_towards(&self.main_input.is_pattern, 0, 0.6, delta_seconds);
-                }
+            if (DESIGN.no_current_data) {
+                self.main_input.pos.lerp_towards(MAIN_INPUT_POS, 0.6, delta_seconds);
+                math.lerp_towards(&self.main_input.is_pattern, 0, 0.6, delta_seconds);
             }
+
+            switch (self.anim_state) {
+                .paused => {},
+                .normal => |speed| {
+                    self.anim_t += speed * delta_seconds * BASE_SPEED;
+                },
+                .advancing => |*remaining| {
+                    const advance_step_size = delta_seconds * SKIP_SPEED_MULT * BASE_SPEED;
+                    if (remaining.* > advance_step_size) {
+                        remaining.* -= advance_step_size;
+                        self.anim_t += advance_step_size;
+                    } else {
+                        self.anim_state = .paused;
+                    }
+                },
+            }
+
             while (self.anim_t >= 1) {
                 self.anim_t -= 1;
                 // _ = try self.thread.advanceTinyStep(self.scoring_run);
