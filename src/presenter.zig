@@ -3029,7 +3029,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         const Self = @This();
         const artist = Artist(platform, drawer);
 
-        const BASE_SPEED = 0.5;
+        const BASE_SPEED = 1;
         const SKIP_SPEED_MULT = 3;
 
         // TODO: previous step, speed controls, different step speed
@@ -3098,7 +3098,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         .paused => .{ .normal = 1 },
                         else => .paused,
                     },
-                    3 => self.anim_state = .{ .advancing = 1.01 - self.anim_t },
+                    3 => self.anim_state = .{ .advancing = 1.1 - self.anim_t },
                     else => return error.TODO,
                 };
 
@@ -3113,10 +3113,11 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             switch (self.anim_state) {
                 .paused => {},
                 .normal => |speed| {
-                    self.anim_t += speed * delta_seconds * BASE_SPEED;
+                    self.anim_t += speed * delta_seconds * BASE_SPEED * stepSpeed(self.anim_t, self.thread.last_visual_state, self.thread.stack.items.len);
                 },
                 .advancing => |*remaining| {
-                    const advance_step_size = delta_seconds * SKIP_SPEED_MULT * BASE_SPEED;
+                    const advance_step_size = delta_seconds * SKIP_SPEED_MULT * BASE_SPEED * stepSpeed(self.anim_t, self.thread.last_visual_state, self.thread.stack.items.len);
+
                     if (remaining.* > advance_step_size) {
                         remaining.* -= advance_step_size;
                         self.anim_t += advance_step_size;
@@ -3139,6 +3140,20 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             // } else {
             //     return null;
             // }
+        }
+
+        fn stepSpeed(anim_t: f32, state: core.ExecutionThread.VisualState, execution_stack_count: usize) f32 {
+            return switch (state) {
+                .just_started => @panic("TODO"),
+                .ended => lerp(2, 4, anim_t),
+                else => 1,
+                .matched => |matched| if (matched.added_new_fnk_to_stack and anim_t > 0.5)
+                    lerp(0.5, 0.8, math.smoothstep(anim_t, 0.7, 0.9))
+                else if (matched.tail_optimized and execution_stack_count > 0 and anim_t > 0.5)
+                    lerp(0.5, 0.8, math.smoothstep(anim_t, 0.7, 0.9))
+                else
+                    1,
+            };
         }
 
         pub fn draw(self: Self) !void {
