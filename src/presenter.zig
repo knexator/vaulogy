@@ -3147,6 +3147,25 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         camera: Camera,
         ui_state: UI.State,
 
+        // TODO: better rewind
+        thread_initial_params: struct {
+            value: *const Sexpr,
+            fn_name: *const Sexpr,
+
+            pub fn toThread(self: @This(), scoring_run: *core.ScoringRun) !core.ExecutionThread {
+                return try .init(self.value, self.fn_name, scoring_run);
+            }
+
+            pub fn startThreadAndRunItToStep(self: @This(), scoring_run: *core.ScoringRun, step: usize) !core.ExecutionThread {
+                var thread = try self.toThread(scoring_run);
+                for (0..step) |_| {
+                    std.debug.assert(null == try thread.advanceTinyStep(scoring_run));
+                }
+                return thread;
+            }
+        },
+        done_steps: usize = 0,
+
         anim_t: f32 = 0,
         anim_state: union(enum) {
             /// speed multiplier
@@ -3154,6 +3173,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             paused,
             /// remaining fast advance
             advancing: f32,
+            backwards: ?core.ExecutionThread,
         } = .{ .normal = 1 },
 
         result: ?core.ExecutionThread.Result = null,
@@ -3167,14 +3187,20 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             camera: Camera,
             expected_output: ?*const Sexpr,
         ) !Self {
+            const thread_initial_params: @FieldType(Self, "thread_initial_params") = .{
+                .value = if (DESIGN.no_current_data) input.value else input,
+                .fn_name = fn_name,
+            };
             var result = Self{
-                .thread = try .init(if (DESIGN.no_current_data) input.value else input, fn_name, scoring_run),
+                .thread_initial_params = thread_initial_params,
+                .thread = try thread_initial_params.toThread(scoring_run),
                 .scoring_run = scoring_run,
                 .camera = camera,
                 .ui_state = .{ .buttons = try UI.Button.row(platform.gpa, .zero, .one, &.{
                     "⏹",
                     "Reset\nView",
                     "⏯",
+                    "⏮",
                     "⏭",
                 }) },
                 .main_input = if (DESIGN.no_current_data) input else .invalid_field,
@@ -3202,7 +3228,13 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         .paused => .{ .normal = 1 },
                         else => .paused,
                     },
-                    3 => self.anim_state = .{ .advancing = 1.1 - self.anim_t },
+                    3 => if (self.done_steps > 0) {
+                        self.anim_state = .{ .backwards = self.thread_initial_params.startThreadAndRunItToStep(self.scoring_run, self.done_steps) catch |err| switch (err) {
+                            error.OutOfMemory => |x| return x,
+                            else => unreachable,
+                        } };
+                    },
+                    4 => self.anim_state = .{ .advancing = 1.1 - self.anim_t },
                     else => return error.TODO,
                 };
 
@@ -3229,10 +3261,31 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         self.anim_state = .paused;
                     }
                 },
+                .backwards => |*asdf| {
+                    if (asdf.*) |x| {
+                        const advance_step_size = delta_seconds * SKIP_SPEED_MULT * BASE_SPEED * stepSpeed(self.anim_t, self.thread.last_visual_state, self.thread.stack.items.len);
+                        self.anim_t -= advance_step_size;
+                        if (self.anim_t < 0) {
+                            self.anim_t += 1;
+                            self.done_steps -= 1;
+                            self.result = null;
+                            self.thread = x;
+                            asdf.* = null;
+                        }
+                    } else {
+                        const advance_step_size = delta_seconds * SKIP_SPEED_MULT * BASE_SPEED * stepSpeed(self.anim_t, self.thread.last_visual_state, self.thread.stack.items.len);
+                        self.anim_t -= advance_step_size;
+                        if (self.anim_t < 0.1) {
+                            self.anim_t = @max(0, self.anim_t);
+                            self.anim_state = .paused;
+                        }
+                    }
+                },
             }
 
             while (self.anim_t >= 1) {
                 self.anim_t -= 1;
+                self.done_steps += 1;
                 // _ = try self.thread.advanceTinyStep(self.scoring_run);
                 if (self.result) |x| return .{ .finished = x };
                 self.result = try self.thread.advanceTinyStep(self.scoring_run);
