@@ -35,6 +35,7 @@ const OoM = error{ OutOfMemory, TODO, BAD_INPUT };
 
 const DESIGN: struct {
     no_current_data: bool = true,
+    autograb_wildcard_template_after_pattern: bool = true,
 } = .{};
 
 pub const KeyboardButton = std.meta.FieldEnum(KeyboardState);
@@ -2508,10 +2509,20 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             } else {
                                 try address.setSexpr(self, grabbing.sexpr);
                                 try self.updateSolvedSamplesHelper();
-                                self.focus = .{ .hovering_sexpr = .{
-                                    .address = address,
-                                    .global_point = grabbing.point,
-                                } };
+                                if (DESIGN.autograb_wildcard_template_after_pattern and grabbing.limitation == .pattern) {
+                                    self.focus = .{ .grabbing_sexpr = .{
+                                        .sexpr = grabbing.sexpr,
+                                        .address_if_released = null,
+                                        .limitation = .template,
+                                        .is_pattern = 1,
+                                        .point = grabbing.point,
+                                    } };
+                                } else {
+                                    self.focus = .{ .hovering_sexpr = .{
+                                        .address = address,
+                                        .global_point = grabbing.point,
+                                    } };
+                                }
                             }
                         } else {
                             self.focus = .{ .nothing = {} };
