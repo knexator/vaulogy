@@ -1699,6 +1699,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 address_if_released: ?SexprPlace,
                 point: Point,
                 is_pattern: f32,
+                limitation: enum { none, pattern, template },
             },
         } = .{ .nothing = {} },
 
@@ -2306,10 +2307,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             .pos = platform.getMouse().cur.pos(camera),
                             .scale = camera.height / DEFAULT_CAM.height,
                         }, 0.6, delta_seconds);
-                    math.lerp_towards(&grabbing.is_pattern, if (grabbing.address_if_released) |goal|
-                        if (goal.isPattern()) 1 else 0
-                    else
-                        @round(grabbing.is_pattern), 0.6, delta_seconds);
+                    math.lerp_towards(&grabbing.is_pattern, switch (grabbing.limitation) {
+                        .pattern => 1,
+                        .template => 0,
+                        .none => if (grabbing.address_if_released) |goal|
+                            if (goal.isPattern()) 1 else 0
+                        else
+                            @round(grabbing.is_pattern),
+                    }, 0.6, delta_seconds);
                 },
                 .nothing => {},
                 .hovering_sexpr => |*hovering| {
@@ -2395,7 +2400,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 if (std.meta.activeTag(place) == .full_address) {
                                     try self.cases.setUnfolded(place.full_address.case_address);
                                 }
-                                grabbing.address_if_released = if (place.acceptsDrop()) place else null;
+                                grabbing.address_if_released = if (!place.acceptsDrop()) null else switch (grabbing.limitation) {
+                                    .none => place,
+                                    .pattern => if (place.isPattern()) place else null,
+                                    .template => if (place.isPattern()) null else place,
+                                };
                             },
                         }
                     else {
@@ -2519,6 +2528,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     .is_pattern = if (hovering.address.isPattern()) 1 else 0,
                                     .point = hovering.global_point,
                                     .sexpr = v,
+                                    .limitation = if (v.isFullyResolved())
+                                        .none
+                                    else if (hovering.address == .toolbar_special_var)
+                                        .pattern
+                                    else
+                                        .template,
                                 },
                             };
 
