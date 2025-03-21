@@ -3147,7 +3147,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         camera: Camera,
         ui_state: UI.State,
 
-        anim_t: f32,
+        anim_t: f32 = 0,
         anim_state: union(enum) {
             /// speed multiplier
             normal: f32,
@@ -3156,7 +3156,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             advancing: f32,
         } = .{ .normal = 1 },
 
-        result: ?core.ExecutionThread.Result,
+        result: ?core.ExecutionThread.Result = null,
         main_input: if (DESIGN.no_current_data) PhysicalSexpr else enum { invalid_field },
         expected_output: ?*const Sexpr,
 
@@ -3170,7 +3170,6 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             var result = Self{
                 .thread = try .init(if (DESIGN.no_current_data) input.value else input, fn_name, scoring_run),
                 .scoring_run = scoring_run,
-                .anim_t = 0.0,
                 .camera = camera,
                 .ui_state = .{ .buttons = try UI.Button.row(platform.gpa, .zero, .one, &.{
                     "⏹",
@@ -3178,7 +3177,6 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     "⏯",
                     "⏭",
                 }) },
-                .result = null,
                 .main_input = if (DESIGN.no_current_data) input else .invalid_field,
                 .expected_output = expected_output,
             };
