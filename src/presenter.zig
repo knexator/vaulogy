@@ -2716,8 +2716,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         switch (place) {
                             .main_fnk => |address| {
                                 drawer.setTransparency(0.5);
-                                const pattern_point = (try self.cases
-                                    .getPatternGlobalPoint(.{}, address.ghost.address[0 .. address.ghost.address.len - 1]))
+                                const parent_pattern_point = (try self.cases
+                                    .getPatternGlobalPoint(.{}, address.ghost.address[0 .. address.ghost.address.len - 1]));
+                                const pattern_point = parent_pattern_point
                                     .applyToLocalPoint(address.ghost.pattern_point_relative_to_parent);
                                 try artist.drawPatternSexpr(
                                     camera,
@@ -2726,13 +2727,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 );
                                 try drawCaseExtra(camera, pattern_point, grabbing.case);
                                 const pos = pattern_point.applyToLocalPosition(.new(0, 1));
-                                drawer.drawCable(
-                                    camera,
-                                    pos.sub(.new(if (address.ghost.address.len == 1) 5 else 3, 0)),
-                                    pos,
-                                    1,
-                                    0,
-                                );
+                                const esquina = pos.sub(.new(if (address.ghost.address.len == 1) 5 else 3, 0));
+                                drawer.drawCable(camera, esquina, pos, 1, 0);
+                                drawer.drawLine(camera, &.{ esquina, parent_pattern_point.applyToLocalPosition(.new(if (address.ghost.address.len == 1) 0 else 1, 0)) }, .black);
                                 drawer.setTransparency(1);
                             },
                             else => {}, // TODO
@@ -2813,12 +2810,18 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 const pos = pattern_point.applyToLocalPosition(.new(0, 1));
                 drawer.drawCable(
                     camera,
-                    pos.sub(.new(if (is_first) 5 else 3, 0)),
+                    pos.sub(.new(parent_point.scale * if (is_first) tof32(5.0) else tof32(3.0), 0)),
                     pos,
                     1,
                     0,
                 );
             }
+
+            const lowest_point = parent_point
+                .applyToLocalPoint(group.cases.getLast().pattern_point_relative_to_parent)
+                .applyToLocalPosition(.new(0, 1))
+                .sub(.new(parent_point.scale * if (is_first) tof32(5.0) else tof32(3.0), 0));
+            drawer.drawLine(camera, &.{ parent_point.applyToLocalPosition(if (is_first) .zero else .new(1, 0)), lowest_point }, .black);
         }
 
         fn drawCaseExtra(camera: Camera, pattern_point: Point, case: CaseState) !void {
