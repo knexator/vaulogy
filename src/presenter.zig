@@ -3141,6 +3141,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
     };
 }
 
+// TODO: combine AfterExecutingFnk here, so the player can undo out of the displayed result
 pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
     return struct {
         const Self = @This();
@@ -3211,6 +3212,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     "⏹",
                     "Reset\nView",
                     "⏯",
+                    "⏩",
                     "⏮",
                     "⏭",
                 }) },
@@ -3239,13 +3241,14 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         .paused => .{ .normal = 1 },
                         else => .paused,
                     },
-                    3 => if (self.done_steps > 0) {
+                    3 => self.anim_state = .{ .normal = 4 },
+                    4 => if (self.done_steps > 0) {
                         self.anim_state = .{ .backwards = self.thread_initial_params.startThreadAndRunItToStep(self.scoring_run, self.done_steps) catch |err| switch (err) {
                             error.OutOfMemory => |x| return x,
                             else => unreachable,
                         } };
                     },
-                    4 => self.anim_state = .{ .advancing = 1.1 - self.anim_t },
+                    5 => self.anim_state = .{ .advancing = 1.1 - self.anim_t },
                     else => return error.TODO,
                 };
 
