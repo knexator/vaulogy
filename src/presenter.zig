@@ -1618,6 +1618,18 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .meta_converter => true,
                 };
             }
+
+            // TODO: some visual feedback
+            pub fn acceptsWildcards(address: @This()) bool {
+                if (!address.acceptsDrop()) unreachable;
+                return switch (address) {
+                    .full_address => |x| x.which != .fnk_name,
+                    .main_input => false,
+                    .fnk_manager => false,
+                    .meta_converter => true,
+                    else => unreachable,
+                };
+            }
         };
 
         const TutorialState = union(enum) {
@@ -2402,8 +2414,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 }
                                 grabbing.address_if_released = if (!place.acceptsDrop()) null else switch (grabbing.limitation) {
                                     .none => place,
-                                    .pattern => if (place.isPattern()) place else null,
-                                    .template => if (place.isPattern()) null else place,
+                                    .pattern => if (!place.acceptsWildcards()) null else if (place.isPattern()) place else null,
+                                    .template => if (!place.acceptsWildcards()) null else if (place.isPattern()) null else place,
                                 };
                             },
                         }
