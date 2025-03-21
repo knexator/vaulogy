@@ -61,6 +61,17 @@ pub const Sexpr = union(enum) {
         return .{ .atom_var = .{ .value = v } };
     }
 
+    pub fn getAllVarNames(self: *const Sexpr, res: *std.ArrayList([]const u8)) !void {
+        switch (self.*) {
+            .atom_lit => return,
+            .atom_var => |v| try res.append(v.value),
+            .pair => |p| {
+                try p.left.getAllVarNames(res);
+                try p.right.getAllVarNames(res);
+            },
+        }
+    }
+
     pub fn isFullyResolved(x: *const Sexpr) bool {
         return switch (x.*) {
             .atom_lit => true,

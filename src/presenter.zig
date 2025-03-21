@@ -226,6 +226,7 @@ pub const Drawer = struct {
     // TODO: think how to use the visuals when drawing a variable
     drawVariable: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
     drawPatternVariable: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
+    drawWildcardsCable: fn (camera: Camera, points: []const Vec2, visuals: []const AtomVisuals) void,
 
     pub fn drawCaseHolderExtended(self: Drawer, camera: Camera, world_point: Point, enabled: bool) void {
         if (!enabled) self.setTransparency(0.5);
@@ -909,6 +910,44 @@ fn Artist(platform: Platform, drawer: Drawer) type {
     return struct {
         pub fn init() !void {
             return AtomVisualCache.init();
+        }
+
+        // TODO: better memory management
+        pub fn drawWildcardLinesToFloating(camera: Camera, parent_cases_point: Point, cases: CaseGroup, grabbing_point: Point, grabbing_wildcards: []const []const u8) !void {
+            const case = cases.cases.items[cases.unfolded];
+            const pattern_point = parent_cases_point.applyToLocalPoint(case.pattern_point_relative_to_parent);
+
+            var wildcard_names: std.ArrayList([]const u8) = .init(platform.gpa);
+            defer wildcard_names.deinit();
+            try case.pattern.getAllVarNames(&wildcard_names);
+
+            var common: std.ArrayList(AtomVisuals) = .init(platform.gpa);
+            defer common.deinit();
+
+            for (wildcard_names.items) |pattern| {
+                for (grabbing_wildcards) |grabbing| {
+                    if (std.mem.eql(u8, pattern, grabbing)) {
+                        try common.append(try AtomVisualCache.getAtomVisuals(pattern));
+                    }
+                }
+            }
+
+            if (common.items.len > 0) {
+                drawer.drawWildcardsCable(camera, &.{
+                    pattern_point.applyToLocalPosition(.new(0.5, 0)),
+                    grabbing_point.applyToLocalPosition(.new(-0.5, 0)),
+                }, common.items);
+            }
+
+            // const visuals = try AtomVisualCache.getAtomVisuals(pattern);
+            // drawer.drawLine(camera, &.{
+            //     pattern_point.applyToLocalPosition(.new(0.5, 0)),
+            //     grabbing_point.applyToLocalPosition(.new(-0.5, 0)),
+            // }, visuals.color);
+
+            if (case.next) |next| {
+                try drawWildcardLinesToFloating(camera, pattern_point, next, grabbing_point, grabbing_wildcards);
+            }
         }
 
         pub fn drawHoldedFnk(camera: Camera, fnk_point: Point, is_main: f32, value: *const Sexpr) !void {
@@ -2665,6 +2704,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         grabbing.is_pattern,
                         grabbing.sexpr,
                     );
+                    if (grabbing.limitation == .template) {
+                        var wildcard_names: std.ArrayList([]const u8) = .init(platform.gpa);
+                        defer wildcard_names.deinit();
+                        try grabbing.sexpr.getAllVarNames(&wildcard_names);
+                        try artist.drawWildcardLinesToFloating(camera, .{}, self.cases, grabbing.point, wildcard_names.items);
+                    }
                 },
                 .grabbing_case => |grabbing| {
                     if (grabbing.address_if_released) |place| {

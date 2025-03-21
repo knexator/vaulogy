@@ -89,6 +89,8 @@ async function getWasm() {
       save: () => ctx.save(),
       restore: () => ctx.restore(),
       clip: () => ctx.clip(),
+      translate: (x, y) => ctx.translate(x, y),
+      resetTransform: () => ctx.resetTransform(),
 
       itemSize: (key_ptr, key_len) => {
         const key = getString(key_ptr, key_len);

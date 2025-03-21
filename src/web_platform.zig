@@ -49,8 +49,10 @@ const js = struct {
         extern fn save() void;
         extern fn restore() void;
         extern fn clip() void;
+        extern fn translate(x: f32, y: f32) void;
+        extern fn resetTransform() void;
 
-        // TODO: save/restore, translate/rotate/scale/resetTransform, rect
+        // TODO: save/restore, rotate/scale, rect
     };
 
     pub const storage = struct {
@@ -550,6 +552,16 @@ const WebDrawer = struct {
         js.canvas.stroke();
     }
 
+    pub fn drawWildcardsCable(camera: Camera, points: []const Vec2, visuals: []const presenter.AtomVisuals) void {
+        std.debug.assert(visuals.len > 0);
+        js.canvas.setLineWidth(3);
+        for (visuals) |v| {
+            drawLine(camera, points, v.color);
+            js.canvas.translate(0, 3);
+        }
+        js.canvas.resetTransform();
+    }
+
     pub fn drawAsdfDevice(camera: Camera, world_point: Point) void {
         const screen_point = screenFromWorld(camera, world_point);
 
@@ -615,6 +627,7 @@ const web_drawer = presenter.Drawer{
     .drawCable = WebDrawer.drawCable,
     .drawCaseHolder = WebDrawer.drawCaseHolder,
     .drawFnkHolder = WebDrawer.drawFnkHolder,
+    .drawWildcardsCable = WebDrawer.drawWildcardsCable,
 };
 
 var game: presenter.Presenter(web_platform, web_drawer) = undefined;

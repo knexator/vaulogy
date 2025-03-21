@@ -471,6 +471,12 @@ const SdlDrawer = struct {
         }
         polygon(screen_positions, indices, outline, visuals.color, Color.black);
     }
+
+    pub fn drawWildcardsCable(camera: Camera, points: []const Vec2, visuals: []const presenter.AtomVisuals) void {
+        std.debug.assert(visuals.len > 0);
+        // TODO: line width
+        drawLine(camera, points, visuals[0].color);
+    }
 };
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
@@ -501,6 +507,7 @@ const sdl_drawer = presenter.Drawer{
     .drawCable = SdlDrawer.drawCable,
     .drawCaseHolder = SdlDrawer.drawCaseHolder,
     .drawFnkHolder = SdlDrawer.drawFnkHolder,
+    .drawWildcardsCable = SdlDrawer.drawWildcardsCable,
 };
 
 const window_size = Vec2.new(1280, 720);
