@@ -234,8 +234,11 @@ pub const Drawer = struct {
         if (!enabled) self.setTransparency(1);
     }
 
-    pub fn drawArrowForSample(self: Drawer, camera: Camera, center: Point, solved: bool) void {
-        const color: Color = if (solved) .from01(0.2, 1, 0.5) else .from01(1, 0.2, 0.3);
+    pub fn drawArrowForSample(self: Drawer, camera: Camera, center: Point, solved: ?bool) void {
+        const color: Color = if (solved) |s|
+            if (s) .from01(0.2, 1, 0.5) else .from01(1, 0.2, 0.3)
+        else
+            .black;
         self.drawLine(camera, &.{
             center.applyToLocalPosition(.new(-1, 0)),
             center.applyToLocalPosition(.new(2, 0)),
@@ -1900,10 +1903,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         };
 
+        // TODO: these vars should live on an instance, not the class
         const samples_reel = struct {
             const top_left: Point = .{ .pos = .new(-6, 0.25), .scale = 0.75 };
             // TODO: the -1 is a tutorial hack, make it 0 once the scroll bar is finished
             var scroll: f32 = -1;
+
+            var display_solved_status: bool = false;
 
             const rect: Rect = .{ .top_left = top_left.pos, .size = Vec2.new(7, 7.5).scale(top_left.scale) };
 
@@ -1961,7 +1967,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     drawer.drawArrowForSample(camera, getPoint(k, .output).applyToLocalPoint(.{
                         .pos = .new(-1.25, 0),
                         .scale = 0.25,
-                    }), solved);
+                    }), if (display_solved_status) solved else null);
                     try artist.drawSexpr(
                         camera,
                         getPoint(k, .input),
@@ -2275,7 +2281,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             };
         }
 
-        fn updateSolvedSamplesHelper(self: *Self) !void {
+        // TODO: don't call this if nothing actually changed
+        fn onChangedSomething(self: *Self) !void {
+            samples_reel.display_solved_status = false;
             try updateSolvedSamples(try self.getFnk(), self.samples, self.persistence, self.mem, self.solved_samples);
         }
 
@@ -2333,7 +2341,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 switch (pressed_button) {
                     0 => return .back_to_level_select,
                     1 => self.camera = DEFAULT_CAM,
-                    2 => return .launch_test,
+                    2 => {
+                        samples_reel.display_solved_status = true;
+                        return .launch_test;
+                    },
                     3 => if (DESIGN.no_current_data) unreachable else return .launch_execution,
                     else => @panic("oops"),
                 }
@@ -2525,7 +2536,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     const parent_point = try self.cases.getPatternGlobalPoint(.{}, address[0 .. address.len - 1]);
                                     grabbing.case.pattern_point_relative_to_parent = parent_point.inverseApplyGetLocal(global_point);
                                     try self.cases.insertAt(self.mem, address, grabbing.case);
-                                    try self.updateSolvedSamplesHelper();
+                                    try self.onChangedSomething();
                                     self.focus = .{ .hovering_case = .{ .address = .{ .main_fnk = .{ .existing = address } }, .hot = 1 } };
                                 },
                                 .meta_converter => {
@@ -2547,7 +2558,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 return .{ .launch_execution = .{ .value = try grabbing.sexpr.changeAllVariablesToNil(self.mem), .pos = grabbing.point, .is_pattern = grabbing.is_pattern } };
                             } else {
                                 try address.setSexpr(self, grabbing.sexpr);
-                                try self.updateSolvedSamplesHelper();
+                                try self.onChangedSomething();
                                 if (DESIGN.autograb_wildcard_template_after_pattern and grabbing.limitation == .pattern) {
                                     self.focus = .{ .grabbing_sexpr = .{
                                         .sexpr = grabbing.sexpr,
@@ -2572,7 +2583,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             .main_fnk => |unfolded| {
                                 const global_point = try self.cases.getPatternGlobalPoint(.{}, unfolded.existing);
                                 var asdf = try self.cases.removeAt(unfolded.existing);
-                                try self.updateSolvedSamplesHelper();
+                                try self.onChangedSomething();
                                 const old_point = asdf.pattern_point_relative_to_parent;
                                 asdf.pattern_point_relative_to_parent = global_point;
                                 self.focus = .{ .grabbing_case = .{
@@ -2621,7 +2632,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
                             if (std.meta.activeTag(hovering.address) == .full_address and hovering.address.full_address.which == .fnk_name) {
                                 (try self.cases.caseRefAt(hovering.address.full_address.case_address)).fnk_name = Sexpr.builtin.identity;
-                                try self.updateSolvedSamplesHelper();
+                                try self.onChangedSomething();
                             } else if (std.meta.activeTag(hovering.address) == .toolbar_special_var) {
                                 try toolbar.special_var_state.next(self.mem);
                             }
@@ -2637,7 +2648,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             if (try hovering.address.getSexpr(self.*)) |old_value| {
                                 const new_value = try self.mem.storeSexpr(Sexpr.doPair(old_value, Sexpr.builtin.nil));
                                 try hovering.address.setSexpr(self, new_value);
-                                try self.updateSolvedSamplesHelper();
+                                try self.onChangedSomething();
                             }
                         }
                     },
