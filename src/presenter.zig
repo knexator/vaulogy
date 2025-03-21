@@ -1798,22 +1798,42 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
             } = .{};
 
-            pub const Modifier = enum { normal, hidden, only_special_var, all_except_case };
+            pub const Modifier = enum {
+                normal,
+                hidden,
+                only_special_var,
+                all_except_case,
+
+                pub fn specialVarEnabled(modifier: Modifier, wildcard_in_play: bool) bool {
+                    return switch (modifier) {
+                        .hidden => false,
+                        .normal => true,
+                        else => !wildcard_in_play,
+                    };
+                }
+
+                pub fn specialCaseEnabled(modifier: Modifier) bool {
+                    return modifier == .normal;
+                }
+
+                pub fn thingsEnabled(modifier: Modifier) bool {
+                    return switch (modifier) {
+                        .normal, .all_except_case => true,
+                        .hidden, .only_special_var => false,
+                    };
+                }
+            };
 
             pub fn overlapsWithSpecialVar(mouse_pos: Vec2, modifier: Modifier, wildcard_in_play: bool) bool {
-                return switch (modifier) {
-                    .hidden => false,
-                    .normal => SexprView.overlapsPatternAtom(special_var_point, mouse_pos, .atom),
-                    else => !wildcard_in_play and SexprView.overlapsPatternAtom(special_var_point, mouse_pos, .atom),
-                };
+                return modifier.specialVarEnabled(wildcard_in_play) and SexprView.overlapsPatternAtom(special_var_point, mouse_pos, .atom);
             }
 
             pub fn overlapsWithSpecialCase(mouse_pos: Vec2, modifier: Modifier) bool {
-                return modifier == .normal and overlapsWithTinyCase(mouse_pos, special_case_point);
+                return modifier.specialCaseEnabled() and overlapsWithTinyCase(mouse_pos, special_case_point);
             }
 
             pub fn findOverlap(mouse_pos: Vec2, modifier: Modifier) ?std.meta.Elem(@TypeOf(things)) {
-                if (modifier == .hidden or modifier == .only_special_var) return null;
+                if (!modifier.thingsEnabled()) return null;
                 for (things) |thing| {
                     if (SexprView.overlapsAtom(thing.point, mouse_pos, .atom)) {
                         return thing;
@@ -1825,15 +1845,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             pub fn draw(camera: Camera, modifier: Modifier, wildcard_in_play: bool) !void {
                 if (modifier == .hidden) return;
 
-                if (modifier != .normal and wildcard_in_play) drawer.setTransparency(0.5);
+                drawer.setTransparency(if (modifier.specialVarEnabled(wildcard_in_play)) 1 else 0.5);
                 try artist.drawPatternSexpr(camera, special_var_point, special_var_state.next_value);
 
-                if (modifier == .only_special_var) drawer.setTransparency(0.5);
+                drawer.setTransparency(if (modifier.thingsEnabled()) 1 else 0.5);
                 for (things) |thing| {
                     try artist.drawSexpr(camera, thing.point, thing.value);
                 }
 
-                if (modifier == .all_except_case) drawer.setTransparency(0.5);
+                drawer.setTransparency(if (modifier.specialCaseEnabled()) 1 else 0.5);
                 try drawTinyCase(camera, special_case_point, special_case_state.value().pattern, special_case_state.value().template);
 
                 if (modifier != .normal) drawer.setTransparency(1);
