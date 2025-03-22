@@ -33,11 +33,7 @@ const parsing = @import("parsing.zig");
 
 const OoM = error{ OutOfMemory, TODO, BAD_INPUT };
 
-pub const DESIGN: struct {
-    no_current_data: bool = true,
-    autograb_wildcard_template_after_pattern: bool = true,
-    round_data: bool = true,
-} = .{};
+pub const DESIGN = @import("DESIGN");
 
 pub const KeyboardButton = std.meta.FieldEnum(KeyboardState);
 pub const KeyboardState = struct {

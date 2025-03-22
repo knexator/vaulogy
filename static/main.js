@@ -26,7 +26,10 @@ function getString(ptr, len) {
 
 async function getWasm() {
   console.log("calling getWasm");
-  const asdf = await WebAssembly.instantiateStreaming(fetch("main.wasm"), {
+  let params = new URLSearchParams(document.location.search);
+  let exe_name = params.get("variant") ?? "main";
+
+  const asdf = await WebAssembly.instantiateStreaming(fetch(exe_name + ".wasm"), {
     env: {
       logInt: (arg) => console.log(arg),
       logFloat: (arg) => console.log(arg),

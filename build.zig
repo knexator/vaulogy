@@ -1,5 +1,21 @@
 const std = @import("std");
 
+const DESIGN = struct {
+    no_current_data: bool = true,
+    autograb_wildcard_template_after_pattern: bool = true,
+    round_data: bool = false,
+
+    pub const default: @This() = .{};
+
+    fn toOptions(self: @This(), b: *std.Build) *std.Build.Step.Options {
+        const options = b.addOptions();
+        inline for (std.meta.fields(@This())) |field| {
+            options.addOption(field.type, field.name, @field(self, field.name));
+        }
+        return options;
+    }
+};
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -79,6 +95,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
         });
+        sdlgame_exe.root_module.addOptions("DESIGN", DESIGN.default.toOptions(b));
         const sdl_dep = b.dependency("sdl", .{
             .target = target,
             .optimize = .ReleaseFast, // TODO: hardcoded to avoid sdl's undefined behaviour bugs
@@ -98,6 +115,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
         });
+        sdlgame_exe_check.root_module.addOptions("DESIGN", DESIGN.default.toOptions(b));
         sdlgame_exe_check.linkLibrary(sdl_lib);
         check.dependOn(&sdlgame_exe_check.step);
     }
@@ -105,35 +123,45 @@ pub fn build(b: *std.Build) void {
     // Building the webgame
     const webgame_install_dir = std.Build.InstallDir{ .custom = "dist" };
     {
-        const webgame_wasm = b.addExecutable(
-            .{
-                .name = "main",
-                // .root_source_file = b.path("src/webgame.zig"),
-                .root_source_file = b.path("src/web_platform.zig"),
-                .target = b.resolveTargetQuery(.{
-                    .cpu_arch = .wasm32,
-                    .os_tag = .freestanding,
-                }),
-                .optimize = optimize,
-                // FUTURE TODO: put these back once https://github.com/ziglang/zig/issues/22617 is fixed
-                // .use_llvm = optimize != .Debug,
-                // .use_lld = optimize != .Debug,
-            },
-        );
+        for ([_]struct {
+            name: []const u8,
+            design: DESIGN,
+        }{
+            .{ .name = "main", .design = .{} },
+            .{ .name = "round_data", .design = .{ .round_data = true } },
+        }) |variant| {
+            const webgame_wasm = b.addExecutable(
+                .{
+                    .name = variant.name,
+                    // .root_source_file = b.path("src/webgame.zig"),
+                    .root_source_file = b.path("src/web_platform.zig"),
+                    .target = b.resolveTargetQuery(.{
+                        .cpu_arch = .wasm32,
+                        .os_tag = .freestanding,
+                    }),
+                    .optimize = optimize,
+                    // FUTURE TODO: put these back once https://github.com/ziglang/zig/issues/22617 is fixed
+                    // .use_llvm = optimize != .Debug,
+                    // .use_lld = optimize != .Debug,
+                },
+            );
+            webgame_wasm.root_module.addOptions("DESIGN", variant.design.toOptions(b));
 
-        {
-            // taken from https://github.com/daneelsan/minimal-zig-wasm-canvas/blob/master/build.zig
-            webgame_wasm.global_base = 6560;
-            webgame_wasm.entry = .disabled;
-            webgame_wasm.rdynamic = true;
-            webgame_wasm.export_memory = true;
-            webgame_wasm.stack_size = std.wasm.page_size;
+            {
+                // taken from https://github.com/daneelsan/minimal-zig-wasm-canvas/blob/master/build.zig
+                webgame_wasm.global_base = 6560;
+                webgame_wasm.entry = .disabled;
+                webgame_wasm.rdynamic = true;
+                webgame_wasm.export_memory = true;
+                webgame_wasm.stack_size = std.wasm.page_size;
+            }
+
+            const compile_wasm = b.addInstallArtifact(webgame_wasm, .{
+                .dest_dir = .{ .override = webgame_install_dir },
+            });
+            b.getInstallStep().dependOn(&compile_wasm.step);
         }
 
-        const compile_wasm = b.addInstallArtifact(webgame_wasm, .{
-            .dest_dir = .{ .override = webgame_install_dir },
-        });
-        b.getInstallStep().dependOn(&compile_wasm.step);
         const copy_static_files = b.addInstallDirectory(.{
             .install_dir = webgame_install_dir,
             .install_subdir = "",
@@ -161,6 +189,7 @@ pub fn build(b: *std.Build) void {
                 .optimize = optimize,
             },
         );
+        webgame_wasm_check.root_module.addOptions("DESIGN", DESIGN.default.toOptions(b));
         check.dependOn(&webgame_wasm_check.step);
     }
 
