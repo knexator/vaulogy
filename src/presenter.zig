@@ -3273,6 +3273,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             // move camera
             moveCamera(&self.camera, delta_seconds, platform.getKeyboard(), platform.getMouse());
 
+            std.log.debug("anim_t: {d}", .{self.anim_t});
+
             if (DESIGN.no_current_data) {
                 self.main_input.pos.lerp_towards(MAIN_INPUT_POS, 0.6, delta_seconds);
                 math.lerp_towards(&self.main_input.is_pattern, 0, 0.6, delta_seconds);
@@ -3290,6 +3292,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         remaining.* -= advance_step_size;
                         self.anim_t += advance_step_size;
                     } else {
+                        self.anim_t += remaining.*;
                         self.anim_state = .paused;
                     }
                 },
