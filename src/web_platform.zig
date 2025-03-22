@@ -143,8 +143,11 @@ const js_better = struct {
     };
 };
 
+const math = @import("kommon/math.zig");
+const funk = @import("kommon/funktional.zig");
 const model = @import("main.zig");
 const presenter = @import("presenter.zig");
+const DESIGN = presenter.DESIGN;
 
 const WebPlatform = struct {
     pub fn getPlayerData(mem: *model.VeryPermamentGameStuff) !?presenter.PlayerData {
@@ -277,14 +280,25 @@ const WebDrawer = struct {
 
     pub fn drawVariable(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {
         const screen_point = screenFromWorld(camera, world_point);
-        const local_positions = [_]Vec2{
-            Vec2.new(-0.5, 0),
-            Vec2.new(0, 1),
-            Vec2.new(0.5, 1),
-            Vec2.new(0, 0),
-            Vec2.new(0.5, -1),
-            Vec2.new(0, -1),
-        };
+        const local_positions = if (DESIGN.round_data)
+            funk.fromCount(32, struct {
+                pub fn anon(k: usize) Vec2 {
+                    return Vec2.fromTurns(math.lerp(0.75, 0.25, math.tof32(k) / 32)).addX(0.5);
+                }
+            }.anon) ++ funk.fromCount(32, struct {
+                pub fn anon(k: usize) Vec2 {
+                    return Vec2.fromTurns(math.lerp(0.25, 0.75, math.tof32(k) / 32)).mul(.new(0.5, 1)).addX(0.5);
+                }
+            }.anon)
+        else
+            [_]Vec2{
+                Vec2.new(-0.5, 0),
+                Vec2.new(0, 1),
+                Vec2.new(0.5, 1),
+                Vec2.new(0, 0),
+                Vec2.new(0.5, -1),
+                Vec2.new(0, -1),
+            };
         var screen_positions: [local_positions.len]Vec2 = undefined;
         for (local_positions, 0..) |pos, i| {
             screen_positions[i] = screen_point.applyToLocalPosition(pos);
@@ -299,14 +313,25 @@ const WebDrawer = struct {
 
     pub fn drawPatternVariable(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {
         const screen_point = screenFromWorld(camera, world_point);
-        const local_positions = [_]Vec2{
-            Vec2.new(0.5, 0),
-            Vec2.new(0, 1),
-            Vec2.new(-0.5, 1),
-            Vec2.new(0, 0),
-            Vec2.new(-0.5, -1),
-            Vec2.new(0, -1),
-        };
+        const local_positions = if (DESIGN.round_data)
+            funk.fromCount(32, struct {
+                pub fn anon(k: usize) Vec2 {
+                    return Vec2.fromTurns(math.lerp(-0.25, 0.25, math.tof32(k) / 32)).addX(-0.5);
+                }
+            }.anon) ++ funk.fromCount(32, struct {
+                pub fn anon(k: usize) Vec2 {
+                    return Vec2.fromTurns(math.lerp(0.25, -0.25, math.tof32(k) / 32)).mul(.new(0.5, 1)).addX(-0.5);
+                }
+            }.anon)
+        else
+            [_]Vec2{
+                Vec2.new(0.5, 0),
+                Vec2.new(0, 1),
+                Vec2.new(-0.5, 1),
+                Vec2.new(0, 0),
+                Vec2.new(-0.5, -1),
+                Vec2.new(0, -1),
+            };
         var screen_positions: [local_positions.len]Vec2 = undefined;
         for (local_positions, 0..) |pos, i| {
             screen_positions[i] = screen_point.applyToLocalPosition(pos);
@@ -320,6 +345,7 @@ const WebDrawer = struct {
     }
 
     pub fn drawAtomDebug(camera: Camera, world_point: Point) void {
+        std.debug.assert(!DESIGN.round_data);
         const screen_point = screenFromWorld(camera, world_point);
         const local_positions = [_]Vec2{
             Vec2.new(-0.5, 0),
@@ -346,13 +372,21 @@ const WebDrawer = struct {
         const profile = visuals.profile;
         const screen_point = screenFromWorld(camera, world_point);
         if (optimization_dont_draw_tiny and screen_point.scale < 0.1) return;
-        const local_positions = [_]Vec2{
-            Vec2.new(2, -1),
-            Vec2.new(0, -1),
-            Vec2.new(-0.5, 0),
-            Vec2.new(0, 1),
-            Vec2.new(2, 1),
-        };
+        const local_positions = if (DESIGN.round_data)
+            [1]Vec2{.new(2, -1)} ++
+                funk.fromCount(32, struct {
+                    pub fn anon(k: usize) Vec2 {
+                        return Vec2.fromTurns(math.lerp(0.75, 0.25, math.tof32(k) / 32)).addX(0.5);
+                    }
+                }.anon) ++ [1]Vec2{.new(2, 1)}
+        else
+            [_]Vec2{
+                Vec2.new(2, -1),
+                Vec2.new(0, -1),
+                Vec2.new(-0.5, 0),
+                Vec2.new(0, 1),
+                Vec2.new(2, 1),
+            };
         // TODO: no allocations
         var screen_positions: []Vec2 = gpa.allocator().alloc(Vec2, local_positions.len + profile.len * 2) catch @panic("TODO");
         defer gpa.allocator().free(screen_positions);
@@ -379,13 +413,21 @@ const WebDrawer = struct {
         const profile = visuals.profile;
         const screen_point = screenFromWorld(camera, world_point);
         if (optimization_dont_draw_tiny and screen_point.scale < 0.1) return;
-        const local_positions = [_]Vec2{
-            Vec2.new(-1, -1),
-            Vec2.new(0, -1),
-            Vec2.new(0.5, 0),
-            Vec2.new(0, 1),
-            Vec2.new(-1, 1),
-        };
+        const local_positions = if (DESIGN.round_data)
+            [1]Vec2{.new(-1, -1)} ++
+                funk.fromCount(32, struct {
+                    pub fn anon(k: usize) Vec2 {
+                        return Vec2.fromTurns(math.lerp(-0.25, 0.25, math.tof32(k) / 32)).addX(-0.5);
+                    }
+                }.anon) ++ [1]Vec2{.new(-1, 1)}
+        else
+            [_]Vec2{
+                Vec2.new(-1, -1),
+                Vec2.new(0, -1),
+                Vec2.new(0.5, 0),
+                Vec2.new(0, 1),
+                Vec2.new(-1, 1),
+            };
         // TODO: no allocations
         var screen_positions: []Vec2 = gpa.allocator().alloc(Vec2, local_positions.len + profile.len * 2) catch @panic("TODO");
         defer gpa.allocator().free(screen_positions);
@@ -411,16 +453,31 @@ const WebDrawer = struct {
     pub fn drawPairHolder(camera: Camera, world_point: Point) void {
         const screen_point = screenFromWorld(camera, world_point);
         if (optimization_dont_draw_tiny and screen_point.scale < 0.1) return;
-        const local_positions = [_]Vec2{
-            Vec2.new(-0.5, 0),
-            Vec2.new(0, 1),
-            Vec2.new(0.5, 1),
-            Vec2.new(0.25, 0.5),
-            Vec2.new(0.5, 0),
-            Vec2.new(0.25, -0.5),
-            Vec2.new(0.5, -1),
-            Vec2.new(0, -1),
-        };
+        const local_positions = if (DESIGN.round_data)
+            funk.fromCount(32, struct {
+                pub fn anon(k: usize) Vec2 {
+                    return Vec2.fromTurns(math.lerp(0.75, 0.25, math.tof32(k) / 32)).addX(0.5);
+                }
+            }.anon) ++ funk.fromCount(32, struct {
+                pub fn anon(k: usize) Vec2 {
+                    return Vec2.fromTurns(math.lerp(0.25, 0.75, math.tof32(k) / 32)).scale(0.5).add(.new(0.75, 0.5));
+                }
+            }.anon) ++ funk.fromCount(32, struct {
+                pub fn anon(k: usize) Vec2 {
+                    return Vec2.fromTurns(math.lerp(0.25, 0.75, math.tof32(k) / 32)).scale(0.5).add(.new(0.75, -0.5));
+                }
+            }.anon)
+        else
+            [_]Vec2{
+                Vec2.new(-0.5, 0),
+                Vec2.new(0, 1),
+                Vec2.new(0.5, 1),
+                Vec2.new(0.25, 0.5),
+                Vec2.new(0.5, 0),
+                Vec2.new(0.25, -0.5),
+                Vec2.new(0.5, -1),
+                Vec2.new(0, -1),
+            };
         var screen_positions: [local_positions.len]Vec2 = undefined;
         for (local_positions, 0..) |pos, i| {
             screen_positions[i] = screen_point.applyToLocalPosition(pos);
@@ -436,16 +493,33 @@ const WebDrawer = struct {
     pub fn drawPatternPairHolder(camera: Camera, world_point: Point) void {
         const screen_point = screenFromWorld(camera, world_point);
         if (optimization_dont_draw_tiny and screen_point.scale < 0.1) return;
-        const local_positions = [_]Vec2{
-            Vec2.new(0.5, 0),
-            Vec2.new(0, 1),
-            Vec2.new(-1, 1),
-            Vec2.new(-0.75, 0.5),
-            Vec2.new(-1, 0),
-            Vec2.new(-0.75, -0.5),
-            Vec2.new(-1, -1),
-            Vec2.new(0, -1),
-        };
+        const local_positions = if (DESIGN.round_data)
+            funk.fromCount(32, struct {
+                pub fn anon(k: usize) Vec2 {
+                    return Vec2.fromTurns(math.lerp(-0.25, 0.25, math.tof32(k) / 32)).addX(-0.5);
+                }
+            }.anon) ++ funk.fromCount(32, struct {
+                pub fn anon(k: usize) Vec2 {
+                    return Vec2.fromTurns(math.lerp(0.25, -0.25, math.tof32(k) / 32)).scale(0.5).add(.new(-1.25, 0.5));
+                }
+            }.anon) ++ funk.fromCount(32, struct {
+                pub fn anon(k: usize) Vec2 {
+                    return Vec2.fromTurns(math.lerp(0.25, -0.25, math.tof32(k) / 32)).scale(0.5).add(.new(-1.25, -0.5));
+                }
+            }.anon)
+
+                // [_]Vec2{ .new(-1.5, 1), .new(-1, 0.5), .new(-1.5, 0), .new(-1, -0.5), .new(-1.5, -1) }
+        else
+            [_]Vec2{
+                Vec2.new(0.5, 0),
+                Vec2.new(0, 1),
+                Vec2.new(-1, 1),
+                Vec2.new(-0.75, 0.5),
+                Vec2.new(-1, 0),
+                Vec2.new(-0.75, -0.5),
+                Vec2.new(-1, -1),
+                Vec2.new(0, -1),
+            };
         var screen_positions: [local_positions.len]Vec2 = undefined;
         for (local_positions, 0..) |pos, i| {
             screen_positions[i] = screen_point.applyToLocalPosition(pos);
