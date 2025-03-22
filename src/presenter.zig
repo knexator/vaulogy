@@ -2844,11 +2844,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 );
             }
 
-            const lowest_point = parent_point
-                .applyToLocalPoint(group.cases.getLast().pattern_point_relative_to_parent)
-                .applyToLocalPosition(.new(0, 1))
-                .sub(.new(parent_point.scale * if (is_first) tof32(5.0) else tof32(3.0), 0));
-            drawer.drawLine(camera, &.{ parent_point.applyToLocalPosition(if (is_first) .zero else .new(1, 0)), lowest_point }, .black);
+            if (group.cases.getLastOrNull()) |last_case| {
+                const lowest_point = parent_point
+                    .applyToLocalPoint(last_case.pattern_point_relative_to_parent)
+                    .applyToLocalPosition(.new(0, 1))
+                    .sub(.new(parent_point.scale * if (is_first) tof32(5.0) else tof32(3.0), 0));
+                drawer.drawLine(camera, &.{ parent_point.applyToLocalPosition(if (is_first) .zero else .new(1, 0)), lowest_point }, .black);
+            }
         }
 
         fn drawCaseExtra(camera: Camera, pattern_point: Point, case: CaseState) !void {
