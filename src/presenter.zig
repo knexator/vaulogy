@@ -1718,6 +1718,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             pub fn allowGrabbingCases(self: TutorialState) bool {
                 return self != .first_level;
             }
+
+            pub fn allowPickingIdentity(self: TutorialState) bool {
+                return self == .none;
+            }
         };
 
         persistence: *PlayerData,
@@ -2422,18 +2426,30 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             // update cases & focus
             {
                 const mouse_pos = platform.getMouse().cur.pos(camera);
-                const maybe_overlapped: ?union(enum) {
+                const Overlapped = union(enum) {
                     case: CasePlace,
                     sexpr: SexprPlace,
-                } = if (try asdfUpdateAndReturnOverlap(
-                    self,
-                    mouse_pos,
-                    delta_seconds,
-                )) |overlap|
-                    switch (overlap) {
-                        .case => |case| .{ .case = .{ .main_fnk = case } },
-                        .sexpr => |sexpr| .{ .sexpr = .{ .full_address = sexpr } },
-                    }
+                };
+                const maybe_overlapped: ?Overlapped = if (blk: {
+                    if (try asdfUpdateAndReturnOverlap(
+                        self,
+                        mouse_pos,
+                        delta_seconds,
+                    )) |overlap|
+                        switch (overlap) {
+                            .case => |case| break :blk Overlapped{ .case = .{ .main_fnk = case } },
+                            .sexpr => |sexpr| break :blk if (!self.tutorial_state.allowPickingIdentity() and
+                                sexpr.which == .fnk_name and
+                                (try self.cases.getSexprAt(sexpr)).equals(Sexpr.builtin.identity) and
+                                self.focus == .nothing)
+                                break :blk null
+                            else
+                                break :blk Overlapped{ .sexpr = .{ .full_address = sexpr } },
+                        }
+                    else
+                        break :blk null;
+                }) |overlap|
+                    overlap
                 else if (toolbar.findOverlap(mouse_pos, self.tutorial_state.getToolbar())) |overlap|
                     .{ .sexpr = .{ .toolbar = overlap.index } }
                 else if (try samples_reel.findOverlap(mouse_pos, self.samples)) |overlap|
