@@ -2,15 +2,19 @@ const fs = require("fs");
 const http = require("http");
 const WebSocket = require("ws");
 const path = require("path");
+const url = require("url");
 
 const static_dir = process.argv[2];
 
 // Create an HTTP server
 const server = http.createServer((req, res) => {
-  // Build the file path
+  // Parse the URL to handle query parameters
+  const parsedUrl = url.parse(req.url, true);
+  
+  // Build the file path using only the pathname part
   let filePath = path.join(
     static_dir,
-    req.url === "/" ? "index.html" : req.url,
+    parsedUrl.pathname === "/" ? "index.html" : parsedUrl.pathname
   );
 
   // Get the file's extension
@@ -60,13 +64,6 @@ const server = http.createServer((req, res) => {
     }
   });
 });
-// const ws = new WebSocket('ws://' + location.host);
-// ws.onmessage = (event) => {
-//   if (event.data === 'reload') {
-//     console.log('File changed, reloading...');
-//     location.reload();
-//   }
-// };
 
 // Attach WebSocket server
 const wss = new WebSocket.Server({ server });
@@ -74,7 +71,6 @@ const wss = new WebSocket.Server({ server });
 // Watch the file for changes
 fs.watch(static_dir, (eventType) => {
   if (eventType === "change") {
-    // console.log(`${static_dir} changed, notifying clients...`);
     // Notify all connected clients
     wss.clients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {

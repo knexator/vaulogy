@@ -328,6 +328,14 @@ pub const Drawer = struct {
                 unreachable;
             }
         }.anon,
+        .drawWildcardsCable = struct {
+            pub fn anon(camera: Camera, points: []const Vec2, visuals: []const AtomVisuals) void {
+                _ = camera;
+                _ = points;
+                _ = visuals;
+                unreachable;
+            }
+        }.anon,
     };
 };
 
