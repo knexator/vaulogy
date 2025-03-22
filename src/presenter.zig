@@ -912,6 +912,52 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             return AtomVisualCache.init();
         }
 
+        pub fn drawPlacedWildcardsCable(
+            camera: Camera,
+            pattern_point: Point,
+            template_point: Point,
+            pattern_value: *const Sexpr,
+            template_value: *const Sexpr,
+            // TODO: relative address? (maybe pass the casegroup, then)
+        ) !void {
+            // TODO: avoid memory management here by having a single scratch allocator for the whole frame/drawing
+            const asdf = try visualsForCommonWildcards(pattern_value, template_value);
+            defer platform.gpa.free(asdf);
+
+            if (asdf.len > 0) {
+                drawer.drawWildcardsCable(camera, &.{
+                    pattern_point.applyToLocalPosition(.new(0.5, 0)),
+                    template_point.applyToLocalPosition(.new(-0.5, 0)),
+                }, asdf);
+            }
+        }
+
+        fn visualsForCommonWildcards(pattern: *const Sexpr, template: *const Sexpr) ![]const AtomVisuals {
+            // TODO: better memory management
+
+            const gpa = platform.gpa;
+
+            var pattern_names: std.ArrayList([]const u8) = .init(gpa);
+            defer pattern_names.deinit();
+            try pattern.getAllVarNames(&pattern_names);
+
+            var template_names: std.ArrayList([]const u8) = .init(gpa);
+            defer template_names.deinit();
+            try template.getAllVarNames(&template_names);
+
+            var common: std.ArrayList(AtomVisuals) = .init(platform.gpa);
+
+            for (pattern_names.items) |p| {
+                for (template_names.items) |t| {
+                    if (std.mem.eql(u8, p, t)) {
+                        try common.append(try AtomVisualCache.getAtomVisuals(p));
+                    }
+                }
+            }
+
+            return try common.toOwnedSlice();
+        }
+
         // TODO: better memory management
         pub fn drawWildcardLinesToFloating(camera: Camera, parent_cases_point: Point, cases: CaseGroup, grabbing_point: Point, grabbing_wildcards: []const []const u8) !void {
             const case = cases.cases.items[cases.unfolded];
@@ -2864,6 +2910,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 pattern_point.scale,
                 0,
             );
+            try artist.drawPlacedWildcardsCable(
+                camera,
+                pattern_point,
+                pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
+                case.pattern,
+                case.template,
+            );
             if (case.next) |next| {
                 try drawCases(camera, false, pattern_point, next);
             }
@@ -3825,6 +3878,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             );
         }
 
+        // TODO: remove duplication with EditingCase
         fn drawCaseExtra(camera: Camera, pattern_point: Point, case: core.MatchCaseDefinition, bindings: BindingsState) !void {
             try artist.drawSexprWithBindings(
                 camera,
@@ -3839,6 +3893,14 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 pattern_point.applyToLocalPosition(.new(DIST_TO_TEMPLATE - 0.5, 0)),
                 pattern_point.scale,
                 0,
+            );
+            // TODO: draw the bound values travelling on the wire
+            try artist.drawPlacedWildcardsCable(
+                camera,
+                pattern_point,
+                pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
+                case.pattern,
+                case.template,
             );
             if (case.next) |next| {
                 try drawCases(camera, 0, pattern_point, next.items, true, 0, bindings);
