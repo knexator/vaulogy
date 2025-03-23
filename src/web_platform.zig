@@ -216,13 +216,20 @@ const WebDrawer = struct {
 
     pub fn clipAtomRegion(camera: Camera, world_point: Point) void {
         const screen_point = screenFromWorld(camera, world_point);
-        const local_positions = [_]Vec2{
-            Vec2.new(-0.5, 0),
-            Vec2.new(0, 1),
-            Vec2.new(2.3, 1),
-            Vec2.new(2.3, -1),
-            Vec2.new(0, -1),
-        };
+        const local_positions = if (DESIGN.round_data)
+            funk.fromCount(32, struct {
+                pub fn anon(k: usize) Vec2 {
+                    return Vec2.fromTurns(math.lerp(0.75, 0.25, math.tof32(k) / 32)).addX(0.5);
+                }
+            }.anon) ++ [2]Vec2{ .new(2.3, 1), .new(2.3, -1) }
+        else
+            [_]Vec2{
+                Vec2.new(-0.5, 0),
+                Vec2.new(0, 1),
+                Vec2.new(2.3, 1),
+                Vec2.new(2.3, -1),
+                Vec2.new(0, -1),
+            };
         var screen_positions: [local_positions.len]Vec2 = undefined;
         for (local_positions, 0..) |pos, i| {
             screen_positions[i] = screen_point.applyToLocalPosition(pos);
