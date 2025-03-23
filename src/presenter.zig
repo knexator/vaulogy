@@ -1186,6 +1186,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                         .scale = 0.5,
                     }), pair.right, bindings);
                     drawer.drawPairHolder(camera, world_point);
+                    try drawTemplateWildcardLinesNonRecursive(camera, pair.left, pair.right, world_point);
                 },
                 .atom_var => |x| {
                     // TODO: check that compiler skips the loop if anim_t is null
@@ -3726,6 +3727,22 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             t,
                         ));
                         artist.drawCableTo(camera, cable_asdf_pos, active_value_cur_pos);
+                        if (t < 0.25) {
+                            // TODO NOW
+                            const visuals = try artist.getAllVarVisuals(matched.case.template);
+                            defer visuals.deinit();
+                            drawer.drawWildcardsCable(camera, &.{
+                                cable_asdf_pos,
+                                active_value_cur_pos.applyToLocalPosition(.new(-0.5, 0)),
+                            }, visuals.items);
+                            for (matched.new_bindings) |binding| {
+                                try artist.drawSexpr(camera, .{ .pos = .lerp(
+                                    cable_asdf_pos,
+                                    active_value_cur_pos.applyToLocalPosition(.new(-0.5, 0)),
+                                    t * 4,
+                                ), .scale = 0.25 }, binding.value);
+                            }
+                        }
                         try artist.drawSexprWithBindings(
                             camera,
                             active_value_cur_pos,

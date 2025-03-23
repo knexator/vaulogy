@@ -613,6 +613,7 @@ const WebDrawer = struct {
     pub fn drawFnkHolder(camera: Camera, world_point: Point) void {
         const screen_point = screenFromWorld(camera, world_point);
 
+        js.canvas.setLineWidth(1);
         js_better.canvas.setStrokeColor(Color.black);
         js.canvas.beginPath();
         js_better.canvas.circle(screen_point.pos, screen_point.scale * 0.5);
