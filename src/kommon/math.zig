@@ -126,6 +126,111 @@ pub fn ZVec2(T: type) type {
     };
 }
 
+pub const DVec2 = extern struct {
+    pub const Scalar = f64;
+
+    x: Scalar,
+    y: Scalar,
+
+    const Self = @This();
+
+    pub const zero = new(0, 0);
+    pub const one = new(1, 1);
+    pub const half = new(0.5, 0.5);
+    pub const e1 = new(1, 0);
+    pub const e2 = new(0, 1);
+
+    pub fn new(x: Scalar, y: Scalar) Self {
+        return .{ .x = x, .y = y };
+    }
+
+    pub fn both(v: Scalar) Self {
+        return new(v, v);
+    }
+
+    pub fn add(a: Self, b: Self) Self {
+        return new(a.x + b.x, a.y + b.y);
+    }
+
+    pub fn sub(a: Self, b: Self) Self {
+        return new(a.x - b.x, a.y - b.y);
+    }
+
+    pub fn scale(v: Self, s: Scalar) Self {
+        return new(v.x * s, v.y * s);
+    }
+
+    pub fn mul(a: Self, b: Self) Self {
+        return new(a.x * b.x, a.y * b.y);
+    }
+
+    pub fn div(a: Self, b: Self) Self {
+        return new(a.x / b.x, a.y / b.y);
+    }
+
+    pub fn addX(a: Self, b: Scalar) Self {
+        return new(a.x + b, a.y);
+    }
+
+    pub fn addY(a: Self, b: Scalar) Self {
+        return new(a.x, a.y + b);
+    }
+
+    pub fn perpCW(v: Self) Self {
+        return new(-v.y, v.x);
+    }
+
+    pub fn rotate(v: Self, turns: f64) Self {
+        const c = @cos(turns * std.math.tau);
+        const s = @sin(turns * std.math.tau);
+        return new(
+            v.x * c - v.y * s,
+            v.x * s + v.y * c,
+        );
+    }
+
+    test "rotate" {
+        try Vec2.expectApproxEqAbs(Vec2.e2, rotate(Vec2.e1, 0.25), 0.001);
+    }
+
+    pub fn fromTurns(turns: f64) Self {
+        return e1.rotate(turns);
+    }
+
+    pub fn normalized(v: Self) Self {
+        return v.scale(1 / v.mag());
+    }
+
+    pub fn mag(v: Self) Scalar {
+        return @sqrt(v.magSq());
+    }
+
+    pub fn magSq(v: Self) Scalar {
+        return dot(v, v);
+    }
+
+    pub fn dot(a: Self, b: Self) Scalar {
+        return a.x * b.x + a.y * b.y;
+    }
+
+    pub fn lerp(a: Self, b: Self, t: f64) Self {
+        return new(
+            std.math.lerp(a.x, b.x, t),
+            std.math.lerp(a.y, b.y, t),
+        );
+    }
+
+    pub fn expectApproxEqRel(expected: Vec2, actual: Vec2, tolerance: anytype) !void {
+        try std.testing.expectApproxEqRel(expected.x, actual.x, tolerance);
+        try std.testing.expectApproxEqRel(expected.y, actual.y, tolerance);
+    }
+
+    pub fn expectApproxEqAbs(expected: Vec2, actual: Vec2, tolerance: anytype) !void {
+        try std.testing.expectApproxEqAbs(expected.x, actual.x, tolerance);
+        try std.testing.expectApproxEqAbs(expected.y, actual.y, tolerance);
+    }
+};
+
 pub const Vec2 = extern struct {
     pub const Scalar = f32;
 

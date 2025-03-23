@@ -926,46 +926,121 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             return result;
         }
 
+        fn drawTemplateWildcardLinesNonRecursive(camera: Camera, left: *const Sexpr, right: *const Sexpr, point: Point) !void {
+            var left_visuals = try getAllVarVisuals(left);
+            defer left_visuals.deinit();
+            var right_visuals = try getAllVarVisuals(right);
+            defer right_visuals.deinit();
+            if (!DESIGN.round_data) {
+                drawer.drawWildcardsCable(camera, &.{
+                    point.applyToLocalPosition(.new(-0.5, 0)),
+                    point.applyToLocalPosition(.new(0, -0.5)),
+                    point.applyToLocalPosition(.new(0.25, -0.5)),
+                }, left_visuals.items);
+
+                drawer.drawWildcardsCable(camera, &.{
+                    point.applyToLocalPosition(.new(-0.5, 0)),
+                    point.applyToLocalPosition(.new(0, 0.5)),
+                    point.applyToLocalPosition(.new(0.25, 0.5)),
+                }, right_visuals.items);
+            } else {
+                // TODO: these numbers are not exact, issues when zooming in
+                drawer.drawWildcardsCable(camera, &([1]Vec2{
+                    point.applyToLocalPosition(.new(-0.5, 0)),
+                } ++ funk.fromCountAndCtx(32, struct {
+                    pub fn anon(k: usize, p: Point) Vec2 {
+                        return p.applyToLocalPosition(Vec2.fromTurns(math.lerp(0.5 + 0.25 / 2.0, 0.75, math.tof32(k) / 32)).scale(0.75).add(.new(0.25, 0.25)));
+                    }
+                }.anon, point)), left_visuals.items);
+
+                drawer.drawWildcardsCable(camera, &([1]Vec2{
+                    point.applyToLocalPosition(.new(-0.5, 0)),
+                } ++ funk.fromCountAndCtx(32, struct {
+                    pub fn anon(k: usize, p: Point) Vec2 {
+                        return p.applyToLocalPosition(Vec2.fromTurns(math.lerp(0.5 - 0.25 / 2.0, 0.25, math.tof32(k) / 32)).scale(0.75).add(.new(0.25, -0.25)));
+                    }
+                }.anon, point)), right_visuals.items);
+            }
+        }
+
         pub fn drawTemplateWildcardLines(camera: Camera, value: *const Sexpr, point: Point) !void {
             switch (value.*) {
                 else => {},
                 .pair => |pair| {
-                    var left_visuals = try getAllVarVisuals(pair.left);
-                    defer left_visuals.deinit();
-                    var right_visuals = try getAllVarVisuals(pair.right);
-                    defer right_visuals.deinit();
-                    if (!DESIGN.round_data) {
-                        drawer.drawWildcardsCable(camera, &.{
-                            point.applyToLocalPosition(.new(-0.5, 0)),
-                            point.applyToLocalPosition(.new(0, -0.5)),
-                            point.applyToLocalPosition(.new(0.25, -0.5)),
-                        }, left_visuals.items);
-
-                        drawer.drawWildcardsCable(camera, &.{
-                            point.applyToLocalPosition(.new(-0.5, 0)),
-                            point.applyToLocalPosition(.new(0, 0.5)),
-                            point.applyToLocalPosition(.new(0.25, 0.5)),
-                        }, right_visuals.items);
-                    } else {
-                        drawer.drawWildcardsCable(camera, &([1]Vec2{
-                            point.applyToLocalPosition(.new(-0.5, 0)),
-                        } ++ funk.fromCountAndCtx(32, struct {
-                            pub fn anon(k: usize, p: Point) Vec2 {
-                                return p.applyToLocalPosition(Vec2.fromTurns(math.lerp(0.5 + 0.25 / 2.0, 0.75, math.tof32(k) / 32)).scale(0.75).add(.new(0.25, 0.25)));
-                            }
-                        }.anon, point)), left_visuals.items);
-
-                        drawer.drawWildcardsCable(camera, &([1]Vec2{
-                            point.applyToLocalPosition(.new(-0.5, 0)),
-                        } ++ funk.fromCountAndCtx(32, struct {
-                            pub fn anon(k: usize, p: Point) Vec2 {
-                                return p.applyToLocalPosition(Vec2.fromTurns(math.lerp(0.5 - 0.25 / 2.0, 0.25, math.tof32(k) / 32)).scale(0.75).add(.new(0.25, -0.25)));
-                            }
-                        }.anon, point)), right_visuals.items);
-                    }
-
+                    try drawTemplateWildcardLinesNonRecursive(camera, pair.left, pair.right, point);
                     try drawTemplateWildcardLines(camera, pair.left, point.applyToLocalPoint(OFFSET_TEMPLATE_PAIR_LEFT));
                     try drawTemplateWildcardLines(camera, pair.right, point.applyToLocalPoint(OFFSET_TEMPLATE_PAIR_RIGHT));
+                },
+            }
+        }
+
+        fn drawPatternWildcardLinesNonRecursive(camera: Camera, left: *const Sexpr, right: *const Sexpr, point: Point) !void {
+            var left_visuals = try getAllVarVisuals(left);
+            defer left_visuals.deinit();
+            var right_visuals = try getAllVarVisuals(right);
+            defer right_visuals.deinit();
+            if (!DESIGN.round_data) {
+                if (true) {
+                    drawer.drawWildcardsCable(camera, &.{
+                        point.applyToLocalPosition(.new(-0.75, -0.5)),
+                        point.applyToLocalPosition(.new(-0.5, -0.5)),
+                        point.applyToLocalPosition(.new(0, 0)),
+                        point.applyToLocalPosition(.new(0.5, 0)),
+                    }, left_visuals.items);
+
+                    drawer.drawWildcardsCable(camera, &.{
+                        point.applyToLocalPosition(.new(-0.75, 0.5)),
+                        point.applyToLocalPosition(.new(-0.5, 0.5)),
+                        point.applyToLocalPosition(.new(0, 0)),
+                        point.applyToLocalPosition(.new(0.5, 0)),
+                    }, right_visuals.items);
+                } else {
+                    // TODO: delete this
+                    drawer.drawWildcardsCable(camera, &.{
+                        point.applyToLocalPosition(.new(-0.75, -0.5)),
+                        point.applyToLocalPosition(.new(-0.5 + 0.25 / 2.0, -0.5)),
+                        point.applyToLocalPosition(.new(0.25 / 2.0, 0)),
+                        point.applyToLocalPosition(.new(0.5, 0)),
+                    }, left_visuals.items);
+
+                    drawer.drawWildcardsCable(camera, &.{
+                        point.applyToLocalPosition(.new(-0.75, 0.5)),
+                        point.applyToLocalPosition(.new(-0.5 + 0.25 / 2.0, 0.5)),
+                        point.applyToLocalPosition(.new(0.25 / 2.0, 0)),
+                        point.applyToLocalPosition(.new(0.5, 0)),
+                    }, right_visuals.items);
+                }
+            } else {
+                const magic_1 = @sqrt(2.0) * 2.0 / 4.0;
+                const magic_2 = @sqrt(2.0) * 3.0 / 4.0;
+                drawer.drawWildcardsCable(camera, &(funk.fromCountAndCtx(32, struct {
+                    pub fn anon(k: usize, p: Point) Vec2 {
+                        return p.applyToLocalPosition(Vec2.fromTurns(math.lerp(-0.25, -0.25 / 2.0, math.tof32(k) / 32)).scale(magic_1).add(.new(-0.75, -0.5)).addY(magic_1));
+                    }
+                }.anon, point) ++ funk.fromCountAndCtx(32, struct {
+                    pub fn anon(k: usize, p: Point) Vec2 {
+                        return p.applyToLocalPosition(Vec2.fromTurns(math.lerp(0.25 + 0.25 / 2.0, 0.25, math.tof32(k) / 32)).scale(magic_2).add(.new(0.5, 0)).addY(-magic_2));
+                    }
+                }.anon, point)), left_visuals.items);
+                drawer.drawWildcardsCable(camera, &(funk.fromCountAndCtx(32, struct {
+                    pub fn anon(k: usize, p: Point) Vec2 {
+                        return p.applyToLocalPosition(Vec2.fromTurns(math.lerp(0.25, 0.25 / 2.0, math.tof32(k) / 32)).scale(magic_1).add(.new(-0.75, 0.5)).addY(-magic_1));
+                    }
+                }.anon, point) ++ funk.fromCountAndCtx(32, struct {
+                    pub fn anon(k: usize, p: Point) Vec2 {
+                        return p.applyToLocalPosition(Vec2.fromTurns(math.lerp(-0.25 - 0.25 / 2.0, -0.25, math.tof32(k) / 32)).scale(magic_2).add(.new(0.5, 0)).addY(magic_2));
+                    }
+                }.anon, point)), right_visuals.items);
+            }
+        }
+
+        pub fn drawPatternWildcardLines(camera: Camera, value: *const Sexpr, point: Point) !void {
+            switch (value.*) {
+                else => {},
+                .pair => |pair| {
+                    try drawPatternWildcardLinesNonRecursive(camera, pair.left, pair.right, point);
+                    try drawPatternWildcardLines(camera, pair.left, point.applyToLocalPoint(OFFSET_PATTERN_PAIR_LEFT));
+                    try drawPatternWildcardLines(camera, pair.right, point.applyToLocalPoint(OFFSET_PATTERN_PAIR_RIGHT));
                 },
             }
         }
@@ -1147,6 +1222,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                 },
                 .pair => |pair| {
                     drawer.drawPairHolder(camera, world_point);
+                    try drawTemplateWildcardLinesNonRecursive(camera, pair.left, pair.right, world_point);
                     try drawSexpr(camera, world_point.applyToLocalPoint(.{
                         .pos = .new(0.5, -0.5),
                         .scale = 0.5,
@@ -1198,6 +1274,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                 },
                 .pair => |pair| {
                     drawer.drawPatternPairHolder(camera, world_point);
+                    try drawPatternWildcardLinesNonRecursive(camera, pair.left, pair.right, world_point);
                     try drawPatternSexpr(camera, world_point.applyToLocalPoint(.{
                         .pos = .new(-1, -0.5),
                         .scale = 0.5,
@@ -2978,6 +3055,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 case.template,
             );
             try artist.drawTemplateWildcardLines(camera, case.template, template_point);
+            try artist.drawPatternWildcardLines(camera, case.pattern, pattern_point);
             if (case.next) |next| {
                 try drawCases(camera, false, pattern_point, next);
             }
