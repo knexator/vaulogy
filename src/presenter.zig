@@ -3394,8 +3394,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             /// speed multiplier
             normal: f32,
             paused,
-            /// remaining fast advance
-            advancing: f32,
+            advancing,
             backwards: ?core.ExecutionThread,
         } = .{ .normal = 1 },
 
@@ -3449,13 +3448,14 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         else => .paused,
                     },
                     3 => self.anim_state = .{ .normal = 4 },
-                    4 => if (self.done_steps > 0) {
-                        self.anim_state = .{ .backwards = self.thread_initial_params.startThreadAndRunItToStep(self.scoring_run, self.done_steps) catch |err| switch (err) {
+                    4 => self.anim_state = .{ .backwards = if (self.done_steps == 0)
+                        null
+                    else
+                        self.thread_initial_params.startThreadAndRunItToStep(self.scoring_run, self.done_steps) catch |err| switch (err) {
                             error.OutOfMemory => |x| return x,
                             else => unreachable,
-                        } };
-                    },
-                    5 => self.anim_state = .{ .advancing = 1.1 - self.anim_t },
+                        } },
+                    5 => self.anim_state = .advancing,
                     else => return error.TODO,
                 };
 
@@ -3478,14 +3478,11 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         self.anim_state = .paused;
                     }
                 },
-                .advancing => |*remaining| {
+                .advancing => {
                     const advance_step_size = delta_seconds * SKIP_SPEED_MULT * BASE_SPEED * stepSpeed(self.anim_t, self.thread.last_visual_state, self.thread.stack.items.len);
-
-                    if (remaining.* > advance_step_size) {
-                        remaining.* -= advance_step_size;
-                        self.anim_t += advance_step_size;
-                    } else {
-                        self.anim_t += remaining.*;
+                    self.anim_t += advance_step_size;
+                    if (self.anim_t >= 1) {
+                        self.anim_t = 1;
                         self.anim_state = .paused;
                     }
                 },
@@ -3503,8 +3500,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     } else {
                         const advance_step_size = delta_seconds * SKIP_SPEED_MULT * BASE_SPEED * stepSpeed(self.anim_t, self.thread.last_visual_state, self.thread.stack.items.len);
                         self.anim_t -= advance_step_size;
-                        if (self.anim_t < 0.1) {
-                            self.anim_t = @max(0, self.anim_t);
+                        if (self.anim_t <= 0.0) {
+                            self.anim_t = @max(0.0, self.anim_t);
                             self.anim_state = .paused;
                         }
                     }
