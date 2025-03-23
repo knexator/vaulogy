@@ -1,6 +1,23 @@
 const std = @import("std");
 
-fn single(arr: anytype) std.meta.Elem(@TypeOf(arr)) {
+fn indexOfScalar(comptime T: type, slice: []const T, value: T, comptime eql: ?fn (a: T, b: T) bool) ?usize {
+    const equal = eql orelse std.meta.eql;
+    for (slice, 0..) |c, j| {
+        if (equal(c, value)) return j;
+    }
+    return null;
+}
+
+pub fn indexOfString(slice: []const []const u8, value: []const u8) ?usize {
+    return indexOfScalar([]const u8, slice, value, struct {
+        // TODO: currying helper
+        pub fn anon(a: []const u8, b: []const u8) bool {
+            return std.mem.eql(u8, a, b);
+        }
+    }.anon);
+}
+
+pub fn single(arr: anytype) std.meta.Elem(@TypeOf(arr)) {
     std.debug.assert(arr.len == 1);
     return arr[0];
 }

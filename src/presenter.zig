@@ -1186,7 +1186,8 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                         .scale = 0.5,
                     }), pair.right, bindings);
                     drawer.drawPairHolder(camera, world_point);
-                    try drawTemplateWildcardLinesNonRecursive(camera, pair.left, pair.right, world_point);
+                    if (if (bindings.anim_t) |anim_t| anim_t < 0.4 else true)
+                        try drawTemplateWildcardLinesNonRecursive(camera, pair.left, pair.right, world_point);
                 },
                 .atom_var => |x| {
                     // TODO: check that compiler skips the loop if anim_t is null
@@ -3463,8 +3464,6 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             // move camera
             moveCamera(&self.camera, delta_seconds, platform.getKeyboard(), platform.getMouse());
 
-            std.log.debug("anim_t: {d}", .{self.anim_t});
-
             if (DESIGN.no_current_data) {
                 self.main_input.pos.lerp_towards(MAIN_INPUT_POS, 0.6, delta_seconds);
                 math.lerp_towards(&self.main_input.is_pattern, 0, 0.6, delta_seconds);
@@ -3729,6 +3728,9 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         artist.drawCableTo(camera, cable_asdf_pos, active_value_cur_pos);
                         if (t < 0.25) {
                             // TODO NOW
+                            var names: std.ArrayList([]const u8) = .init(platform.gpa);
+                            defer names.deinit();
+                            try matched.case.template.getAllVarNames(&names);
                             const visuals = try artist.getAllVarVisuals(matched.case.template);
                             defer visuals.deinit();
                             drawer.drawWildcardsCable(camera, &.{
@@ -3736,11 +3738,13 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                 active_value_cur_pos.applyToLocalPosition(.new(-0.5, 0)),
                             }, visuals.items);
                             for (matched.new_bindings) |binding| {
-                                try artist.drawSexpr(camera, .{ .pos = .lerp(
-                                    cable_asdf_pos,
-                                    active_value_cur_pos.applyToLocalPosition(.new(-0.5, 0)),
-                                    t * 4,
-                                ), .scale = 0.25 }, binding.value);
+                                if (funk.indexOfString(names.items, binding.name) != null) {
+                                    try artist.drawSexpr(camera, .{ .pos = .lerp(
+                                        cable_asdf_pos,
+                                        active_value_cur_pos.applyToLocalPosition(.new(-0.5, 0)),
+                                        t * 4,
+                                    ), .scale = 0.25 }, binding.value);
+                                }
                             }
                         }
                         try artist.drawSexprWithBindings(

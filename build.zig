@@ -66,6 +66,7 @@ pub fn build(b: *std.Build) void {
             // .use_lld = optimize != .Debug,
         });
         exe_unit_tests.linkLibrary(dummy_exports);
+        exe_unit_tests.root_module.addOptions("DESIGN", DESIGN.default.toOptions(b));
 
         const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
         test_step.dependOn(&run_exe_unit_tests.step);
