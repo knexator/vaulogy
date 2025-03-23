@@ -35,11 +35,29 @@ fn FirstInputOf(map_fn: anytype) type {
     return @typeInfo(@TypeOf(map_fn)).@"fn".params[0].type.?;
 }
 
+fn SecondInputOf(map_fn: anytype) type {
+    return @typeInfo(@TypeOf(map_fn)).@"fn".params[1].type.?;
+}
+
+fn ParamsLen(map_fn: anytype) usize {
+    return @typeInfo(@TypeOf(map_fn)).@"fn".params.len;
+}
+
 pub fn fromCount(comptime n: usize, comptime map_fn: anytype) [n]ReturnOf(map_fn) {
     std.debug.assert(SingleInputOf(map_fn) == usize);
     var result: [n]ReturnOf(map_fn) = undefined;
     for (0..n, &result) |k, *target| {
         target.* = map_fn(k);
+    }
+    return result;
+}
+
+pub fn fromCountAndCtx(comptime n: usize, comptime map_fn: anytype, ctx: SecondInputOf(map_fn)) [n]ReturnOf(map_fn) {
+    std.debug.assert(FirstInputOf(map_fn) == usize);
+    std.debug.assert(ParamsLen(map_fn) == 2);
+    var result: [n]ReturnOf(map_fn) = undefined;
+    for (0..n, &result) |k, *target| {
+        target.* = map_fn(k, ctx);
     }
     return result;
 }

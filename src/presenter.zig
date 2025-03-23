@@ -912,6 +912,64 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             return AtomVisualCache.init();
         }
 
+        // TODO NOW: pass scale to wildcard lines
+
+        fn getAllVarVisuals(value: *const Sexpr) !std.ArrayList(AtomVisuals) {
+            const gpa = platform.gpa;
+            var names: std.ArrayList([]const u8) = .init(gpa);
+            defer names.deinit();
+            try value.getAllVarNames(&names);
+            var result: std.ArrayList(AtomVisuals) = try .initCapacity(gpa, names.items.len);
+            for (names.items) |name| {
+                try result.append(try AtomVisualCache.getAtomVisuals(name));
+            }
+            return result;
+        }
+
+        pub fn drawTemplateWildcardLines(camera: Camera, value: *const Sexpr, point: Point) !void {
+            switch (value.*) {
+                else => {},
+                .pair => |pair| {
+                    var left_visuals = try getAllVarVisuals(pair.left);
+                    defer left_visuals.deinit();
+                    var right_visuals = try getAllVarVisuals(pair.right);
+                    defer right_visuals.deinit();
+                    if (!DESIGN.round_data) {
+                        drawer.drawWildcardsCable(camera, &.{
+                            point.applyToLocalPosition(.new(-0.5, 0)),
+                            point.applyToLocalPosition(.new(0, -0.5)),
+                            point.applyToLocalPosition(.new(0.25, -0.5)),
+                        }, left_visuals.items);
+
+                        drawer.drawWildcardsCable(camera, &.{
+                            point.applyToLocalPosition(.new(-0.5, 0)),
+                            point.applyToLocalPosition(.new(0, 0.5)),
+                            point.applyToLocalPosition(.new(0.25, 0.5)),
+                        }, right_visuals.items);
+                    } else {
+                        drawer.drawWildcardsCable(camera, &([1]Vec2{
+                            point.applyToLocalPosition(.new(-0.5, 0)),
+                        } ++ funk.fromCountAndCtx(32, struct {
+                            pub fn anon(k: usize, p: Point) Vec2 {
+                                return p.applyToLocalPosition(Vec2.fromTurns(math.lerp(0.5 + 0.25 / 2.0, 0.75, math.tof32(k) / 32)).scale(0.75).add(.new(0.25, 0.25)));
+                            }
+                        }.anon, point)), left_visuals.items);
+
+                        drawer.drawWildcardsCable(camera, &([1]Vec2{
+                            point.applyToLocalPosition(.new(-0.5, 0)),
+                        } ++ funk.fromCountAndCtx(32, struct {
+                            pub fn anon(k: usize, p: Point) Vec2 {
+                                return p.applyToLocalPosition(Vec2.fromTurns(math.lerp(0.5 - 0.25 / 2.0, 0.25, math.tof32(k) / 32)).scale(0.75).add(.new(0.25, -0.25)));
+                            }
+                        }.anon, point)), right_visuals.items);
+                    }
+
+                    try drawTemplateWildcardLines(camera, pair.left, point.applyToLocalPoint(OFFSET_TEMPLATE_PAIR_LEFT));
+                    try drawTemplateWildcardLines(camera, pair.right, point.applyToLocalPoint(OFFSET_TEMPLATE_PAIR_RIGHT));
+                },
+            }
+        }
+
         pub fn drawPlacedWildcardsCable(
             camera: Camera,
             pattern_point: Point,
@@ -924,12 +982,10 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             const asdf = try visualsForCommonWildcards(pattern_value, template_value);
             defer platform.gpa.free(asdf);
 
-            if (asdf.len > 0) {
-                drawer.drawWildcardsCable(camera, &.{
-                    pattern_point.applyToLocalPosition(.new(0.5, 0)),
-                    template_point.applyToLocalPosition(.new(-0.5, 0)),
-                }, asdf);
-            }
+            drawer.drawWildcardsCable(camera, &.{
+                pattern_point.applyToLocalPosition(.new(0.5, 0)),
+                template_point.applyToLocalPosition(.new(-0.5, 0)),
+            }, asdf);
         }
 
         fn visualsForCommonWildcards(pattern: *const Sexpr, template: *const Sexpr) ![]const AtomVisuals {
@@ -978,12 +1034,10 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                 }
             }
 
-            if (common.items.len > 0) {
-                drawer.drawWildcardsCable(camera, &.{
-                    pattern_point.applyToLocalPosition(.new(0.5, 0)),
-                    grabbing_point.applyToLocalPosition(.new(-0.5, 0)),
-                }, common.items);
-            }
+            drawer.drawWildcardsCable(camera, &.{
+                pattern_point.applyToLocalPosition(.new(0.5, 0)),
+                grabbing_point.applyToLocalPosition(.new(-0.5, 0)),
+            }, common.items);
 
             // const visuals = try AtomVisualCache.getAtomVisuals(pattern);
             // drawer.drawLine(camera, &.{
@@ -1314,6 +1368,11 @@ const MAIN_INPUT_POS = Point{ .pos = .new(1, 0) };
 const MAIN_FNK_POS = Point{ .pos = .new(0, -1.25), .turns = -0.25 };
 const DIST_BETWEEN_QUEUED_FNKS = 3.5;
 const CABLE_OFFSCREEN_DIST = 15;
+
+const OFFSET_TEMPLATE_PAIR_LEFT: Point = .{ .pos = .new(0.5, -0.5), .scale = 0.5 };
+const OFFSET_TEMPLATE_PAIR_RIGHT: Point = .{ .pos = .new(0.5, 0.5), .scale = 0.5 };
+const OFFSET_PATTERN_PAIR_LEFT: Point = .{ .pos = .new(-1, -0.5), .scale = 0.5 };
+const OFFSET_PATTERN_PAIR_RIGHT: Point = .{ .pos = .new(-1, 0.5), .scale = 0.5 };
 
 const CaseState = struct {
     // TODO: generic tree type to avoid duplication
@@ -2903,20 +2962,22 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 case.template,
             );
             try artist.drawHoldedFnk(camera, pattern_point.applyToLocalPoint(FNK_NAME_OFFSET), 0, case.fnk_name);
+            const template_point = pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) });
             drawer.drawCable(
                 camera,
                 pattern_point.applyToLocalPosition(.new(0.5, 0)),
-                pattern_point.applyToLocalPosition(.new(DIST_TO_TEMPLATE - 0.5, 0)),
+                template_point.applyToLocalPosition(.new(-0.5, 0)),
                 pattern_point.scale,
                 0,
             );
             try artist.drawPlacedWildcardsCable(
                 camera,
                 pattern_point,
-                pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
+                template_point,
                 case.pattern,
                 case.template,
             );
+            try artist.drawTemplateWildcardLines(camera, case.template, template_point);
             if (case.next) |next| {
                 try drawCases(camera, false, pattern_point, next);
             }

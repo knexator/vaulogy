@@ -627,7 +627,6 @@ const WebDrawer = struct {
     }
 
     pub fn drawWildcardsCable(camera: Camera, points: []const Vec2, visuals: []const presenter.AtomVisuals) void {
-        std.debug.assert(visuals.len > 0);
         js.canvas.setLineWidth(3);
         for (visuals) |v| {
             drawLine(camera, points, v.color);
