@@ -1051,6 +1051,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             template_point: Point,
             pattern_value: *const Sexpr,
             template_value: *const Sexpr,
+            held_wildcard_names: ?[]const []const u8,
             // TODO: relative address? (maybe pass the casegroup, then)
         ) !void {
             // TODO: avoid memory management here by having a single scratch allocator for the whole frame/drawing
@@ -1061,8 +1062,53 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                 pattern_point.applyToLocalPosition(.new(0.5, 0)),
                 template_point.applyToLocalPosition(.new(-0.5, 0)),
             }, asdf);
+
+            const lost_wildcards = try visualsForUnusedWildcards(pattern_value, template_value, held_wildcard_names);
+            defer platform.gpa.free(lost_wildcards);
+            drawer.drawWildcardsCable(camera, &.{
+                pattern_point.applyToLocalPosition(.new(0.5, 0)),
+                pattern_point.applyToLocalPosition(.new(0.75, -0.1)),
+                pattern_point.applyToLocalPosition(.new(0.65, -0.25)),
+                pattern_point.applyToLocalPosition(.new(0.75, -0.30)),
+            }, lost_wildcards);
         }
 
+        /// visuals for the wildcards present in pattern but not template
+        fn visualsForUnusedWildcards(
+            pattern: *const Sexpr,
+            template: *const Sexpr,
+            held_wildcard_names: ?[]const []const u8,
+        ) ![]const AtomVisuals {
+            // TODO: better memory management
+
+            const gpa = platform.gpa;
+
+            var pattern_names: std.ArrayList([]const u8) = .init(gpa);
+            defer pattern_names.deinit();
+            try pattern.getAllVarNames(&pattern_names);
+
+            var template_names: std.ArrayList([]const u8) = .init(gpa);
+            defer template_names.deinit();
+            try template.getAllVarNames(&template_names);
+
+            var diff: std.ArrayList(AtomVisuals) = .init(platform.gpa);
+
+            for (pattern_names.items) |p| {
+                if (funk.indexOfString(template_names.items, p) == null) {
+                    if (held_wildcard_names) |w| {
+                        if (funk.indexOfString(w, p) == null) {
+                            try diff.append(try AtomVisualCache.getAtomVisuals(p));
+                        }
+                    } else {
+                        try diff.append(try AtomVisualCache.getAtomVisuals(p));
+                    }
+                }
+            }
+
+            return try diff.toOwnedSlice();
+        }
+
+        /// visuals for the wildcards present in pattern and template
         fn visualsForCommonWildcards(pattern: *const Sexpr, template: *const Sexpr) ![]const AtomVisuals {
             // TODO: better memory management
 
@@ -1655,7 +1701,7 @@ fn EditingFnkToTesting(platform: Platform, drawer: Drawer) type {
                 artist.drawOffscreenCableTo(self.camera, MAIN_INPUT_POS);
                 try artist.drawHoldedFnk(self.camera, MAIN_FNK_POS, 1, self.fnk_name);
             }
-            try EditingFnk(platform, drawer).drawCases(self.camera, true, .{}, self.cases);
+            try EditingFnk(platform, drawer).drawCases(self.camera, true, .{}, self.cases, null);
             // _ = self;
             // try EditingFnk(platform, drawer).samples_reel.draw(self.camera, &.{self.sample}, &.{true});
         }
@@ -2876,7 +2922,18 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 try artist.drawHoldedFnk(camera, MAIN_FNK_POS, 1, self.fnk_name);
             }
 
-            try drawCases(camera, true, .{}, self.cases);
+            const wildcard_names_in_grabbing_sexpr: ?std.ArrayList([]const u8) = blk: {
+                switch (self.focus) {
+                    else => break :blk null,
+                    .grabbing_sexpr => |grabbing| if (grabbing.limitation == .template) {
+                        var r: std.ArrayList([]const u8) = .init(platform.gpa);
+                        try grabbing.sexpr.getAllVarNames(&r);
+                        break :blk r;
+                    } else break :blk null,
+                }
+            };
+            defer if (wildcard_names_in_grabbing_sexpr) |x| x.deinit();
+            try drawCases(camera, true, .{}, self.cases, if (wildcard_names_in_grabbing_sexpr) |x| x.items else null);
             try toolbar.draw(camera, self.tutorial_state.getToolbar(), self.cases.anyWildcardInPlay());
             // switch (self.tutorial_state.getToolbar()) {
             //     .normal =>
@@ -2913,10 +2970,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         grabbing.sexpr,
                     );
                     if (grabbing.limitation == .template) {
-                        var wildcard_names: std.ArrayList([]const u8) = .init(platform.gpa);
-                        defer wildcard_names.deinit();
-                        try grabbing.sexpr.getAllVarNames(&wildcard_names);
-                        try artist.drawWildcardLinesToFloating(camera, .{}, self.cases, grabbing.point, wildcard_names.items);
+                        try artist.drawWildcardLinesToFloating(camera, .{}, self.cases, grabbing.point, wildcard_names_in_grabbing_sexpr.?.items);
                     }
                 },
                 .grabbing_case => |grabbing| {
@@ -2933,7 +2987,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     pattern_point,
                                     grabbing.case.pattern,
                                 );
-                                try drawCaseExtra(camera, pattern_point, grabbing.case);
+                                try drawCaseExtra(camera, pattern_point, grabbing.case, null);
                                 const pos = pattern_point.applyToLocalPosition(.new(0, 1));
                                 const esquina = pos.sub(.new(if (address.ghost.address.len == 1) 5 else 3, 0));
                                 drawer.drawCable(camera, esquina, pos, 1, 0);
@@ -2950,7 +3004,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         pattern_point,
                         grabbing.case.pattern,
                     );
-                    try drawCaseExtra(camera, pattern_point, grabbing.case);
+                    try drawCaseExtra(camera, pattern_point, grabbing.case, null);
                 },
                 .hovering_sexpr => |hovering| {
                     if (try hovering.address.getSexpr(self)) |value| {
@@ -3003,7 +3057,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         }
 
-        fn drawCases(camera: Camera, is_first: bool, parent_point: Point, group: CaseGroup) OoM!void {
+        fn drawCases(camera: Camera, is_first: bool, parent_point: Point, group: CaseGroup, held_wildcard_names: ?[]const []const u8) OoM!void {
             for (group.cases.items) |case| {
                 const pattern_point = parent_point.applyToLocalPoint(case.pattern_point_relative_to_parent);
                 try artist.drawPatternSexpr(
@@ -3012,7 +3066,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     case.pattern,
                 );
                 if (case.pattern_point_relative_to_parent.scale >= 0.9) {
-                    try drawCaseExtra(camera, pattern_point, case);
+                    try drawCaseExtra(camera, pattern_point, case, held_wildcard_names);
                 }
 
                 const pos = pattern_point.applyToLocalPosition(.new(0, 1));
@@ -3034,7 +3088,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         }
 
-        fn drawCaseExtra(camera: Camera, pattern_point: Point, case: CaseState) !void {
+        fn drawCaseExtra(camera: Camera, pattern_point: Point, case: CaseState, held_wildcard_names: ?[]const []const u8) !void {
             try artist.drawSexpr(
                 camera,
                 pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
@@ -3055,11 +3109,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 template_point,
                 case.pattern,
                 case.template,
+                held_wildcard_names,
             );
             try artist.drawTemplateWildcardLines(camera, case.template, template_point);
             try artist.drawPatternWildcardLines(camera, case.pattern, pattern_point);
             if (case.next) |next| {
-                try drawCases(camera, false, pattern_point, next);
+                try drawCases(camera, false, pattern_point, next, held_wildcard_names);
             }
         }
 
@@ -4058,6 +4113,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
                 case.pattern,
                 case.template,
+                null,
             );
             if (case.next) |next| {
                 try drawCases(camera, 0, pattern_point, next.items, true, 0, bindings);
