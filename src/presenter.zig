@@ -1053,6 +1053,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             template_value: *const Sexpr,
             held_wildcard_names: ?[]const []const u8,
             inbound_wildcard_names: []const []const u8,
+            outbound_wildcard_names: []const []const u8,
             // TODO: relative address? (maybe pass the casegroup, then)
         ) !void {
             // TODO: avoid memory management here by having a single scratch allocator for the whole frame/drawing
@@ -1069,7 +1070,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                 pattern_point.applyToLocalPosition(.new(0, 1.1)),
             }, inbound_wildcard_names);
 
-            const lost_wildcards = try visualsForUnusedWildcards(pattern_value, template_value, held_wildcard_names);
+            const lost_wildcards = try visualsForUnusedWildcards(pattern_value, template_value, outbound_wildcard_names, held_wildcard_names);
             defer platform.gpa.free(lost_wildcards);
             drawer.drawWildcardsCable(camera, &.{
                 pattern_point.applyToLocalPosition(.new(0.5, 0)),
@@ -1079,36 +1080,38 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             }, lost_wildcards);
         }
 
-        /// visuals for the wildcards present in pattern but not template
+        /// visuals for the wildcards present in pattern but not template, outbound names, or held names
         fn visualsForUnusedWildcards(
             pattern: *const Sexpr,
             template: *const Sexpr,
+            outbound_names: []const []const u8,
             held_wildcard_names: ?[]const []const u8,
         ) ![]const AtomVisuals {
             // TODO: better memory management
 
             const gpa = platform.gpa;
 
-            var pattern_names: std.ArrayList([]const u8) = .init(gpa);
-            defer pattern_names.deinit();
-            try pattern.getAllVarNames(&pattern_names);
+            var names: std.ArrayList([]const u8) = .init(gpa);
+            defer names.deinit();
 
-            var template_names: std.ArrayList([]const u8) = .init(gpa);
-            defer template_names.deinit();
-            try template.getAllVarNames(&template_names);
-
-            var diff: std.ArrayList(AtomVisuals) = .init(platform.gpa);
-
-            for (pattern_names.items) |p| {
-                if (funk.indexOfString(template_names.items, p) == null) {
-                    if (held_wildcard_names) |w| {
-                        if (funk.indexOfString(w, p) == null) {
-                            try diff.append(try AtomVisualCache.getAtomVisuals(p));
-                        }
-                    } else {
-                        try diff.append(try AtomVisualCache.getAtomVisuals(p));
+            try pattern.getAllVarNames(&names);
+            template.removeAllVarNames(&names);
+            for (outbound_names) |name_to_remove| {
+                while (funk.indexOfString(names.items, name_to_remove)) |i| {
+                    std.debug.assert(std.mem.eql(u8, name_to_remove, names.swapRemove(i)));
+                }
+            }
+            if (held_wildcard_names) |held_names| {
+                for (held_names) |name_to_remove| {
+                    while (funk.indexOfString(names.items, name_to_remove)) |i| {
+                        std.debug.assert(std.mem.eql(u8, name_to_remove, names.swapRemove(i)));
                     }
                 }
+            }
+
+            var diff: std.ArrayList(AtomVisuals) = .init(platform.gpa);
+            for (names.items) |name| {
+                try diff.append(try AtomVisualCache.getAtomVisuals(name));
             }
 
             return try diff.toOwnedSlice();
@@ -3162,6 +3165,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 case.template,
                 held_wildcard_names,
                 case.incoming_wildcards,
+                case.outgoing_wildcards,
             );
 
             try artist.drawTemplateWildcardLines(camera, case.template, template_point);
@@ -4167,6 +4171,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 case.pattern,
                 case.template,
                 null,
+                // TODO NOW: draw during execution
+                &.{},
                 &.{},
             );
             if (case.next) |next| {
