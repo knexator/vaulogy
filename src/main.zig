@@ -3,6 +3,8 @@ const MemoryPool = std.heap.MemoryPool;
 
 const parsing = @import("parsing.zig");
 
+const indexOfString = @import("kommon/funktional.zig").indexOfString;
+
 // Design decision 1: strings live on the input buffer
 // Design decision 2: Sexprs are never released :(
 
@@ -64,10 +66,23 @@ pub const Sexpr = union(enum) {
     pub fn getAllVarNames(self: *const Sexpr, res: *std.ArrayList([]const u8)) !void {
         switch (self.*) {
             .atom_lit => return,
-            .atom_var => |v| try res.append(v.value),
+            .atom_var => |v| if (indexOfString(res.items, v.value) == null) try res.append(v.value),
             .pair => |p| {
                 try p.left.getAllVarNames(res);
                 try p.right.getAllVarNames(res);
+            },
+        }
+    }
+
+    pub fn removeAllVarNames(self: *const Sexpr, res: *std.ArrayList([]const u8)) void {
+        switch (self.*) {
+            .atom_lit => return,
+            .atom_var => |v| while (indexOfString(res.items, v.value)) |i| {
+                std.debug.assert(std.mem.eql(u8, v.value, res.swapRemove(i)));
+            },
+            .pair => |p| {
+                p.left.removeAllVarNames(res);
+                p.right.removeAllVarNames(res);
             },
         }
     }

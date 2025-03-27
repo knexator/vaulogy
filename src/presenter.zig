@@ -1065,8 +1065,8 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             }, asdf);
 
             try drawWildcardsCable(camera, &.{
-                pattern_point.applyToLocalPosition(.new(-3, 1)),
-                pattern_point.applyToLocalPosition(.new(0, 1)),
+                pattern_point.applyToLocalPosition(.new(-3, 1.1)),
+                pattern_point.applyToLocalPosition(.new(0, 1.1)),
             }, inbound_wildcard_names);
 
             const lost_wildcards = try visualsForUnusedWildcards(pattern_value, template_value, held_wildcard_names);
@@ -1521,11 +1521,41 @@ const CaseState = struct {
     template: *const Sexpr,
     next: ?CaseGroup,
 
+    // TODO: separate this?
+    incoming_wildcards: []const []const u8,
+    outgoing_wildcards: []const []const u8,
+
     pattern_point_relative_to_parent: Point,
+
+    pub fn updateWildcards(self: *CaseState, gpa: std.mem.Allocator) ![]const []const u8 {
+        gpa.free(self.incoming_wildcards);
+        gpa.free(self.outgoing_wildcards);
+
+        self.outgoing_wildcards = if (self.next) |*next|
+            try next.updateWildcards(gpa)
+        else
+            &.{};
+
+        var incoming: std.ArrayList([]const u8) = try .initCapacity(gpa, self.outgoing_wildcards.len);
+        incoming.appendSliceAssumeCapacity(self.outgoing_wildcards);
+        try self.template.getAllVarNames(&incoming);
+        self.pattern.removeAllVarNames(&incoming);
+        self.incoming_wildcards = try incoming.toOwnedSlice();
+
+        return self.incoming_wildcards;
+    }
 };
 const CaseGroup = struct {
     cases: std.ArrayListUnmanaged(CaseState),
     unfolded: usize,
+
+    pub fn updateWildcards(self: *CaseGroup, gpa: std.mem.Allocator) OoM![]const []const u8 {
+        var all_required: std.ArrayList([]const u8) = .init(gpa);
+        for (self.cases.items) |*case| {
+            try all_required.appendSlice(try case.updateWildcards(gpa));
+        }
+        return all_required.toOwnedSlice();
+    }
 
     pub fn anyWildcardInPlay(self: CaseGroup) bool {
         for (self.cases.items) |asdf| {
@@ -1716,7 +1746,7 @@ fn EditingFnkToTesting(platform: Platform, drawer: Drawer) type {
                 artist.drawOffscreenCableTo(self.camera, MAIN_INPUT_POS);
                 try artist.drawHoldedFnk(self.camera, MAIN_FNK_POS, 1, self.fnk_name);
             }
-            try EditingFnk(platform, drawer).drawCases(self.camera, true, .{}, self.cases, null, &.{});
+            try EditingFnk(platform, drawer).drawCases(self.camera, true, .{}, self.cases, null);
             // _ = self;
             // try EditingFnk(platform, drawer).samples_reel.draw(self.camera, &.{self.sample}, &.{true});
         }
@@ -2083,6 +2113,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         .template = self.next_var,
                         .next = null,
                         .pattern_point_relative_to_parent = special_case_point,
+                        .incoming_wildcards = &.{},
+                        .outgoing_wildcards = &.{},
                     };
                 }
             } = .{};
@@ -2441,6 +2473,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .template = case.template,
                 .next = if (case.next) |next| try makeCasesPhysical(mem, next) else null,
                 .pattern_point_relative_to_parent = point,
+                .incoming_wildcards = &.{},
+                .outgoing_wildcards = &.{},
             };
         }
 
@@ -2480,7 +2514,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn init(fnk_name: *const Sexpr, builtin_samples: []const Sample, available_fnks: []const *const Sexpr, fnk_body: core.FnkBody, mem: *VeryPermamentGameStuff, persistence: *PlayerData) !Self {
-            const cases = try makeCasesPhysical(mem, fnk_body.cases);
+            var cases = try makeCasesPhysical(mem, fnk_body.cases);
+            _ = try cases.updateWildcards(platform.gpa);
             const main_input: *const Sexpr = Sexpr.builtin.nil;
 
             const ui_state = UI.State{ .buttons = try UI.Button.row(platform.gpa, .zero, .one, &(.{
@@ -2531,6 +2566,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         fn onChangedSomething(self: *Self) !void {
             samples_reel.display_solved_status = false;
             try updateSolvedSamples(try self.getFnk(), self.samples, self.persistence, self.mem, self.solved_samples);
+            _ = try self.cases.updateWildcards(platform.gpa);
         }
 
         fn updateSolvedSamples(fnk: Fnk, samples: []const Sample, persistence: *PlayerData, mem: *VeryPermamentGameStuff, buf: []bool) !void {
@@ -2948,7 +2984,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
             };
             defer if (wildcard_names_in_grabbing_sexpr) |x| x.deinit();
-            try drawCases(camera, true, .{}, self.cases, if (wildcard_names_in_grabbing_sexpr) |x| x.items else null, &.{});
+            try drawCases(camera, true, .{}, self.cases, if (wildcard_names_in_grabbing_sexpr) |x| x.items else null);
             try toolbar.draw(camera, self.tutorial_state.getToolbar(), self.cases.anyWildcardInPlay());
             // switch (self.tutorial_state.getToolbar()) {
             //     .normal =>
@@ -3002,7 +3038,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     pattern_point,
                                     grabbing.case.pattern,
                                 );
-                                try drawCaseExtra(camera, pattern_point, grabbing.case, null, &.{});
+                                try drawCaseExtra(camera, pattern_point, grabbing.case, null);
                                 const pos = pattern_point.applyToLocalPosition(.new(0, 1));
                                 const esquina = pos.sub(.new(if (address.ghost.address.len == 1) 5 else 3, 0));
                                 drawer.drawCable(camera, esquina, pos, 1, 0);
@@ -3019,7 +3055,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         pattern_point,
                         grabbing.case.pattern,
                     );
-                    try drawCaseExtra(camera, pattern_point, grabbing.case, null, &.{});
+                    try drawCaseExtra(camera, pattern_point, grabbing.case, null);
                 },
                 .hovering_sexpr => |hovering| {
                     if (try hovering.address.getSexpr(self)) |value| {
@@ -3072,7 +3108,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         }
 
-        fn drawCases(camera: Camera, is_first: bool, parent_point: Point, group: CaseGroup, held_wildcard_names: ?[]const []const u8, inbound_wildcard_names: []const []const u8) OoM!void {
+        fn drawCases(camera: Camera, is_first: bool, parent_point: Point, group: CaseGroup, held_wildcard_names: ?[]const []const u8) OoM!void {
             for (group.cases.items) |case| {
                 const pattern_point = parent_point.applyToLocalPoint(case.pattern_point_relative_to_parent);
                 try artist.drawPatternSexpr(
@@ -3081,7 +3117,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     case.pattern,
                 );
                 if (case.pattern_point_relative_to_parent.scale >= 0.9) {
-                    try drawCaseExtra(camera, pattern_point, case, held_wildcard_names, inbound_wildcard_names);
+                    try drawCaseExtra(camera, pattern_point, case, held_wildcard_names);
                 }
 
                 const pos = pattern_point.applyToLocalPosition(.new(0, 1));
@@ -3103,7 +3139,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         }
 
-        fn drawCaseExtra(camera: Camera, pattern_point: Point, case: CaseState, held_wildcard_names: ?[]const []const u8, inbound_wildcard_names: []const []const u8) !void {
+        fn drawCaseExtra(camera: Camera, pattern_point: Point, case: CaseState, held_wildcard_names: ?[]const []const u8) !void {
             try artist.drawSexpr(
                 camera,
                 pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
@@ -3125,17 +3161,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 case.pattern,
                 case.template,
                 held_wildcard_names,
-                inbound_wildcard_names,
+                case.incoming_wildcards,
             );
-            var new_inbound_names: std.ArrayList([]const u8) = try .initCapacity(platform.gpa, inbound_wildcard_names.len);
-            defer new_inbound_names.deinit();
-            try new_inbound_names.appendSlice(inbound_wildcard_names);
-            try case.pattern.getAllVarNames(&new_inbound_names);
 
             try artist.drawTemplateWildcardLines(camera, case.template, template_point);
             try artist.drawPatternWildcardLines(camera, case.pattern, pattern_point);
             if (case.next) |next| {
-                try drawCases(camera, false, pattern_point, next, held_wildcard_names, new_inbound_names.items);
+                try drawCases(camera, false, pattern_point, next, held_wildcard_names);
             }
         }
 
