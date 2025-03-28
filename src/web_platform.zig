@@ -638,9 +638,10 @@ const WebDrawer = struct {
         js.canvas.setLineWidth(3);
         for (visuals) |v| {
             drawLine(camera, points, v.color);
-            js.canvas.translate(0, 3);
+            js.canvas.translate(3, 3);
         }
         js.canvas.resetTransform();
+        js.canvas.setLineWidth(1);
     }
 
     pub fn drawAsdfDevice(camera: Camera, world_point: Point) void {

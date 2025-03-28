@@ -1057,13 +1057,6 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             // TODO: relative address? (maybe pass the casegroup, then)
         ) !void {
             // // TODO: avoid memory management here by having a single scratch allocator for the whole frame/drawing
-            // const asdf = try visualsForCommonWildcards(pattern_value, template_value);
-            // defer platform.gpa.free(asdf);
-
-            // drawer.drawWildcardsCable(camera, &.{
-            //     pattern_point.applyToLocalPosition(.new(0.5, 0)),
-            //     template_point.applyToLocalPosition(.new(-0.5, 0)),
-            // }, asdf);
 
             var names: std.ArrayList([]const u8) = .init(platform.gpa);
             defer names.deinit();
@@ -1081,8 +1074,8 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             }, names.items);
 
             try drawWildcardsCable(camera, &.{
-                pattern_point.applyToLocalPosition(.new(-3, 1.1)),
-                pattern_point.applyToLocalPosition(.new(0, 1.1)),
+                pattern_point.applyToLocalPosition(.new(-3, 1)),
+                pattern_point.applyToLocalPosition(.new(0, 1)),
             }, inbound_wildcard_names);
 
             const lost_wildcards = try visualsForUnusedWildcards(pattern_value, template_value, outbound_wildcard_names, held_wildcard_names);
@@ -3134,9 +3127,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     pattern_point,
                     case.pattern,
                 );
-                if (case.pattern_point_relative_to_parent.scale >= 0.9) {
-                    try drawCaseExtra(camera, pattern_point, case, held_wildcard_names);
-                }
 
                 const pos = pattern_point.applyToLocalPosition(.new(0, 1));
                 drawer.drawCable(
@@ -3146,6 +3136,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     1,
                     0,
                 );
+
+                if (case.pattern_point_relative_to_parent.scale >= 0.9) {
+                    try drawCaseExtra(camera, pattern_point, case, held_wildcard_names);
+                }
             }
 
             if (group.cases.getLastOrNull()) |last_case| {
@@ -3154,6 +3148,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .applyToLocalPosition(.new(0, 1))
                     .sub(.new(parent_point.scale * if (is_first) tof32(5.0) else tof32(3.0), 0));
                 drawer.drawLine(camera, &.{ parent_point.applyToLocalPosition(if (is_first) .zero else .new(1, 0)), lowest_point }, .black);
+                try artist.drawWildcardsCable(camera, &.{ parent_point.applyToLocalPosition(if (is_first) .zero else .new(1, 0)), lowest_point }, last_case.incoming_wildcards);
             }
         }
 
