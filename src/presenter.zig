@@ -1056,14 +1056,29 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             outbound_wildcard_names: []const []const u8,
             // TODO: relative address? (maybe pass the casegroup, then)
         ) !void {
-            // TODO: avoid memory management here by having a single scratch allocator for the whole frame/drawing
-            const asdf = try visualsForCommonWildcards(pattern_value, template_value);
-            defer platform.gpa.free(asdf);
+            // // TODO: avoid memory management here by having a single scratch allocator for the whole frame/drawing
+            // const asdf = try visualsForCommonWildcards(pattern_value, template_value);
+            // defer platform.gpa.free(asdf);
 
-            drawer.drawWildcardsCable(camera, &.{
-                pattern_point.applyToLocalPosition(.new(0.5, 0)),
+            // drawer.drawWildcardsCable(camera, &.{
+            //     pattern_point.applyToLocalPosition(.new(0.5, 0)),
+            //     template_point.applyToLocalPosition(.new(-0.5, 0)),
+            // }, asdf);
+
+            var names: std.ArrayList([]const u8) = .init(platform.gpa);
+            defer names.deinit();
+
+            try template_value.getAllVarNames(&names);
+            try drawWildcardsCable(camera, &.{
+                pattern_point.applyToLocalPosition(.new(1, 0)),
                 template_point.applyToLocalPosition(.new(-0.5, 0)),
-            }, asdf);
+            }, names.items);
+
+            try appendUniqueNames(&names, outbound_wildcard_names);
+            try drawWildcardsCable(camera, &.{
+                pattern_point.applyToLocalPosition(.new(0.5, 0)),
+                pattern_point.applyToLocalPosition(.new(1, 0)),
+            }, names.items);
 
             try drawWildcardsCable(camera, &.{
                 pattern_point.applyToLocalPosition(.new(-3, 1.1)),
@@ -4522,4 +4537,12 @@ pub fn IntroSequence(platform: Platform, drawer: Drawer) type {
             }
         }
     };
+}
+
+fn appendUniqueNames(list: *std.ArrayList([]const u8), names: []const []const u8) !void {
+    for (names) |name| {
+        if (funk.indexOfString(list.items, name) == null) {
+            try list.append(name);
+        }
+    }
 }
