@@ -3572,7 +3572,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         else => .paused,
                     },
                     3 => self.anim_state = .{ .normal = 4 },
-                    4 => self.anim_state = .{ .backwards = if (self.done_steps == 0)
+                    4 => self.anim_state = .{ .backwards = if (self.done_steps == 0 or self.anim_t > 0)
                         null
                     else
                         self.thread_initial_params.startThreadAndRunItToStep(self.scoring_run, self.done_steps) catch |err| switch (err) {
