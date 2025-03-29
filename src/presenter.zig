@@ -1076,6 +1076,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             try drawWildcardsCable(camera, &.{
                 pattern_point.applyToLocalPosition(.new(-3, 1)),
                 pattern_point.applyToLocalPosition(.new(0, 1)),
+                pattern_point.applyToLocalPosition(.new(0.5, 0)),
             }, inbound_wildcard_names);
 
             const lost_wildcards = try visualsForUnusedWildcards(pattern_value, template_value, outbound_wildcard_names, held_wildcard_names);
