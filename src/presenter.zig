@@ -2478,22 +2478,22 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         };
 
-        fn makeCasePhysical(mem: *VeryPermamentGameStuff, case: core.MatchCaseDefinition, point: Point) !CaseState {
+        fn makeCasePhysical(gpa: std.mem.Allocator, case: core.MatchCaseDefinition, point: Point) !CaseState {
             return .{
                 .fnk_name = case.fnk_name,
                 .pattern = case.pattern,
                 .template = case.template,
-                .next = if (case.next) |next| try makeCasesPhysical(mem, next) else null,
+                .next = if (case.next) |next| try makeCasesPhysical(gpa, next) else null,
                 .pattern_point_relative_to_parent = point,
                 .incoming_wildcards = &.{},
                 .outgoing_wildcards = &.{},
             };
         }
 
-        fn makeCasesPhysical(mem: *VeryPermamentGameStuff, cases: core.MatchCases) OoM!CaseGroup {
+        fn makeCasesPhysical(gpa: std.mem.Allocator, cases: core.MatchCases) OoM!CaseGroup {
             var result = std.ArrayListUnmanaged(CaseState){};
             for (cases.items, 0..) |case, k| {
-                try result.append(mem.gpa, try makeCasePhysical(mem, case, .{ .pos = .new(3, 2.5 + 1.5 * tof32(k)), .scale = 0.5 }));
+                try result.append(gpa, try makeCasePhysical(gpa, case, .{ .pos = .new(3, 2.5 + 1.5 * tof32(k)), .scale = 0.5 }));
             }
             return .{ .cases = result, .unfolded = 0 };
         }
@@ -2526,7 +2526,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn init(fnk_name: *const Sexpr, builtin_samples: []const Sample, available_fnks: []const *const Sexpr, fnk_body: core.FnkBody, mem: *VeryPermamentGameStuff, persistence: *PlayerData) !Self {
-            var cases = try makeCasesPhysical(mem, fnk_body.cases);
+            var cases = try makeCasesPhysical(mem.gpa, fnk_body.cases);
             _ = try cases.updateWildcards(platform.gpa);
             const main_input: *const Sexpr = Sexpr.builtin.nil;
 
@@ -2904,7 +2904,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 if (meta_converter.case) |case| {
                                     self.focus = .{
                                         .grabbing_case = .{
-                                            .case = try makeCasePhysical(self.mem, case, meta_converter.case_point),
+                                            .case = try makeCasePhysical(self.mem.gpa, case, meta_converter.case_point),
                                             .address_if_released = hovering.address,
                                         },
                                     };
