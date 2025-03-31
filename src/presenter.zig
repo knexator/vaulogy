@@ -4167,7 +4167,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
                 // TODO: constant cable should be true except when whooshing away
                 // try drawCase(is_gen0, pattern_point, case, first_unfolded and k == 0, true, hiding_children);
-                try drawCase(camera, is_gen0, pattern_point, case, std.meta.activeTag(first_state) == .unfolding and k == 0, is_gen0 > 0.5, hiding_children, bindings);
+                try drawCase(camera, is_gen0, pattern_point, case, std.meta.activeTag(first_state) == .unfolding and k == 0, true, hiding_children, bindings);
             }
 
             // TODO: visual bug here, since only the last case incoming wildcards are taken into account
