@@ -3737,6 +3737,12 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             0,
                             .{ .anim_t = null, .new = &.{}, .old = active_stack.cur_bindings.items },
                         );
+                        if (active_stack.cur_cases.len == 0) {
+                            drawer.drawLine(camera, &.{
+                                parent_point.applyToLocalPosition(.zero),
+                                parent_point.applyToLocalPosition(.new(0, 1 + lerp(3, 0, t))),
+                            }, .black);
+                        }
                     } else {
                         const t = remap(self.anim_t, 0.5, 1, 0, 1);
                         try drawCase(camera, 0.5, parent_point
@@ -3798,6 +3804,12 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             0,
                             .{ .anim_t = null, .new = matched.new_bindings, .old = matched.old_bindings },
                         );
+                        if (matched.discarded_cases.len == 0) {
+                            drawer.drawLine(camera, &.{
+                                parent_point.applyToLocalPosition(.zero),
+                                parent_point.applyToLocalPosition(.new(0, 1 + lerp(3, 0, t))),
+                            }, .black);
+                        }
                     } else {
                         const t = remap(self.anim_t, 0.5, 1, 0, 1);
 
