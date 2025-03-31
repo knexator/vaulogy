@@ -3143,6 +3143,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
             }
 
+            // TODO: visual bug here, since only the last case incoming wildcards are taken into account
             if (group.cases.getLastOrNull()) |last_case| {
                 const lowest_point = parent_point
                     .applyToLocalPoint(last_case.pattern_point_relative_to_parent)
@@ -4125,6 +4126,37 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 // try drawCase(is_gen0, pattern_point, case, first_unfolded and k == 0, true, hiding_children);
                 try drawCase(camera, is_gen0, pattern_point, case, first_unfolded and k == 0, is_gen0 > 0.5, hiding_children, bindings);
             }
+
+            // TODO: visual bug here, since only the last case incoming wildcards are taken into account
+            if (cases.len > 0) {
+                const k = cases.len - 1;
+                const last_case = cases[k];
+                const relative_pattern_point = if (first_unfolded and k == 0) Point{
+                    .pos = .new(lerp(4, 5, is_gen0), 3),
+                    .scale = 1,
+                } else Point{
+                    .pos = .new(lerp(4, 5, is_gen0), 3.5 + tof32(k) * 1.5),
+                    .scale = 0.5,
+                };
+                const pattern_point = parent_point.applyToLocalPoint(relative_pattern_point);
+                const lowest_point = pattern_point
+                    .applyToLocalPosition(.new(0, 1))
+                    .sub(.new(parent_point.scale * lerp(3, 5, is_gen0), 0));
+                const corner = parent_point.applyToLocalPosition(.new(1 - is_gen0, 0));
+
+                drawer.drawLine(camera, &.{ corner, lowest_point }, .black);
+                try artist.drawWildcardsCable(
+                    camera,
+                    &.{ corner, lowest_point },
+                    try getIncomingWildcards(last_case),
+                );
+            }
+        }
+
+        fn getIncomingWildcards(case: core.MatchCaseDefinition) ![]const []const u8 {
+            // TODO: leak
+            var physical = try EditingFnk(platform, drawer).makeCasePhysical(platform.gpa, case, .{});
+            return try physical.updateWildcards(platform.gpa);
         }
 
         // TODO: join with_extra and constant_cable into a single struct? so constant cable can have a default value
