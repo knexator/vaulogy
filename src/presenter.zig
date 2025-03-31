@@ -926,40 +926,58 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             return result;
         }
 
-        fn drawTemplateWildcardLinesNonRecursive(camera: Camera, left: *const Sexpr, right: *const Sexpr, point: Point) !void {
-            var left_visuals = try getAllVarVisuals(left);
-            defer left_visuals.deinit();
-            var right_visuals = try getAllVarVisuals(right);
-            defer right_visuals.deinit();
+        fn drawTemplateWildcardLinesNonRecursive(
+            camera: Camera,
+            left: *const Sexpr,
+            right: *const Sexpr,
+            point: Point,
+            bindings: BindingsState,
+        ) !void {
+            var left_names: std.ArrayList([]const u8) = .init(platform.gpa);
+            defer left_names.deinit();
+            try left.getAllVarNames(&left_names);
+            if (bindings.anim_t) |anim_t| if (anim_t >= 0.4) {
+                try removeBoundNames(&left_names, bindings.new);
+            };
+            try removeBoundNames(&left_names, bindings.old);
+
+            var right_names: std.ArrayList([]const u8) = .init(platform.gpa);
+            defer right_names.deinit();
+            try right.getAllVarNames(&right_names);
+            if (bindings.anim_t) |anim_t| if (anim_t >= 0.4) {
+                try removeBoundNames(&right_names, bindings.new);
+            };
+            try removeBoundNames(&right_names, bindings.old);
+
             if (!DESIGN.round_data) {
-                drawer.drawWildcardsCable(camera, &.{
+                try drawWildcardsCable(camera, &.{
                     point.applyToLocalPosition(.new(-0.5, 0)),
                     point.applyToLocalPosition(.new(0, -0.5)),
                     point.applyToLocalPosition(.new(0.25, -0.5)),
-                }, left_visuals.items);
+                }, left_names.items);
 
-                drawer.drawWildcardsCable(camera, &.{
+                try drawWildcardsCable(camera, &.{
                     point.applyToLocalPosition(.new(-0.5, 0)),
                     point.applyToLocalPosition(.new(0, 0.5)),
                     point.applyToLocalPosition(.new(0.25, 0.5)),
-                }, right_visuals.items);
+                }, right_names.items);
             } else {
                 // TODO: these numbers are not exact, issues when zooming in
-                drawer.drawWildcardsCable(camera, &([1]Vec2{
+                drawWildcardsCable(camera, &([1]Vec2{
                     point.applyToLocalPosition(.new(-0.5, 0)),
                 } ++ funk.fromCountAndCtx(32, struct {
                     pub fn anon(k: usize, p: Point) Vec2 {
                         return p.applyToLocalPosition(Vec2.fromTurns(math.lerp(0.5 + 0.25 / 2.0, 0.75, math.tof32(k) / 32)).scale(0.75).add(.new(0.25, 0.25)));
                     }
-                }.anon, point)), left_visuals.items);
+                }.anon, point)), left_names.items);
 
-                drawer.drawWildcardsCable(camera, &([1]Vec2{
+                try drawWildcardsCable(camera, &([1]Vec2{
                     point.applyToLocalPosition(.new(-0.5, 0)),
                 } ++ funk.fromCountAndCtx(32, struct {
                     pub fn anon(k: usize, p: Point) Vec2 {
                         return p.applyToLocalPosition(Vec2.fromTurns(math.lerp(0.5 - 0.25 / 2.0, 0.25, math.tof32(k) / 32)).scale(0.75).add(.new(0.25, -0.25)));
                     }
-                }.anon, point)), right_visuals.items);
+                }.anon, point)), right_names.items);
             }
         }
 
@@ -967,7 +985,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             switch (value.*) {
                 else => {},
                 .pair => |pair| {
-                    try drawTemplateWildcardLinesNonRecursive(camera, pair.left, pair.right, point);
+                    try drawTemplateWildcardLinesNonRecursive(camera, pair.left, pair.right, point, .none);
                     try drawTemplateWildcardLines(camera, pair.left, point.applyToLocalPoint(OFFSET_TEMPLATE_PAIR_LEFT));
                     try drawTemplateWildcardLines(camera, pair.right, point.applyToLocalPoint(OFFSET_TEMPLATE_PAIR_RIGHT));
                 },
@@ -1259,8 +1277,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                         .scale = 0.5,
                     }), pair.right, bindings);
                     drawer.drawPairHolder(camera, world_point);
-                    if (if (bindings.anim_t) |anim_t| anim_t < 0.4 else true)
-                        try drawTemplateWildcardLinesNonRecursive(camera, pair.left, pair.right, world_point);
+                    try drawTemplateWildcardLinesNonRecursive(camera, pair.left, pair.right, world_point, bindings);
                 },
                 .atom_var => |x| {
                     // TODO: check that compiler skips the loop if anim_t is null
@@ -1297,7 +1314,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                 },
                 .pair => |pair| {
                     drawer.drawPairHolder(camera, world_point);
-                    try drawTemplateWildcardLinesNonRecursive(camera, pair.left, pair.right, world_point);
+                    try drawTemplateWildcardLinesNonRecursive(camera, pair.left, pair.right, world_point, .none);
                     try drawSexpr(camera, world_point.applyToLocalPoint(.{
                         .pos = .new(0.5, -0.5),
                         .scale = 0.5,
@@ -1370,6 +1387,7 @@ const BindingsState = struct {
     new: []const core.Binding,
     old: []const core.Binding,
     anim_t: ?f32,
+    pub const none: BindingsState = .{ .anim_t = null, .new = &.{}, .old = &.{} };
 };
 
 const PhysicalSexpr = struct {
@@ -4225,6 +4243,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 0,
             );
             // TODO: draw the bound values travelling on the wire
+            // TODO NOW: don't draw the cables for already bound wildcards
             try artist.drawPlacedWildcardsCable(
                 camera,
                 pattern_point,
@@ -4589,6 +4608,23 @@ fn appendUniqueNames(list: *std.ArrayList([]const u8), names: []const []const u8
     for (names) |name| {
         if (funk.indexOfString(list.items, name) == null) {
             try list.append(name);
+        }
+    }
+}
+
+fn removeNames(list: *std.ArrayList([]const u8), names: []const []const u8) !void {
+    for (names) |name_to_remove| {
+        while (funk.indexOfString(list.items, name_to_remove)) |i| {
+            std.debug.assert(std.mem.eql(u8, name_to_remove, list.swapRemove(i)));
+        }
+    }
+}
+
+fn removeBoundNames(list: *std.ArrayList([]const u8), bindings: []const core.Binding) !void {
+    for (bindings) |binding| {
+        const name_to_remove = binding.name;
+        while (funk.indexOfString(list.items, name_to_remove)) |i| {
+            std.debug.assert(std.mem.eql(u8, name_to_remove, list.swapRemove(i)));
         }
     }
 }
