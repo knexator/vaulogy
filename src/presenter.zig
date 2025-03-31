@@ -3719,9 +3719,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         try drawCases(
                             camera,
                             1,
-                            parent_point.applyToLocalPoint(.{ .pos = .new(0, lerp(1.5, 0, t)) }),
+                            parent_point,
                             active_stack.cur_cases,
-                            false,
+                            .{ .offset = lerp(1.5, 0, t) },
+                            // .{ .offset = lerp(1.5, 0, t) },
                             0,
                             .{ .anim_t = null, .new = &.{}, .old = active_stack.cur_bindings.items },
                         );
@@ -3759,9 +3760,9 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             try drawCases(
                                 camera,
                                 1,
-                                parent_point.applyToLocalPoint(.{ .pos = .new(0, 1.5) }),
+                                parent_point,
                                 active_stack.cur_cases[1..],
-                                false,
+                                .{ .offset = 1.5 },
                                 0,
                                 .{ .anim_t = null, .new = &.{}, .old = active_stack.cur_bindings.items },
                             );
@@ -3791,9 +3792,9 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         try drawCases(
                             camera,
                             1,
-                            parent_point.applyToLocalPoint(.{ .pos = .new(0, lerp(1.5, 0, t)) }),
+                            parent_point,
                             matched.discarded_cases,
-                            false,
+                            .{ .offset = lerp(1.5, 0, t) },
                             0,
                             .{ .anim_t = null, .new = matched.new_bindings, .old = matched.old_bindings },
                         );
@@ -3895,7 +3896,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                     .pos = .new(lerp(DIST_TO_TEMPLATE * 5, 0, t), 0),
                                 }),
                                 active_stack.cur_cases,
-                                true,
+                                .unfolded,
                                 0,
                                 .{ .anim_t = null, .new = &.{}, .old = active_stack.cur_bindings.items },
                             );
@@ -3948,7 +3949,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                             .pos = .new(lerp(-1 - DIST_BETWEEN_QUEUED_FNKS, 0, t), 0),
                                         }),
                                         prev_stack.cur_cases,
-                                        true,
+                                        .unfolded,
                                         1 - hiding_children_t,
                                         .{ .anim_t = t, .new = &.{}, .old = prev_stack.cur_bindings.items },
                                         // .{ .anim_t = t, .new = matched.new_bindings, .old = matched.old_bindings },
@@ -3976,7 +3977,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                         .pos = .new(lerp(DIST_TO_TEMPLATE - 1, -1 - DIST_BETWEEN_QUEUED_FNKS, t2), 0),
                                     }),
                                     prev_stack.cur_cases,
-                                    true,
+                                    .unfolded,
                                     hiding_children_t,
                                     // TODO: revise, might be prev_stack.cur_bindings.items
                                     .{ .anim_t = t, .new = matched.new_bindings, .old = matched.old_bindings },
@@ -3996,7 +3997,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                     parent_point
                                         .applyToLocalPoint(.{ .pos = .new(lerp(DIST_TO_TEMPLATE - 1, 0, t), 0) }),
                                     prev_stack.cur_cases,
-                                    true,
+                                    .unfolded,
                                     0,
                                     .{ .anim_t = t, .new = matched.new_bindings, .old = matched.old_bindings },
                                 );
@@ -4101,7 +4102,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     0,
                     parent_point.applyToLocalPoint(.{ .pos = .new(-1, 0) }),
                     x.cur_cases,
-                    true,
+                    .unfolded,
                     1,
                     .{ .anim_t = null, .new = &.{}, .old = x.cur_bindings.items },
                 );
@@ -4111,34 +4112,51 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         // TODO: remove this duplication from EditingFnk
-        fn drawCases(camera: Camera, is_gen0: f32, parent_point: Point, cases: []const core.MatchCaseDefinition, first_unfolded: bool, hiding_children: f32, bindings: BindingsState) OoM!void {
+        fn drawCases(
+            camera: Camera,
+            is_gen0: f32,
+            parent_point: Point,
+            cases: []const core.MatchCaseDefinition,
+            first_state: union(enum) {
+                // TODO: change to 'unfolding'
+                unfolded,
+                offset: f32,
+            },
+            hiding_children: f32,
+            bindings: BindingsState,
+        ) OoM!void {
+            // TODO: remove this var
+            var last_relative_pattern_point: Point = undefined;
             for (cases, 0..) |case, k| {
-                const relative_pattern_point = if (first_unfolded and k == 0) Point{
-                    .pos = .new(lerp(4, 5, is_gen0), 3),
-                    .scale = 1,
-                } else Point{
-                    .pos = .new(lerp(4, 5, is_gen0), 3.5 + tof32(k) * 1.5),
-                    .scale = 0.5,
+                const relative_pattern_point = switch (first_state) {
+                    .offset => |offset| Point{
+                        .pos = .new(lerp(4, 5, is_gen0), offset + 3.5 + tof32(k) * 1.5),
+                        .scale = 0.5,
+                    },
+                    .unfolded => if (k == 0)
+                        Point{
+                            .pos = .new(lerp(4, 5, is_gen0), 3),
+                            .scale = 1,
+                        }
+                    else
+                        Point{
+                            .pos = .new(lerp(4, 5, is_gen0), 3.5 + tof32(k) * 1.5),
+                            .scale = 0.5,
+                        },
                 };
+                last_relative_pattern_point = relative_pattern_point;
                 const pattern_point = parent_point.applyToLocalPoint(relative_pattern_point);
 
                 // TODO: constant cable should be true except when whooshing away
                 // try drawCase(is_gen0, pattern_point, case, first_unfolded and k == 0, true, hiding_children);
-                try drawCase(camera, is_gen0, pattern_point, case, first_unfolded and k == 0, is_gen0 > 0.5, hiding_children, bindings);
+                try drawCase(camera, is_gen0, pattern_point, case, std.meta.activeTag(first_state) == .unfolded and k == 0, is_gen0 > 0.5, hiding_children, bindings);
             }
 
             // TODO: visual bug here, since only the last case incoming wildcards are taken into account
             if (cases.len > 0) {
                 const k = cases.len - 1;
                 const last_case = cases[k];
-                const relative_pattern_point = if (first_unfolded and k == 0) Point{
-                    .pos = .new(lerp(4, 5, is_gen0), 3),
-                    .scale = 1,
-                } else Point{
-                    .pos = .new(lerp(4, 5, is_gen0), 3.5 + tof32(k) * 1.5),
-                    .scale = 0.5,
-                };
-                const pattern_point = parent_point.applyToLocalPoint(relative_pattern_point);
+                const pattern_point = parent_point.applyToLocalPoint(last_relative_pattern_point);
                 const lowest_point = pattern_point
                     .applyToLocalPosition(.new(0, 1))
                     .sub(.new(parent_point.scale * lerp(3, 5, is_gen0), 0));
@@ -4219,7 +4237,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 &.{},
             );
             if (case.next) |next| {
-                try drawCases(camera, 0, pattern_point, next.items, true, 0, bindings);
+                try drawCases(camera, 0, pattern_point, next.items, .unfolded, 0, bindings);
             }
         }
 
