@@ -3746,23 +3746,12 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             t,
                         )), discarded_case, true, false, 0, .{ .anim_t = null, .new = &.{}, .old = active_stack.cur_bindings.items });
                         if (active_stack.cur_cases.len > 0) {
-                            try drawCase(
-                                camera,
-                                1,
-                                parent_point
-                                    .applyToLocalPoint(.{ .pos = .new(5, lerp(3.5, 3, t)), .scale = lerp(0.5, 1, t) }),
-                                active_stack.cur_cases[0],
-                                true,
-                                true,
-                                0,
-                                .{ .anim_t = null, .new = &.{}, .old = active_stack.cur_bindings.items },
-                            );
                             try drawCases(
                                 camera,
                                 1,
                                 parent_point,
-                                active_stack.cur_cases[1..],
-                                .{ .offset = 1.5 },
+                                active_stack.cur_cases,
+                                .{ .unfolding = t },
                                 0,
                                 .{ .anim_t = null, .new = &.{}, .old = active_stack.cur_bindings.items },
                             );
@@ -3896,7 +3885,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                     .pos = .new(lerp(DIST_TO_TEMPLATE * 5, 0, t), 0),
                                 }),
                                 active_stack.cur_cases,
-                                .unfolded,
+                                .{ .unfolding = 1 },
                                 0,
                                 .{ .anim_t = null, .new = &.{}, .old = active_stack.cur_bindings.items },
                             );
@@ -3949,7 +3938,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                             .pos = .new(lerp(-1 - DIST_BETWEEN_QUEUED_FNKS, 0, t), 0),
                                         }),
                                         prev_stack.cur_cases,
-                                        .unfolded,
+                                        .{ .unfolding = 1 },
                                         1 - hiding_children_t,
                                         .{ .anim_t = t, .new = &.{}, .old = prev_stack.cur_bindings.items },
                                         // .{ .anim_t = t, .new = matched.new_bindings, .old = matched.old_bindings },
@@ -3977,7 +3966,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                         .pos = .new(lerp(DIST_TO_TEMPLATE - 1, -1 - DIST_BETWEEN_QUEUED_FNKS, t2), 0),
                                     }),
                                     prev_stack.cur_cases,
-                                    .unfolded,
+                                    .{ .unfolding = 1 },
                                     hiding_children_t,
                                     // TODO: revise, might be prev_stack.cur_bindings.items
                                     .{ .anim_t = t, .new = matched.new_bindings, .old = matched.old_bindings },
@@ -3997,7 +3986,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                     parent_point
                                         .applyToLocalPoint(.{ .pos = .new(lerp(DIST_TO_TEMPLATE - 1, 0, t), 0) }),
                                     prev_stack.cur_cases,
-                                    .unfolded,
+                                    .{ .unfolding = 1 },
                                     0,
                                     .{ .anim_t = t, .new = matched.new_bindings, .old = matched.old_bindings },
                                 );
@@ -4102,7 +4091,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     0,
                     parent_point.applyToLocalPoint(.{ .pos = .new(-1, 0) }),
                     x.cur_cases,
-                    .unfolded,
+                    .{ .unfolding = 1 },
                     1,
                     .{ .anim_t = null, .new = &.{}, .old = x.cur_bindings.items },
                 );
@@ -4118,8 +4107,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             parent_point: Point,
             cases: []const core.MatchCaseDefinition,
             first_state: union(enum) {
-                // TODO: change to 'unfolding'
-                unfolded,
+                unfolding: f32,
                 offset: f32,
             },
             hiding_children: f32,
@@ -4133,10 +4121,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         .pos = .new(lerp(4, 5, is_gen0), offset + 3.5 + tof32(k) * 1.5),
                         .scale = 0.5,
                     },
-                    .unfolded => if (k == 0)
+                    .unfolding => |unfolded| if (k == 0)
                         Point{
-                            .pos = .new(lerp(4, 5, is_gen0), 3),
-                            .scale = 1,
+                            .pos = .new(lerp(4, 5, is_gen0), lerp(3.5, 3, unfolded)),
+                            .scale = lerp(0.5, 1, unfolded),
                         }
                     else
                         Point{
@@ -4149,7 +4137,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
                 // TODO: constant cable should be true except when whooshing away
                 // try drawCase(is_gen0, pattern_point, case, first_unfolded and k == 0, true, hiding_children);
-                try drawCase(camera, is_gen0, pattern_point, case, std.meta.activeTag(first_state) == .unfolded and k == 0, is_gen0 > 0.5, hiding_children, bindings);
+                try drawCase(camera, is_gen0, pattern_point, case, std.meta.activeTag(first_state) == .unfolding and k == 0, is_gen0 > 0.5, hiding_children, bindings);
             }
 
             // TODO: visual bug here, since only the last case incoming wildcards are taken into account
@@ -4237,7 +4225,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 &.{},
             );
             if (case.next) |next| {
-                try drawCases(camera, 0, pattern_point, next.items, .unfolded, 0, bindings);
+                try drawCases(camera, 0, pattern_point, next.items, .{ .unfolding = 1 }, 0, bindings);
             }
         }
 
