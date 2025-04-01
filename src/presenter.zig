@@ -4148,17 +4148,17 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             for (cases, 0..) |case, k| {
                 const relative_pattern_point = switch (first_state) {
                     .offset => |offset| Point{
-                        .pos = .new(lerp(4, 5, is_gen0), offset + 3.5 + tof32(k) * 1.5),
+                        .pos = .new(lerp(4, 5, is_gen0) - hiding_children, offset + 3.5 + tof32(k) * 1.5),
                         .scale = 0.5,
                     },
                     .unfolding => |unfolded| if (k == 0)
                         Point{
-                            .pos = .new(lerp(4, 5, is_gen0), lerp(3.5, 3, unfolded)),
+                            .pos = .new(lerp(4, 5, is_gen0) - hiding_children, lerp(3.5, 3, unfolded)),
                             .scale = lerp(0.5, 1, unfolded),
                         }
                     else
                         Point{
-                            .pos = .new(lerp(4, 5, is_gen0), 3.5 + tof32(k) * 1.5),
+                            .pos = .new(lerp(4, 5, is_gen0) - hiding_children, 3.5 + tof32(k) * 1.5),
                             .scale = 0.5,
                         },
                 };
@@ -4177,7 +4177,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 const pattern_point = parent_point.applyToLocalPoint(last_relative_pattern_point);
                 const lowest_point = pattern_point
                     .applyToLocalPosition(.new(0, 1))
-                    .sub(.new(parent_point.scale * lerp(3, 5, is_gen0), 0));
+                    .sub(.new(parent_point.scale * lerp(3, 5, is_gen0) - hiding_children, 0));
                 const corner = parent_point.applyToLocalPosition(.new(1 - is_gen0, 0));
 
                 drawer.drawLine(camera, &.{ corner, lowest_point }, .black);
@@ -4228,7 +4228,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 try drawCaseExtra(camera, pattern_point.applyToLocalPoint(.{ .scale = 1 - hiding_children }), case, bindings);
             }
 
-            const cable_from = pattern_point.applyToLocalPosition(.new((lerp(-3, -5, is_gen0)) / if (constant_cable) pattern_point.scale else 1, 1));
+            const cable_from = pattern_point.applyToLocalPosition(.new((lerp(-3, -5, is_gen0) + hiding_children) / if (constant_cable) pattern_point.scale else 1, 1));
             const cable_to = pattern_point.applyToLocalPosition(.new(0, 1));
             drawer.drawCable(
                 camera,
