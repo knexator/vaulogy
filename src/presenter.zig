@@ -3895,6 +3895,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                 cable_asdf_pos,
                                 active_value_cur_pos.applyToLocalPosition(.new(-0.5, 0)),
                             }, names.items);
+                            const outgoing = (try getWildcards(matched.case, .none)).outgoing;
                             for (matched.new_bindings) |binding| {
                                 if (funk.indexOfString(names.items, binding.name) != null) {
                                     try artist.drawSexpr(camera, .{ .pos = .lerp(
@@ -3902,6 +3903,19 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                         active_value_cur_pos.applyToLocalPosition(.new(-0.5, 0)),
                                         t * 4,
                                     ), .scale = 0.25 }, binding.value);
+                                }
+
+                                if (funk.indexOfString(outgoing, binding.name) != null) {
+                                    try artist.drawSexpr(camera, .{
+                                        .pos = cable_asdf_pos.add(.new(
+                                            if (!matched.added_new_fnk_to_stack)
+                                                0
+                                            else
+                                                lerp(0, -1 - DIST_BETWEEN_QUEUED_FNKS, t2),
+                                            t * 10,
+                                        )),
+                                        .scale = 0.25,
+                                    }, binding.value);
                                 }
                             }
                         }
