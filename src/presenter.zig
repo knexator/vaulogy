@@ -2162,10 +2162,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 all_except_case,
 
                 pub fn specialVarEnabled(modifier: Modifier, wildcard_in_play: bool) bool {
+                    _ = wildcard_in_play;
                     return switch (modifier) {
                         .hidden => false,
                         .normal => true,
-                        else => !wildcard_in_play,
+                        // else => !wildcard_in_play,
+                        else => true,
                     };
                 }
 
@@ -3115,8 +3117,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .none => {},
                 .first_level => {
                     drawer.drawDebugText(camera, .{ .pos = .new(-3.55, -2), .scale = 0.75 }, "That's the name of →\nthe Vau you're editing.", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(1.5, -4), .scale = 0.75 }, "← Click Check to see if you Vau works.", .black);
                     if (DESIGN.no_current_data) {
-                        drawer.drawDebugText(camera, .{ .pos = .new(9, 0), .scale = 0.75 }, "← Place some Data here to run the Vau on it.", .black);
+                        drawer.drawDebugText(camera, .{ .pos = .new(8, 0), .scale = 0.75 }, "↓ a Vau is a list of Cases: if the left Data matches,\nthe result will be the right side's Data.", .black);
+                        // drawer.drawDebugText(camera, .{ .pos = .new(9, 0), .scale = 0.75 }, "← Place some Data here to run the Vau on it.", .black);
                     } else {
                         drawer.drawDebugText(camera, .{ .pos = .new(8, 0), .scale = 0.75 }, "← That gray thing is the current Data;\nfeel free to change it by\ndropping some other Data on it.", .black);
                         // drawer.drawDebugText(camera, .{ .pos = .new(6, -1.85), .scale = 0.75 }, "↓ That gray thing is the current Data;\nfeel free to change it by\ndropping some other Data on it.", .black);
