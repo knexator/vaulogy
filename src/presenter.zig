@@ -3167,14 +3167,21 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
             }
 
-            // TODO: visual bug here, since only the last case incoming wildcards are taken into account
-            if (group.cases.getLastOrNull()) |last_case| {
-                const lowest_point = parent_point
-                    .applyToLocalPoint(last_case.pattern_point_relative_to_parent)
+            var prev_point = parent_point.applyToLocalPosition(if (is_first) .zero else .new(1, 0));
+            for (group.cases.items, 0..) |case, k| {
+                const cur_point = parent_point
+                    .applyToLocalPoint(case.pattern_point_relative_to_parent)
                     .applyToLocalPosition(.new(0, 1))
                     .sub(.new(parent_point.scale * if (is_first) tof32(5.0) else tof32(3.0), 0));
-                drawer.drawLine(camera, &.{ parent_point.applyToLocalPosition(if (is_first) .zero else .new(1, 0)), lowest_point }, .black);
-                try artist.drawWildcardsCable(camera, &.{ parent_point.applyToLocalPosition(if (is_first) .zero else .new(1, 0)), lowest_point }, last_case.incoming_wildcards);
+                defer prev_point = cur_point;
+                drawer.drawLine(camera, &.{ prev_point, cur_point }, .black);
+
+                var asdf: std.ArrayList([]const u8) = .init(platform.gpa);
+                defer asdf.deinit();
+                for (group.cases.items[k..]) |next_case| {
+                    try asdf.appendSlice(next_case.incoming_wildcards);
+                }
+                try artist.drawWildcardsCable(camera, &.{ prev_point, cur_point }, asdf.items);
             }
         }
 
@@ -4163,41 +4170,48 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             self.ui_state.draw(drawer);
         }
 
+        fn getRelativePatternPointAsdf(
+            is_gen0: f32,
+            first_state: StateOfFirst,
+            hiding_children: f32,
+            k: usize,
+        ) Point {
+            return switch (first_state) {
+                .offset => |offset| Point{
+                    .pos = .new(lerp(4, 5, is_gen0) - hiding_children, offset + 3.5 + tof32(k) * 1.5),
+                    .scale = 0.5,
+                },
+                .unfolding => |unfolded| if (k == 0)
+                    Point{
+                        .pos = .new(lerp(4, 5, is_gen0) - hiding_children, lerp(3.5, 3, unfolded)),
+                        .scale = lerp(0.5, 1, unfolded),
+                    }
+                else
+                    Point{
+                        .pos = .new(lerp(4, 5, is_gen0) - hiding_children, 3.5 + tof32(k) * 1.5),
+                        .scale = 0.5,
+                    },
+            };
+        }
+
         const Situation = enum { normal, floating };
+        const StateOfFirst = union(enum) {
+            unfolding: f32,
+            offset: f32,
+        };
         // TODO: remove this duplication from EditingFnk
         fn drawCases(
             camera: Camera,
             is_gen0: f32,
             parent_point: Point,
             cases: []const core.MatchCaseDefinition,
-            first_state: union(enum) {
-                unfolding: f32,
-                offset: f32,
-            },
+            first_state: StateOfFirst,
             hiding_children: f32,
             bindings: BindingsState,
             situation: Situation,
         ) OoM!void {
-            // TODO: remove this var
-            var last_relative_pattern_point: Point = undefined;
             for (cases, 0..) |case, k| {
-                const relative_pattern_point = switch (first_state) {
-                    .offset => |offset| Point{
-                        .pos = .new(lerp(4, 5, is_gen0) - hiding_children, offset + 3.5 + tof32(k) * 1.5),
-                        .scale = 0.5,
-                    },
-                    .unfolding => |unfolded| if (k == 0)
-                        Point{
-                            .pos = .new(lerp(4, 5, is_gen0) - hiding_children, lerp(3.5, 3, unfolded)),
-                            .scale = lerp(0.5, 1, unfolded),
-                        }
-                    else
-                        Point{
-                            .pos = .new(lerp(4, 5, is_gen0) - hiding_children, 3.5 + tof32(k) * 1.5),
-                            .scale = 0.5,
-                        },
-                };
-                last_relative_pattern_point = relative_pattern_point;
+                const relative_pattern_point = getRelativePatternPointAsdf(is_gen0, first_state, hiding_children, k);
                 const pattern_point = parent_point.applyToLocalPoint(relative_pattern_point);
 
                 // TODO: constant cable should be true except when whooshing away
@@ -4205,22 +4219,23 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 try drawCase(camera, is_gen0, pattern_point, case, std.meta.activeTag(first_state) == .unfolding and k == 0, situation, hiding_children, bindings);
             }
 
-            // TODO: visual bug here, since only the last case incoming wildcards are taken into account
-            if (cases.len > 0) {
-                const k = cases.len - 1;
-                const last_case = cases[k];
-                const pattern_point = parent_point.applyToLocalPoint(last_relative_pattern_point);
-                const lowest_point = pattern_point
+            var prev_point = parent_point.applyToLocalPosition(.new(1 - is_gen0, 0));
+            for (0..cases.len) |k| {
+                const cur_point = parent_point
+                    .applyToLocalPoint(getRelativePatternPointAsdf(is_gen0, first_state, hiding_children, k))
                     .applyToLocalPosition(.new(0, 1))
                     .sub(.new(parent_point.scale * lerp(3, 5, is_gen0) - hiding_children, 0));
-                const corner = parent_point.applyToLocalPosition(.new(1 - is_gen0, 0));
+                defer prev_point = cur_point;
+                drawer.drawLine(camera, &.{ prev_point, cur_point }, .black);
 
-                drawer.drawLine(camera, &.{ corner, lowest_point }, .black);
-                try artist.drawWildcardsCable(
-                    camera,
-                    &.{ corner, lowest_point },
-                    (try getWildcards(last_case, bindings)).incoming,
-                );
+                var asdf: std.ArrayList([]const u8) = .init(platform.gpa);
+                defer asdf.deinit();
+                for (cases[k..]) |next_case| {
+                    const incoming_wildcards = (try getWildcards(next_case, bindings)).incoming;
+                    defer platform.gpa.free(incoming_wildcards);
+                    try asdf.appendSlice(incoming_wildcards);
+                }
+                try artist.drawWildcardsCable(camera, &.{ prev_point, cur_point }, asdf.items);
             }
         }
 
