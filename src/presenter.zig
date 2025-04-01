@@ -963,7 +963,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                 }, right_names.items);
             } else {
                 // TODO: these numbers are not exact, issues when zooming in
-                drawWildcardsCable(camera, &([1]Vec2{
+                try drawWildcardsCable(camera, &([1]Vec2{
                     point.applyToLocalPosition(.new(-0.5, 0)),
                 } ++ funk.fromCountAndCtx(32, struct {
                     pub fn anon(k: usize, p: Point) Vec2 {
@@ -4199,13 +4199,15 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         fn drawCase(
             camera: Camera,
             is_gen0: f32,
-            pattern_point: Point,
+            pattern_point_raw: Point,
             case: core.MatchCaseDefinition,
             with_extra: bool,
             constant_cable: bool,
             hiding_children: f32,
             bindings: BindingsState,
         ) OoM!void {
+            // const pattern_point = pattern_point_raw.applyToLocalPoint(.{ .pos = .new(lerp(0, -0.5, hiding_children), 0) });
+            const pattern_point = pattern_point_raw;
             try artist.drawPatternSexpr(
                 camera,
                 pattern_point,
