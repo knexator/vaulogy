@@ -4190,9 +4190,20 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         fn getIncomingWildcards(case: core.MatchCaseDefinition) ![]const []const u8 {
+            return (try getWildcards(case)).incoming;
+        }
+
+        fn getWildcards(case: core.MatchCaseDefinition) !struct {
+            incoming: []const []const u8,
+            outgoing: []const []const u8,
+        } {
             // TODO: leak
             var physical = try EditingFnk(platform, drawer).makeCasePhysical(platform.gpa, case, .{});
-            return try physical.updateWildcards(platform.gpa);
+            _ = try physical.updateWildcards(platform.gpa);
+            return .{
+                .incoming = physical.incoming_wildcards,
+                .outgoing = physical.outgoing_wildcards,
+            };
         }
 
         // TODO: join with_extra and constant_cable into a single struct? so constant cable can have a default value
@@ -4246,6 +4257,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             );
             // TODO: draw the bound values travelling on the wire
             // TODO NOW: don't draw the cables for already bound wildcards
+            const asdf = try getWildcards(case);
             try artist.drawPlacedWildcardsCable(
                 camera,
                 pattern_point,
@@ -4253,9 +4265,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 case.pattern,
                 case.template,
                 null,
-                // TODO NOW: draw during execution
-                &.{},
-                &.{},
+                asdf.incoming,
+                asdf.outgoing,
             );
             if (case.next) |next| {
                 try drawCases(camera, 0, pattern_point, next.items, .{ .unfolding = 1 }, 0, bindings);
