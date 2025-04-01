@@ -3886,12 +3886,15 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             var names: std.ArrayList([]const u8) = .init(platform.gpa);
                             defer names.deinit();
                             try matched.case.template.getAllVarNames(&names);
-                            const visuals = try artist.getAllVarVisuals(matched.case.template);
-                            defer visuals.deinit();
-                            drawer.drawWildcardsCable(camera, &.{
+                            try removeBoundNamesV3(&names, .{
+                                .anim_t = t,
+                                .new = matched.new_bindings,
+                                .old = matched.old_bindings,
+                            });
+                            try artist.drawWildcardsCable(camera, &.{
                                 cable_asdf_pos,
                                 active_value_cur_pos.applyToLocalPosition(.new(-0.5, 0)),
-                            }, visuals.items);
+                            }, names.items);
                             for (matched.new_bindings) |binding| {
                                 if (funk.indexOfString(names.items, binding.name) != null) {
                                     try artist.drawSexpr(camera, .{ .pos = .lerp(
