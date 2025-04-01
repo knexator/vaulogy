@@ -1072,6 +1072,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             held_wildcard_names: ?[]const []const u8,
             inbound_wildcard_names: []const []const u8,
             outbound_wildcard_names: []const []const u8,
+            bindings: BindingsState,
             // TODO: properly use this argument
             hiding_children: f32,
             // TODO: relative address? (maybe pass the casegroup, then)
@@ -1082,23 +1083,25 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             defer names.deinit();
 
             try template_value.getAllVarNames(&names);
-            if (hiding_children == 0) try drawWildcardsCable(camera, &.{
+            try removeBoundNamesV3(&names, bindings);
+            if (hiding_children < 1) try drawWildcardsCable(camera, &.{
                 pattern_point.applyToLocalPosition(.new(1, 0)),
                 template_point.applyToLocalPosition(.new(-0.5, 0)),
             }, names.items);
 
             try appendUniqueNames(&names, outbound_wildcard_names);
-            if (hiding_children == 0) try drawWildcardsCable(camera, &.{
+            try removeBoundNamesV3(&names, bindings);
+            if (hiding_children < 1) try drawWildcardsCable(camera, &.{
                 pattern_point.applyToLocalPosition(.new(0.5, 0)),
                 pattern_point.applyToLocalPosition(.new(1, 0)),
             }, names.items);
 
-            if (hiding_children == 0) try drawWildcardsCable(camera, &.{
+            try drawWildcardsCable(camera, &.{
                 // this -3 assumes not gen0
-                pattern_point.applyToLocalPosition(.new(-3, 1)),
+                pattern_point.applyToLocalPosition(.new(-3 + hiding_children, 1)),
                 pattern_point.applyToLocalPosition(.new(0, 1)),
                 pattern_point.applyToLocalPosition(.new(0.5, 0)),
-            }, inbound_wildcard_names);
+            }, try removeBoundNamesV2(platform.gpa, inbound_wildcard_names, bindings));
 
             const lost_wildcards = try visualsForUnusedWildcards(pattern_value, template_value, outbound_wildcard_names, held_wildcard_names);
             defer platform.gpa.free(lost_wildcards);
@@ -3199,6 +3202,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 held_wildcard_names,
                 case.incoming_wildcards,
                 case.outgoing_wildcards,
+                .none,
                 0,
             );
 
@@ -4210,15 +4214,11 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             // TODO: leak
             var physical = try EditingFnk(platform, drawer).makeCasePhysical(platform.gpa, case, .{});
             _ = try physical.updateWildcards(platform.gpa);
-            var incoming: std.ArrayList([]const u8) = .init(platform.gpa);
-            try incoming.appendSlice(physical.incoming_wildcards);
-            try removeBoundNames(&incoming, bindings.old);
-            if (if (bindings.anim_t) |t| t > 0.4 else false) {
-                try removeBoundNames(&incoming, bindings.new);
-            }
+
             return .{
-                .incoming = try incoming.toOwnedSlice(),
-                .outgoing = physical.outgoing_wildcards,
+                // TODO: leak
+                .incoming = try removeBoundNamesV2(platform.gpa, physical.incoming_wildcards, bindings),
+                .outgoing = try removeBoundNamesV2(platform.gpa, physical.outgoing_wildcards, bindings),
             };
         }
 
@@ -4291,6 +4291,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 null,
                 asdf.incoming,
                 asdf.outgoing,
+                bindings,
                 hiding_children,
             );
             if (case.next) |next| {
@@ -4664,5 +4665,20 @@ fn removeBoundNames(list: *std.ArrayList([]const u8), bindings: []const core.Bin
         while (funk.indexOfString(list.items, name_to_remove)) |i| {
             std.debug.assert(std.mem.eql(u8, name_to_remove, list.swapRemove(i)));
         }
+    }
+}
+
+// TODO: most callers of this function are causing leaks
+fn removeBoundNamesV2(gpa: std.mem.Allocator, list: []const []const u8, bindings: BindingsState) ![]const []const u8 {
+    var incoming: std.ArrayList([]const u8) = .init(gpa);
+    try incoming.appendSlice(list);
+    try removeBoundNamesV3(&incoming, bindings);
+    return try incoming.toOwnedSlice();
+}
+
+fn removeBoundNamesV3(list: *std.ArrayList([]const u8), bindings: BindingsState) !void {
+    try removeBoundNames(list, bindings.old);
+    if (if (bindings.anim_t) |t| t > 0.4 else false) {
+        try removeBoundNames(list, bindings.new);
     }
 }
