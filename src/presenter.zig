@@ -3946,12 +3946,20 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                 MAIN_FNK_POS,
                                 t,
                             )), t, active_stack.cur_fnk_name);
+                            const t3 = math.smoothstep(t, 0, 0.25);
                             try drawCases(
                                 camera,
                                 1,
                                 parent_point.applyToLocalPoint(.{
-                                    // TODO: this anim
-                                    .pos = .new(lerp(DIST_TO_TEMPLATE * 5, 0, t), 0),
+                                    // TODO: improve this anim
+                                    .pos = .new(
+                                        lerp(
+                                            DIST_TO_TEMPLATE * 3,
+                                            lerp(2 * (DIST_TO_TEMPLATE - 1), 0, t),
+                                            t3,
+                                        ),
+                                        lerp(7, 0, t3),
+                                    ),
                                 }),
                                 active_stack.cur_cases,
                                 .{ .unfolding = 1 },
