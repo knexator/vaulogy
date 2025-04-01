@@ -4228,9 +4228,6 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 pattern_point,
                 case.pattern,
             );
-            if (with_extra) {
-                try drawCaseExtra(camera, pattern_point, case, bindings, hiding_children);
-            }
 
             const cable_from = pattern_point.applyToLocalPosition(.new((lerp(-3, -5, is_gen0) + hiding_children) / if (constant_cable) pattern_point.scale else 1, 1));
             const cable_to = pattern_point.applyToLocalPosition(.new(0, 1));
@@ -4241,6 +4238,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 if (constant_cable) 1 else pattern_point.scale,
                 0,
             );
+
+            if (with_extra) {
+                try drawCaseExtra(camera, pattern_point, case, bindings, hiding_children);
+            }
         }
 
         // TODO: remove duplication with EditingCase
