@@ -1072,6 +1072,8 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             held_wildcard_names: ?[]const []const u8,
             inbound_wildcard_names: []const []const u8,
             outbound_wildcard_names: []const []const u8,
+            // TODO: properly use this argument
+            hiding_children: f32,
             // TODO: relative address? (maybe pass the casegroup, then)
         ) !void {
             // // TODO: avoid memory management here by having a single scratch allocator for the whole frame/drawing
@@ -1080,18 +1082,19 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             defer names.deinit();
 
             try template_value.getAllVarNames(&names);
-            try drawWildcardsCable(camera, &.{
+            if (hiding_children == 0) try drawWildcardsCable(camera, &.{
                 pattern_point.applyToLocalPosition(.new(1, 0)),
                 template_point.applyToLocalPosition(.new(-0.5, 0)),
             }, names.items);
 
             try appendUniqueNames(&names, outbound_wildcard_names);
-            try drawWildcardsCable(camera, &.{
+            if (hiding_children == 0) try drawWildcardsCable(camera, &.{
                 pattern_point.applyToLocalPosition(.new(0.5, 0)),
                 pattern_point.applyToLocalPosition(.new(1, 0)),
             }, names.items);
 
-            try drawWildcardsCable(camera, &.{
+            if (hiding_children == 0) try drawWildcardsCable(camera, &.{
+                // this -3 assumes not gen0
                 pattern_point.applyToLocalPosition(.new(-3, 1)),
                 pattern_point.applyToLocalPosition(.new(0, 1)),
                 pattern_point.applyToLocalPosition(.new(0.5, 0)),
@@ -3196,6 +3199,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 held_wildcard_names,
                 case.incoming_wildcards,
                 case.outgoing_wildcards,
+                0,
             );
 
             try artist.drawTemplateWildcardLines(camera, case.template, template_point);
@@ -4225,7 +4229,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 case.pattern,
             );
             if (with_extra) {
-                try drawCaseExtra(camera, pattern_point.applyToLocalPoint(.{ .scale = 1 - hiding_children }), case, bindings);
+                try drawCaseExtra(camera, pattern_point, case, bindings, hiding_children);
             }
 
             const cable_from = pattern_point.applyToLocalPosition(.new((lerp(-3, -5, is_gen0) + hiding_children) / if (constant_cable) pattern_point.scale else 1, 1));
@@ -4240,7 +4244,14 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         // TODO: remove duplication with EditingCase
-        fn drawCaseExtra(camera: Camera, pattern_point: Point, case: core.MatchCaseDefinition, bindings: BindingsState) !void {
+        fn drawCaseExtra(
+            camera: Camera,
+            pattern_point_raw: Point,
+            case: core.MatchCaseDefinition,
+            bindings: BindingsState,
+            hiding_children: f32,
+        ) !void {
+            const pattern_point = pattern_point_raw.applyToLocalPoint(.{ .scale = 1 - hiding_children });
             try artist.drawSexprWithBindings(
                 camera,
                 pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
@@ -4260,13 +4271,14 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             const asdf = try getWildcards(case);
             try artist.drawPlacedWildcardsCable(
                 camera,
-                pattern_point,
+                pattern_point_raw,
                 pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
                 case.pattern,
                 case.template,
                 null,
                 asdf.incoming,
                 asdf.outgoing,
+                hiding_children,
             );
             if (case.next) |next| {
                 try drawCases(camera, 0, pattern_point, next.items, .{ .unfolding = 1 }, 0, bindings);
