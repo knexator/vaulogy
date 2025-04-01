@@ -4198,24 +4198,26 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 try artist.drawWildcardsCable(
                     camera,
                     &.{ corner, lowest_point },
-                    try getIncomingWildcards(last_case),
+                    (try getWildcards(last_case, bindings)).incoming,
                 );
             }
         }
 
-        fn getIncomingWildcards(case: core.MatchCaseDefinition) ![]const []const u8 {
-            return (try getWildcards(case)).incoming;
-        }
-
-        fn getWildcards(case: core.MatchCaseDefinition) !struct {
+        fn getWildcards(case: core.MatchCaseDefinition, bindings: BindingsState) !struct {
             incoming: []const []const u8,
             outgoing: []const []const u8,
         } {
             // TODO: leak
             var physical = try EditingFnk(platform, drawer).makeCasePhysical(platform.gpa, case, .{});
             _ = try physical.updateWildcards(platform.gpa);
+            var incoming: std.ArrayList([]const u8) = .init(platform.gpa);
+            try incoming.appendSlice(physical.incoming_wildcards);
+            try removeBoundNames(&incoming, bindings.old);
+            if (if (bindings.anim_t) |t| t > 0.4 else false) {
+                try removeBoundNames(&incoming, bindings.new);
+            }
             return .{
-                .incoming = physical.incoming_wildcards,
+                .incoming = try incoming.toOwnedSlice(),
                 .outgoing = physical.outgoing_wildcards,
             };
         }
@@ -4279,7 +4281,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             );
             // TODO: draw the bound values travelling on the wire
             // TODO NOW: don't draw the cables for already bound wildcards
-            const asdf = try getWildcards(case);
+            const asdf = try getWildcards(case, bindings);
             try artist.drawPlacedWildcardsCable(
                 camera,
                 pattern_point_raw,
