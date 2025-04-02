@@ -3,9 +3,16 @@ const std = @import("std");
 const DESIGN = struct {
     no_current_data: bool = true,
     autograb_wildcard_template_after_pattern: bool = true,
-    round_data: bool = false,
+    round_data: bool = true,
 
     pub const default: @This() = .{};
+    pub const variants: []const struct {
+        name: []const u8,
+        design: DESIGN,
+    } = &.{
+        .{ .name = "main", .design = .{} },
+        .{ .name = "pointy_data", .design = .{ .round_data = false } },
+    };
 
     fn toOptions(self: @This(), b: *std.Build) *std.Build.Step.Options {
         const options = b.addOptions();
@@ -124,13 +131,7 @@ pub fn build(b: *std.Build) void {
     // Building the webgame
     const webgame_install_dir = std.Build.InstallDir{ .custom = "dist" };
     {
-        for ([_]struct {
-            name: []const u8,
-            design: DESIGN,
-        }{
-            .{ .name = "main", .design = .{} },
-            .{ .name = "round_data", .design = .{ .round_data = true } },
-        }) |variant| {
+        for (DESIGN.variants) |variant| {
             const webgame_wasm = b.addExecutable(
                 .{
                     .name = variant.name,
