@@ -352,7 +352,7 @@ const WebDrawer = struct {
     }
 
     pub fn drawAtomDebug(camera: Camera, world_point: Point) void {
-        std.debug.assert(!DESIGN.round_data);
+        // std.debug.assert(!DESIGN.round_data);
         const screen_point = screenFromWorld(camera, world_point);
         const local_positions = [_]Vec2{
             Vec2.new(-0.5, 0),

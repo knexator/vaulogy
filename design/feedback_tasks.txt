@@ -47,3 +47,24 @@
 - level idea: x -> (x . map(x))
 - wants to draw numbers as 1, (1 . 1), ((1 . 1) . (1 . 0)), ((1.1).(1.1)), (((1.1).(1.1)),((1.0).(0.0))) ...
 - peano is extremely hard
+
+###
+
+- confused about pattern-template rotation of held value
+- better UI on execution screen (change Stop to Back on end, button order)
+- level 1: make the shapes more different between x & f(x)
+- execution screen UI: show a "all cases done, go back to the menu"
+- first level idea: {a -> b; b -> a;}
+- after the first press of "Check", say "you can also run data manually"
+- level 2: have a single case 
+- the wildcard restriction is very much needed
+- didn't knew you could move cases
+- level 3: add an indication "remember, this is the vau name"
+- level 3: outline where to put the vau position
+- samples list: click the arrow to check that sample
+- level 4: "you can add cases with this v"
+- wants to pick wildcard from the broken cable
+- tries to place case as template & template as case
+- took a while to make "b -> f(a)", maybe do a level like (x . y) -> x to learn about discarding stuff
+- confused about deleting data/cases
+- draw discarded cases on match
