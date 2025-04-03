@@ -721,7 +721,7 @@ const builtin_levels: []const BuiltinLevel = &.{
     }, .description = "This Vau takes unstable Data and wraps it safely", .premade_solution = 
     \\wrapOlympian {
     \\  Hermes -> ((top . Hermes) . bottom);
-    \\  Aphrodite -> ((top . Aphrodite) . bottom);
+    \\  // Aphrodite -> ((top . Aphrodite) . bottom);
     \\  // Ares -> ((top . Ares) . bottom);
     \\  // Zeus -> ((top . Zeus) . bottom);
     \\}
