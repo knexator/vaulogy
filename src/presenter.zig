@@ -3820,6 +3820,20 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     } else {
                         const t = remap(self.anim_t, 0.5, 1, 0, 1);
 
+                        try drawCases(
+                            camera,
+                            1,
+                            parent_point.applyToLocalPoint(.lerp(
+                                .{},
+                                .{ .turns = 0.2, .scale = 0, .pos = .new(-4, 8) },
+                                clamp01(remap(t, 0, 0.8, 0, 1)),
+                            )),
+                            matched.discarded_cases,
+                            .{ .offset = 0.5 },
+                            0,
+                            .{ .anim_t = null, .new = matched.new_bindings, .old = matched.old_bindings },
+                        );
+
                         // TODO: draw centered
                         const t2 = clamp01(remap(self.anim_t, 0.5, 0.8, 0, 1));
                         const hiding_children_t = math.smoothstep(self.anim_t, 0.5, 0.65);
