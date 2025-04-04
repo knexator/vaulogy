@@ -836,7 +836,13 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             },
             .Mercury = HardcodedAtomVisuals{
                 .color = .fromHex("#FF8EEC"),
-                .profile = null,
+                .profile = &.{
+                    .new(1.224892e-1, 1.97281936e-1),
+                    .new(4.2850158e-1, -7.022254e-2),
+                    .new(5.059528e-1, -1.8252338e-1),
+                    .new(6.5015405e-1, -1.3726442e-1),
+                    .new(8.53909e-1, -3.479591e-2),
+                },
             },
             .Aphrodite = HardcodedAtomVisuals{
                 .color = .fromHex("#FFB600"),
@@ -844,7 +850,20 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             },
             .Venus = HardcodedAtomVisuals{
                 .color = .fromHex("#FFE18E"),
-                .profile = null,
+                .profile = &.{
+                    .new(0.7142284e-1, 1.6622247e-1),
+                    .new(1.341461e-1, 1.9398443e-1),
+                    .new(2.3471789e-1, 1.4246653e-1),
+                    .new(2.947409e-1, -1.603865e-1),
+                    .new(3.9733455e-1, -1.6812957e-1),
+                    .new(4.707473e-1, -1.522803e-1),
+                    .new(5.3846923e-1, 1.506581e-1),
+                    .new(5.7485698e-1, 1.3897786e-1),
+                    .new(6.1954176e-1, 1.56606e-1),
+                    .new(7.7189485e-1, -1.6031578e-1),
+                    .new(8.802021e-1, -1.4742844e-1),
+                    .new(9.332106e-1, -1.6913065e-1),
+                },
             },
             .Ares = HardcodedAtomVisuals{
                 .color = .fromHex("#00E5FF"),
@@ -891,6 +910,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                     return lhs.x < rhs.x;
                 }
             }.lessThanFn);
+            std.log.debug("new profile for {s}:\n{any}", .{ name, profile });
             return profile;
         }
 
