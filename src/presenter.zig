@@ -247,6 +247,14 @@ pub const Drawer = struct {
         }, color);
     }
 
+    pub fn drawAtomHint(self: Drawer, camera: Camera, pos: Point) void {
+        self.drawLine(camera, &funk.mapWithCtx(Point.applyToLocalPosition, &([1]Vec2{.new(1.5, -1)} ++ funk.fromCount(32, struct {
+            pub fn anon(k: usize) Vec2 {
+                return Vec2.fromTurns(math.lerp(0.75, 0.25, math.tof32(k) / 32)).addX(0.5);
+            }
+        }.anon) ++ [1]Vec2{.new(1.5, 1)}), pos), .white);
+    }
+
     const dummySignatures = struct {
         pub fn nothing() void {
             unreachable;
@@ -3033,6 +3041,16 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             if (self.tutorial_state.allowPickingVaus()) try fnks_reel.draw(camera, self.available_fnks, self.tutorial_state.getFnksReel());
             if (self.tutorial_state.allowCreatingVaus()) try fnk_manager.draw(camera);
             if (self.meta_enabled) try meta_converter.draw(camera);
+
+            if (self.tutorial_state == .third_level and self.cases.cases.items.len > 0) {
+                const address_to_place_vau_name: core.FullAddress = .{
+                    .case_address = &.{0},
+                    .which = .fnk_name,
+                    .sexpr_address = &.{},
+                };
+                if ((try self.cases.getSexprAt(address_to_place_vau_name)).equals(Sexpr.builtin.identity))
+                    drawer.drawAtomHint(camera, try self.cases.getGlobalPointOf(.{}, address_to_place_vau_name));
+            }
 
             switch (self.focus) {
                 .nothing => {},

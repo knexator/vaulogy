@@ -223,7 +223,7 @@ pub fn equalSexprAddress(a: SexprAddress, b: SexprAddress) bool {
     return std.mem.eql(SexprAddressItem, a, b);
 }
 
-pub const CaseAddress = []usize;
+pub const CaseAddress = []const usize;
 pub const FullAddress = struct {
     case_address: CaseAddress,
     sexpr_address: SexprAddress,
