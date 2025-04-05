@@ -527,6 +527,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         &self.scoring_run,
                         anim.camera,
                         anim.output.value,
+                        anim.all_tests_good,
                     ) };
                 },
                 .editing_fnk => |*editing| switch (try editing.update(delta_seconds)) {
@@ -544,9 +545,10 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         try self.persistence.updateSolvedStatusOfAll(&self.mem);
                         try platform.setPlayerData(self.persistence, &self.mem);
                         self.prev_editing_state = editing.*;
-                        const sample_index: usize = blk: for (editing.solved_samples, 0..) |value, k| {
+                        const failing_sample_index: ?usize = blk: for (editing.solved_samples, 0..) |value, k| {
                             if (!value) break :blk k;
-                        } else @intFromFloat(1.5 + @TypeOf(editing.*).samples_reel.scroll);
+                        } else null;
+                        const sample_index: usize = failing_sample_index orelse @intFromFloat(1.5 + @TypeOf(editing.*).samples_reel.scroll);
                         self.state = .{ .editing_fnk_to_testing = .init(
                             editing.camera,
                             .{
@@ -561,6 +563,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                             },
                             editing.fnk_name,
                             editing.cases,
+                            failing_sample_index == null,
                         ) };
                     },
                     .launch_execution => |input| {
@@ -578,6 +581,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                             fnk.name,
                             &self.scoring_run,
                             editing.camera,
+                            null,
                             null,
                         ) };
                     },
@@ -1769,6 +1773,7 @@ fn EditingFnkToTesting(platform: Platform, drawer: Drawer) type {
         const Self = @This();
         const artist = Artist(platform, drawer);
 
+        all_tests_good: bool,
         input: PhysicalSexpr,
         output: PhysicalSexpr,
         camera: Camera,
@@ -1777,7 +1782,14 @@ fn EditingFnkToTesting(platform: Platform, drawer: Drawer) type {
         // TODO: pointer?
         cases: CaseGroup,
 
-        pub fn init(camera: Camera, input: PhysicalSexpr, output: PhysicalSexpr, fnk_name: *const Sexpr, fnk_cases: CaseGroup) Self {
+        pub fn init(
+            camera: Camera,
+            input: PhysicalSexpr,
+            output: PhysicalSexpr,
+            fnk_name: *const Sexpr,
+            fnk_cases: CaseGroup,
+            all_tests_good: bool,
+        ) Self {
             var cases = fnk_cases;
             cases.setAllUnfoldedToZero();
             return .{
@@ -1787,6 +1799,7 @@ fn EditingFnkToTesting(platform: Platform, drawer: Drawer) type {
                 .output = output,
                 .fnk_name = fnk_name,
                 .cases = cases,
+                .all_tests_good = all_tests_good,
             };
         }
 
@@ -3603,6 +3616,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         result: ?core.ExecutionThread.Result = null,
         main_input: if (DESIGN.no_current_data) PhysicalSexpr else enum { invalid_field },
         expected_output: ?*const Sexpr,
+        all_tests_good: ?bool = null,
 
         pub fn init(
             input: if (DESIGN.no_current_data) PhysicalSexpr else *const Sexpr,
@@ -3610,6 +3624,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             scoring_run: *core.ScoringRun,
             camera: Camera,
             expected_output: ?*const Sexpr,
+            all_tests_good: ?bool,
         ) !Self {
             const thread_initial_params: @FieldType(Self, "thread_initial_params") = .{
                 .value = if (DESIGN.no_current_data) input.value else input,
@@ -3630,6 +3645,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 }) },
                 .main_input = if (DESIGN.no_current_data) input else .invalid_field,
                 .expected_output = expected_output,
+                .all_tests_good = all_tests_good,
             };
 
             // for now, skip the "start" anim
@@ -3752,6 +3768,14 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         .result => |value| {
                             drawer.drawDebugText(camera, text_pos, "Result:", .black);
                             try artist.drawSexpr(camera, result_pos, value);
+                            if (self.all_tests_good) |all_tests_good| {
+                                if (all_tests_good) {
+                                    drawer.drawDebugText(camera, text_pos.applyToLocalPoint(.{ .pos = .new(3, 2), .scale = 0.4 }), "All Tests complete!", .black);
+                                    // TODO NOW: "go to menu" button here
+                                } else {
+                                    drawer.drawDebugText(camera, text_pos.applyToLocalPoint(.{ .pos = .new(3, 2), .scale = 0.4 }), "Failed this Test.", .black);
+                                }
+                            }
                         },
                         .no_matching_case => drawer.drawDebugText(camera, text_pos, "Ran out of cases!", .black),
                         .missing_or_uncompilable_fnk => |fnk_name| {
