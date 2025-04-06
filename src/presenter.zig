@@ -1372,6 +1372,10 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             }
         }
 
+        pub fn drawPhysicalSexpr(camera: Camera, s: PhysicalSexpr) !void {
+            try drawBothSexpr(camera, s.pos, s.is_pattern, s.value);
+        }
+
         pub fn drawBothSexpr(camera: Camera, world_point: Point, is_pattern: f32, sexpr: *const Sexpr) !void {
             std.debug.assert(in01(is_pattern));
             if (is_pattern > 0.5) {
@@ -1436,6 +1440,14 @@ const PhysicalSexpr = struct {
     value: *const Sexpr,
     pos: Point,
     is_pattern: f32,
+
+    pub fn updatePattern(self: *PhysicalSexpr, is_pattern: ?bool, delta_seconds: f32) void {
+        const target_pattern_value: f32 = if (is_pattern) |v|
+            if (v) 1 else 0
+        else
+            @round(self.is_pattern);
+        math.lerp_towards(&self.is_pattern, target_pattern_value, 0.6, delta_seconds);
+    }
 };
 const SexprView = struct {
     pub fn overlapsPatternAtom(atom_point: Point, needle_pos: Vec2, kind: enum { atom, pair }) bool {
@@ -1961,6 +1973,16 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 };
             }
 
+            pub fn isAnInvisibleIdentity(address: SexprPlace, self: Self) !bool {
+                return switch (address) {
+                    else => false,
+                    .full_address => |full_address| switch (full_address.which) {
+                        else => false,
+                        .fnk_name => ((try address.getSexpr(self)).?).equals(Sexpr.builtin.identity),
+                    },
+                };
+            }
+
             pub fn getSexpr(address: @This(), self: Self) !?*const Sexpr {
                 return switch (address) {
                     .full_address => |full_address| try self.cases.getSexprAt(full_address),
@@ -2114,6 +2136,35 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 limitation: enum { none, pattern, template },
             },
         } = .{ .nothing = {} },
+
+        particles: std.ArrayList(ParticleState),
+
+        const ParticleState = struct {
+            main: PhysicalSexpr,
+            remaining_lifetime: f32,
+            velocity: Point,
+
+            pub fn init(v: PhysicalSexpr) ParticleState {
+                return .{
+                    .main = v,
+                    .remaining_lifetime = 1,
+                    .velocity = .{ .turns = 0.2, .pos = .new(math.maybeMirror(5, v.is_pattern > 0.5), 5), .scale = 0.8 },
+                };
+            }
+
+            pub fn draw(self: ParticleState, camera: Camera) !void {
+                drawer.setTransparency(@min(1, self.remaining_lifetime));
+                try artist.drawPhysicalSexpr(camera, self.main);
+                drawer.setTransparency(1);
+            }
+
+            pub fn update(self: *ParticleState, delta_seconds: f32) !void {
+                self.main.updatePattern(null, delta_seconds);
+                self.main.pos = self.main.pos.applyToLocalPoint(.lerp(.{}, self.velocity, delta_seconds));
+                self.remaining_lifetime -= delta_seconds * 4;
+                self.remaining_lifetime = @max(0, self.remaining_lifetime);
+            }
+        };
 
         fn overlapsWithTinyCase(mouse_pos: Vec2, case_point: Point) bool {
             const local_point = case_point
@@ -2642,6 +2693,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .fifth_level
                 else
                     .none,
+                .particles = .init(platform.gpa),
             };
         }
 
@@ -2900,6 +2952,18 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
             }
 
+            for (self.particles.items) |*p| try p.update(delta_seconds);
+            {
+                var k: usize = 0;
+                while (k < self.particles.items.len) {
+                    if (self.particles.items[k].remaining_lifetime <= 0) {
+                        _ = self.particles.swapRemove(k);
+                    } else {
+                        k += 1;
+                    }
+                }
+            }
+
             // Mouse interaction
             if (platform.getMouse().wasPressed(.left)) {
                 switch (self.focus) {
@@ -2934,6 +2998,19 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 self.focus = .nothing;
                                 return .{ .launch_execution = .{ .value = try grabbing.sexpr.changeAllVariablesToNil(self.mem), .pos = grabbing.point, .is_pattern = grabbing.is_pattern } };
                             } else {
+                                // particle stuff
+                                {
+                                    if (try address.getSexpr(self.*)) |old_value| {
+                                        if (!try address.isAnInvisibleIdentity(self.*)) {
+                                            try self.particles.append(.init(.{
+                                                .is_pattern = if (address.isPattern()) 1 else 0,
+                                                .value = old_value,
+                                                .pos = try address.getGlobalPoint(self.*),
+                                            }));
+                                        }
+                                    }
+                                }
+
                                 try address.setSexpr(self, grabbing.sexpr);
                                 try self.onChangedSomething();
                                 if (DESIGN.autograb_wildcard_template_after_pattern and grabbing.limitation == .pattern) {
@@ -3055,6 +3132,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 );
                 try artist.drawHoldedFnk(camera, MAIN_FNK_POS, 1, self.fnk_name);
             }
+
+            for (self.particles.items) |p| try p.draw(camera);
 
             const wildcard_names_in_grabbing_sexpr: ?std.ArrayList([]const u8) = blk: {
                 switch (self.focus) {

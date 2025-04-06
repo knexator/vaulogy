@@ -42,6 +42,10 @@ pub fn lerp_towards_range(v: *f32, min: f32, max: f32, ratio: f32, delta_seconds
     }
 }
 
+pub fn maybeMirror(v: f32, mirror: bool) f32 {
+    return if (mirror) -v else v;
+}
+
 pub const clamp = std.math.clamp;
 pub const lerp = std.math.lerp;
 
