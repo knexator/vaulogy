@@ -3,18 +3,10 @@
 - say "Vau id" instead of "Vau name"
 - tests panel too close to main editing panel, no line between them
 - scroll bars not working
-- round vaus or ">.. .>" instead of the current "<.. .>", currently they look like arrows
 - by second level, had forgotten about placing data in main_input to run it
-- wants a "play" button
-- confused when putting wildcards in main_input
 - 1st tutorial: show a "late" case so the player sees failed matches
 - wildcard: keeps placing new wildcards, maybe rename them to "imitators" or "mimics"
-- didn't notice he had already solved the level
-- bug: forbid wildcard in fnk name
-- "i don't know what vaus to use" in level 3 when getting access to the previous ones
-- wants step-by-step execution
 - prefers permanent main_input
-- execution is too fast for nested cases
 - avoid solving the mapOlympianPair by hardcoding all cases
 - names for Data: Pieza, Conjunto
 - tut4 (nested cases): don't allow manipulating the parent case
@@ -22,22 +14,32 @@
 - editor: warn about undefined wildcards in templates
 - confused by copy/paste, maybe draw the old data "vanishing" after replacing it
 - teaching wildcards: having them match a pair could be useful
-- particle effect when a wildcard starts "resolving"
-- during tutorial, show a 'toast' notification when data binds a wildcard
 - particle effect on the incompatible parts of failed matches
-- cases should hang from a string!
-- mix ryhtms in animation, to highlight the important parts
 - wants some common graphical structure to all vau names vs general atoms
 - more atom options: patterns, animated patterns
+
+discarded for now:
+- particle effect when a wildcard starts "resolving"
+- during tutorial, show a 'toast' notification when data binds a wildcard
+
+done:
+- round vaus or ">.. .>" instead of the current "<.. .>", currently they look like arrows
+- wants a "play" button
+- confused when putting wildcards in main_input
+- bug: forbid wildcard in fnk name
+- didn't notice he had already solved the level
+- "i don't know what vaus to use" in level 3 when getting access to the previous ones
+- wants step-by-step execution
+- execution is too fast for nested cases
+- cases should hang from a string!
+- mix ryhtms in animation, to highlight the important parts
 
 ###
 
 - too much toolbar on level 2
 - idea: start level two with @x -> (@x . @x)
 - idea: change wrapping to multiple copies and/or reordering
-- don't show sample status
 - forgot about what yellow vau does; show a preview of the tests when hovering it?
-- doesn't get that wildcards are connected
 - tell player about right click
 - didn't know how to delete cases
 - level 5: didn't think to call yellow vau twice
@@ -48,23 +50,31 @@
 - wants to draw numbers as 1, (1 . 1), ((1 . 1) . (1 . 0)), ((1.1).(1.1)), (((1.1).(1.1)),((1.0).(0.0))) ...
 - peano is extremely hard
 
+done:
+- don't show sample status
+- doesn't get that wildcards are connected
+
 ###
 
 - confused about pattern-template rotation of held value
 - better UI on execution screen (change Stop to Back on end, button order)
-- level 1: make the shapes more different between x & f(x)
-- execution screen UI: show a "all cases done, go back to the menu"
 - first level idea: {a -> b; b -> a;}
 - after the first press of "Check", say "you can also run data manually"
-- level 2: have a single case 
-- the wildcard restriction is very much needed
 - didn't knew you could move cases
 - level 3: add an indication "remember, this is the vau name"
-- level 3: outline where to put the vau position
 - samples list: click the arrow to check that sample
-- level 4: "you can add cases with this v"
-- wants to pick wildcard from the broken cable
 - tries to place case as template & template as case
 - took a while to make "b -> f(a)", maybe do a level like (x . y) -> x to learn about discarding stuff
 - confused about deleting data/cases
 - draw discarded cases on match
+
+discarded:
+- wants to pick wildcard from the broken cable
+
+done:
+- level 1: make the shapes more different between x & f(x)
+- execution screen UI: show a "all cases done, go back to the menu"
+- level 2: have a single case 
+- the wildcard restriction is very much needed
+- level 3: outline where to put the vau position
+- level 4: "you can add cases with this v"
