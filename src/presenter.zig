@@ -599,6 +599,10 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 .executing_fnk => |*executing| switch (try executing.update(delta_seconds)) {
                     .nothing => {},
                     .back_to_editing => self.state = .{ .editing_fnk = self.prev_editing_state.? },
+                    .back_to_menu => {
+                        self.prev_editing_state = null;
+                        self.state = .{ .level_select = try .init(&self.persistence) };
+                    },
                 },
                 inline else => |*x| x.update(delta_seconds),
             }
@@ -3584,6 +3588,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         thread: core.ExecutionThread,
         camera: Camera,
         ui_state: UI.State,
+        result_ui_state: UI.State,
 
         // TODO: better rewind
         thread_initial_params: struct {
@@ -3643,6 +3648,11 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     "⏮",
                     "⏭",
                 }) },
+                .result_ui_state = .{ .buttons = try platform.gpa.dupe(UI.Button, &[1]UI.Button{
+                    .{ .pos = .fromCenterAndSize(text_pos.applyToLocalPosition(
+                        .new(5, 4),
+                    ), .new(3, 1)), .text = "Back to menu" },
+                }) },
                 .main_input = if (DESIGN.no_current_data) input else .invalid_field,
                 .expected_output = expected_output,
                 .all_tests_good = all_tests_good,
@@ -3656,7 +3666,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             return result;
         }
 
-        pub fn update(self: *Self, delta_seconds: f32) OoM!union(enum) { nothing, back_to_editing } {
+        pub fn update(self: *Self, delta_seconds: f32) OoM!union(enum) { nothing, back_to_editing, back_to_menu } {
             if (self.ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button|
                 switch (pressed_button) {
                     0 => return .back_to_editing,
@@ -3676,6 +3686,19 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     5 => self.anim_state = .advancing,
                     else => return error.TODO,
                 };
+
+            if (self.result) |result| {
+                if (self.anim_t >= 1) {
+                    if (std.meta.activeTag(result) == .result) {
+                        if (self.result_ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button| {
+                            switch (pressed_button) {
+                                0 => return .back_to_menu,
+                                else => return error.TODO,
+                            }
+                        }
+                    }
+                }
+            }
 
             // move camera
             moveCamera(&self.camera, delta_seconds, platform.getKeyboard(), platform.getMouse());
@@ -3771,7 +3794,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             if (self.all_tests_good) |all_tests_good| {
                                 if (all_tests_good) {
                                     drawer.drawDebugText(camera, text_pos.applyToLocalPoint(.{ .pos = .new(3, 2), .scale = 0.4 }), "All Tests complete!", .black);
-                                    // TODO NOW: "go to menu" button here
+                                    self.result_ui_state.draw(drawer);
                                 } else {
                                     drawer.drawDebugText(camera, text_pos.applyToLocalPoint(.{ .pos = .new(3, 2), .scale = 0.4 }), "Failed this Test.", .black);
                                 }
