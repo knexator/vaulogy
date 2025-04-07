@@ -2152,6 +2152,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 };
             }
 
+            pub fn initFloater(v: PhysicalSexpr) ParticleState {
+                return .{
+                    .main = v,
+                    .remaining_lifetime = 0.5,
+                    .velocity = .{ .turns = -0.1, .pos = .new(math.maybeMirror(3, v.is_pattern > 0.5), -2), .scale = 0.5 },
+                };
+            }
+
             pub fn draw(self: ParticleState, camera: Camera) !void {
                 drawer.setTransparency(@min(1, self.remaining_lifetime));
                 try artist.drawPhysicalSexpr(camera, self.main);
@@ -3029,6 +3037,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 }
                             }
                         } else {
+                            try self.particles.append(.initFloater(.{
+                                .is_pattern = grabbing.is_pattern,
+                                .value = grabbing.sexpr,
+                                .pos = grabbing.point,
+                            }));
                             self.focus = .{ .nothing = {} };
                         }
                     },
