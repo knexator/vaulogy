@@ -36,8 +36,8 @@ pub fn BFS(T: type) type {
             var came_from: std.HashMap(T, T, T.Context, std.hash_map.default_max_load_percentage) = .init(gpa);
             defer came_from.deinit();
 
-            try visited.putNoClobber(.init, {});
-            try queue.writeItem(.init);
+            try visited.putNoClobber(T.init, {});
+            try queue.writeItem(T.init);
 
             while (queue.readItem()) |state| {
                 var it = state.nextMoves();

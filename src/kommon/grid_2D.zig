@@ -1,23 +1,54 @@
 const std = @import("std");
 
 const kommon = @import("kommon.zig");
-const Vec2 = kommon.math.Vec2;
+const UVec2 = kommon.math.UVec2;
+const IVec2 = kommon.math.IVec2;
 
 pub fn Grid2D(T: type) type {
     // 0 1 2
     // 3 4 5
     // 6 7 8
     return struct {
-        // TODO: IVec2
+        // TODO: UVec2
         width: usize,
         height: usize,
         data: []T,
 
         const Self = @This();
 
+        pub fn initUndefined(allocator: std.mem.Allocator, size: UVec2) !Self {
+            return .{ .width = size.x, .height = size.y, .data = try allocator.alloc(T, size.x * size.y) };
+        }
+
+        pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
+            allocator.free(self.data);
+        }
+
+        // TODO: remove this method
         pub fn at(self: Self, i: usize, j: usize) !T {
-            // TODO: bound check
             return self.data[j * self.width + i];
+        }
+
+        pub fn at2(self: Self, pos: UVec2) !T {
+            return self.data[try self.indexOf(pos)];
+        }
+
+        pub fn atSigned(self: Self, pos: IVec2) !T {
+            return self.data[try self.indexOfSigned(pos)];
+        }
+
+        pub fn set(self: Self, pos: UVec2, value: T) !void {
+            self.data[try self.indexOf(pos)] = value;
+        }
+
+        fn indexOf(self: Self, pos: UVec2) !usize {
+            if (!self.inBoundsUnsigned(pos)) return error.OutOfGridBounds;
+            return pos.y * self.width + pos.x;
+        }
+
+        fn indexOfSigned(self: Self, pos: IVec2) !usize {
+            if (!self.inBoundsSigned(pos)) return error.OutOfGridBounds;
+            return self.indexOf(pos.cast(usize)) catch unreachable;
         }
 
         const GridIterator = struct {
@@ -33,7 +64,7 @@ pub fn Grid2D(T: type) type {
                 };
             }
 
-            pub fn next(self: *GridIterator) ?struct { row: usize, col: usize, value: T } {
+            pub fn next(self: *GridIterator) ?struct { row: usize, col: usize, value: T, pos: UVec2 } {
                 // ideal:
                 // for (0..self.grid.height) |j| {
                 //     for (0..self.grid.width) |i| {
@@ -43,7 +74,7 @@ pub fn Grid2D(T: type) type {
 
                 if (self.j.cur()) |j| {
                     if (self.i.next()) |i| {
-                        return .{ .row = j, .col = i, .value = try self.grid.at(i, j) };
+                        return .{ .row = j, .col = i, .value = try self.grid.at(i, j), .pos = .new(i, j) };
                     } else {
                         self.j.advance();
                         self.i.reset();
@@ -64,6 +95,7 @@ pub fn Grid2D(T: type) type {
             const width = lines.peek().?.len;
             const height = kommon.itertools.iteratorLen(lines);
             const data = try allocator.alloc(T, width * height);
+            errdefer allocator.free(data);
             var j: usize = 0;
             while (lines.next()) |line| {
                 if (line.len != width) return error.NotAnAsciiRectangle;
@@ -76,5 +108,130 @@ pub fn Grid2D(T: type) type {
                 .data = data,
             };
         }
+
+        pub fn map(self: Self, allocator: std.mem.Allocator, comptime NewType: type, comptime map_fn: fn (v: T) NewType) !Grid2D(NewType) {
+            const new_data = try allocator.alloc(NewType, self.data.len);
+            for (0..self.height) |j| {
+                for (0..self.width) |i| {
+                    new_data[j * self.width + i] = map_fn(self.at(i, j) catch unreachable);
+                }
+            }
+            return .{
+                .height = self.height,
+                .width = self.width,
+                .data = new_data,
+            };
+        }
+
+        pub fn mapWithCtx(self: Self, allocator: std.mem.Allocator, comptime NewType: type, ctx: anytype, comptime map_fn: fn (v: T, ctx: @TypeOf(ctx)) NewType) !Grid2D(NewType) {
+            const new_data = try allocator.alloc(NewType, self.data.len);
+            for (0..self.height) |j| {
+                for (0..self.width) |i| {
+                    new_data[j * self.width + i] = map_fn(self.at(i, j) catch unreachable, ctx);
+                }
+            }
+            return .{
+                .height = self.height,
+                .width = self.width,
+                .data = new_data,
+            };
+        }
+
+        pub fn bounds(self: Self) ?kommon.math.URect {
+            if (T != bool) @compileError("crop only works on Grid2D(bool)");
+
+            const left: usize = blk: {
+                for (0..self.width) |i| {
+                    for (0..self.height) |j| {
+                        if (self.at(i, j) catch unreachable) {
+                            break :blk i;
+                        }
+                    }
+                } else return null;
+            };
+
+            const right: usize = blk: {
+                for (0..self.width) |n_i| {
+                    const i = self.width - 1 - n_i;
+                    for (0..self.height) |j| {
+                        if (self.at(i, j) catch unreachable) {
+                            break :blk i;
+                        }
+                    }
+                } else return null;
+            };
+
+            const up: usize = blk: {
+                for (0..self.height) |j| {
+                    for (0..self.width) |i| {
+                        if (self.at(i, j) catch unreachable) {
+                            break :blk j;
+                        }
+                    }
+                } else return null;
+            };
+
+            const down: usize = blk: {
+                for (0..self.height) |n_j| {
+                    const j = self.height - 1 - n_j;
+                    for (0..self.width) |i| {
+                        if (self.at(i, j) catch unreachable) {
+                            break :blk j;
+                        }
+                    }
+                } else return null;
+            };
+
+            return .fromCorners(
+                .new(left, up),
+                .new(right, down),
+            );
+        }
+
+        pub fn filterValues(self: Self, allocator: std.mem.Allocator, values: []const T) !Grid2D(bool) {
+            return try self.mapWithCtx(allocator, bool, values, struct {
+                pub fn anon(v: T, vs: []const T) bool {
+                    return std.mem.indexOfScalar(T, vs, v) != null;
+                }
+            }.anon);
+        }
+
+        pub fn cropped(original: Self, allocator: std.mem.Allocator, rect: kommon.math.URect) !Self {
+            var result: Self = try .initUndefined(allocator, rect.inner_size.add(.both(1)));
+
+            var it = result.iterator();
+            while (it.next()) |t| {
+                result.set(t.pos, try original.at2(t.pos.add(rect.top_left))) catch unreachable;
+            }
+
+            return result;
+        }
+
+        pub fn inBoundsSigned(self: Self, pos: IVec2) bool {
+            return pos.x >= 0 and pos.y >= 0 and self.inBoundsUnsigned(pos.cast(usize));
+        }
+
+        pub fn inBoundsUnsigned(self: Self, pos: UVec2) bool {
+            return pos.x < self.width and pos.y < self.height;
+        }
     };
+}
+
+test "foo" {
+    const raw_grid = try kommon.Grid2D(u8).fromAscii(std.testing.allocator,
+        \\.....
+        \\.111.
+        \\..1..
+        \\.....
+    );
+    defer raw_grid.deinit(std.testing.allocator);
+
+    const bool_grid = try raw_grid.filterValues(std.testing.allocator, "1");
+    defer bool_grid.deinit(std.testing.allocator);
+
+    const rect = bool_grid.bounds().?;
+    try std.testing.expectEqual(kommon.math.URect{
+        .top_left = .new(1, 1),
+        .inner_size = .new(2, 1),
+    }, rect);
 }

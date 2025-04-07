@@ -84,6 +84,17 @@ pub fn ZVec2(T: type) type {
         pub const e1 = new(1, 0);
         pub const e2 = new(0, 1);
 
+        pub const cardinal_directions = [4]IVec2{
+            .new(1, 0),
+            .new(0, 1),
+            .new(-1, 0),
+            .new(0, -1),
+        };
+
+        pub fn cast(v: Self, S: type) ZVec2(S) {
+            return .new(@intCast(v.x), @intCast(v.y));
+        }
+
         pub fn equals(a: Self, b: Self) bool {
             return a.x == b.x and a.y == b.y;
         }
@@ -232,6 +243,27 @@ pub const Vec2 = extern struct {
     pub fn expectApproxEqAbs(expected: Vec2, actual: Vec2, tolerance: anytype) !void {
         try std.testing.expectApproxEqAbs(expected.x, actual.x, tolerance);
         try std.testing.expectApproxEqAbs(expected.y, actual.y, tolerance);
+    }
+};
+
+pub const URect = struct {
+    top_left: UVec2,
+    inner_size: UVec2,
+
+    pub fn get(self: Rect, which: enum { top_center, top_right }) Vec2 {
+        return switch (which) {
+            .top_center => self.top_left.addX(self.size.x / 2),
+            .top_right => self.top_left.addX(self.size.x),
+        };
+    }
+
+    pub fn fromCorners(top_left: UVec2, bottom_right: UVec2) URect {
+        std.debug.assert(top_left.x <= bottom_right.x);
+        std.debug.assert(top_left.y <= bottom_right.y);
+        return .{
+            .top_left = top_left,
+            .inner_size = .sub(bottom_right, top_left),
+        };
     }
 };
 
