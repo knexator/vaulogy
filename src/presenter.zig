@@ -4,6 +4,7 @@
 
 const std = @import("std");
 
+pub const safeAt = @import("kommon/kommon.zig").safeAt;
 pub const Mouse = @import("kommon/input.zig").Mouse;
 const math = @import("kommon/math.zig");
 pub const Vec2 = math.Vec2;
@@ -1224,37 +1225,38 @@ fn Artist(platform: Platform, drawer: Drawer) type {
 
         // TODO: better memory management
         pub fn drawWildcardLinesToFloating(camera: Camera, parent_cases_point: Point, cases: CaseGroup, grabbing_point: Point, grabbing_wildcards: []const []const u8) !void {
-            const case = cases.cases.items[cases.unfolded];
-            const pattern_point = parent_cases_point.applyToLocalPoint(case.pattern_point_relative_to_parent);
+            if (cases.getUnfoldedChild()) |case| {
+                const pattern_point = parent_cases_point.applyToLocalPoint(case.pattern_point_relative_to_parent);
 
-            var wildcard_names: std.ArrayList([]const u8) = .init(platform.gpa);
-            defer wildcard_names.deinit();
-            try case.pattern.getAllVarNames(&wildcard_names);
+                var wildcard_names: std.ArrayList([]const u8) = .init(platform.gpa);
+                defer wildcard_names.deinit();
+                try case.pattern.getAllVarNames(&wildcard_names);
 
-            var common: std.ArrayList(AtomVisuals) = .init(platform.gpa);
-            defer common.deinit();
+                var common: std.ArrayList(AtomVisuals) = .init(platform.gpa);
+                defer common.deinit();
 
-            for (wildcard_names.items) |pattern| {
-                for (grabbing_wildcards) |grabbing| {
-                    if (std.mem.eql(u8, pattern, grabbing)) {
-                        try common.append(try AtomVisualCache.getAtomVisuals(pattern));
+                for (wildcard_names.items) |pattern| {
+                    for (grabbing_wildcards) |grabbing| {
+                        if (std.mem.eql(u8, pattern, grabbing)) {
+                            try common.append(try AtomVisualCache.getAtomVisuals(pattern));
+                        }
                     }
                 }
-            }
 
-            drawer.drawWildcardsCable(camera, &.{
-                pattern_point.applyToLocalPosition(.new(0.5, 0)),
-                grabbing_point.applyToLocalPosition(.new(-0.5, 0)),
-            }, common.items);
+                drawer.drawWildcardsCable(camera, &.{
+                    pattern_point.applyToLocalPosition(.new(0.5, 0)),
+                    grabbing_point.applyToLocalPosition(.new(-0.5, 0)),
+                }, common.items);
 
-            // const visuals = try AtomVisualCache.getAtomVisuals(pattern);
-            // drawer.drawLine(camera, &.{
-            //     pattern_point.applyToLocalPosition(.new(0.5, 0)),
-            //     grabbing_point.applyToLocalPosition(.new(-0.5, 0)),
-            // }, visuals.color);
+                // const visuals = try AtomVisualCache.getAtomVisuals(pattern);
+                // drawer.drawLine(camera, &.{
+                //     pattern_point.applyToLocalPosition(.new(0.5, 0)),
+                //     grabbing_point.applyToLocalPosition(.new(-0.5, 0)),
+                // }, visuals.color);
 
-            if (case.next) |next| {
-                try drawWildcardLinesToFloating(camera, pattern_point, next, grabbing_point, grabbing_wildcards);
+                if (case.next) |next| {
+                    try drawWildcardLinesToFloating(camera, pattern_point, next, grabbing_point, grabbing_wildcards);
+                }
             }
         }
 
@@ -1632,6 +1634,11 @@ const CaseState = struct {
 const CaseGroup = struct {
     cases: std.ArrayListUnmanaged(CaseState),
     unfolded: usize,
+
+    // TODO: revise self.unfolded (make it optional, or ensure its always in bounds)
+    pub fn getUnfoldedChild(self: CaseGroup) ?CaseState {
+        return safeAt(CaseState, self.cases.items, self.unfolded);
+    }
 
     pub fn updateWildcards(self: *CaseGroup, gpa: std.mem.Allocator) OoM![]const []const u8 {
         var all_required: std.ArrayList([]const u8) = .init(gpa);

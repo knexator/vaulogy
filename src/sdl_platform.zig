@@ -473,8 +473,9 @@ const SdlDrawer = struct {
     }
 
     pub fn drawWildcardsCable(camera: Camera, points: []const Vec2, visuals: []const presenter.AtomVisuals) void {
-        std.debug.assert(visuals.len > 0);
         // TODO: line width
+        // TODO: multiple visuals
+        if (visuals.len == 0) return;
         drawLine(camera, points, visuals[0].color);
     }
 };

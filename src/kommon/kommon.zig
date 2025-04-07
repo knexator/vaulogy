@@ -12,3 +12,10 @@ comptime {
     const std = @import("std");
     std.testing.refAllDeclsRecursive(@This());
 }
+
+pub fn safeAt(T: type, arr: []T, index: usize) ?T {
+    if (index >= arr.len) {
+        return null;
+    }
+    return arr[index];
+}
