@@ -1133,12 +1133,23 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                 pattern_point.applyToLocalPosition(.new(1, 0)),
             }, names.items);
 
-            try drawWildcardsCable(camera, &.{
-                // this -3 assumes not gen0
-                pattern_point.applyToLocalPosition(.new(-3 + hiding_children, 1)),
-                pattern_point.applyToLocalPosition(.new(0, 1)),
-                pattern_point.applyToLocalPosition(.new(0.5, 0)),
-            }, try removeBoundNamesV2(platform.gpa, inbound_wildcard_names, bindings));
+            if (DESIGN.round_data) {
+                try drawWildcardsCable(camera, &([1]Vec2{
+                    // this -3 assumes not gen0
+                    pattern_point.applyToLocalPosition(.new(-3 + hiding_children, 1)),
+                } ++ funk.fromCountAndCtx(32, struct {
+                    pub fn anon(k: usize, p: Point) Vec2 {
+                        return p.applyToLocalPosition(Vec2.fromTurns(math.lerp(0.25, 0, math.tof32(k) / 32)).add(.new(-0.5, 0)));
+                    }
+                }.anon, pattern_point)), try removeBoundNamesV2(platform.gpa, inbound_wildcard_names, bindings));
+            } else {
+                try drawWildcardsCable(camera, &.{
+                    // this -3 assumes not gen0
+                    pattern_point.applyToLocalPosition(.new(-3 + hiding_children, 1)),
+                    pattern_point.applyToLocalPosition(.new(0, 1)),
+                    pattern_point.applyToLocalPosition(.new(0.5, 0)),
+                }, try removeBoundNamesV2(platform.gpa, inbound_wildcard_names, bindings));
+            }
 
             const lost_wildcards = try visualsForUnusedWildcards(pattern_value, template_value, outbound_wildcard_names, held_wildcard_names);
             defer platform.gpa.free(lost_wildcards);
