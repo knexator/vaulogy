@@ -725,7 +725,7 @@ const builtin_levels: []const BuiltinLevel = &.{
     \\planetFromOlympian {
     \\  Hermes -> Mercury;
     \\  // Aphrodite -> Venus;
-    \\  nil -> nil;
+    \\  Aphrodite -> nil;
     \\  Ares -> Mars;
     \\  Zeus -> Jupiter;
     \\}
