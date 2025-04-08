@@ -2144,7 +2144,39 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             },
         } = .{ .nothing = {} },
 
+        // TODO: abstract
         particles: std.ArrayList(ParticleState),
+        particles_cases: std.ArrayList(CaseParticleState),
+
+        const CaseParticleState = struct {
+            main: CaseState,
+            remaining_lifetime: f32,
+            velocity: Point,
+
+            pub fn initFloater(v: CaseState) CaseParticleState {
+                return .{
+                    .main = v,
+                    .remaining_lifetime = 0.5,
+                    .velocity = .{ .turns = -0.1, .pos = .new(3, -2), .scale = 0.5 },
+                };
+            }
+
+            pub fn draw(self: CaseParticleState, camera: Camera) !void {
+                drawer.setTransparency(@min(1, self.remaining_lifetime));
+                const asdf = try platform.gpa.dupe(CaseState, &.{self.main});
+                defer platform.gpa.free(asdf);
+                try artist.drawPatternSexpr(camera, self.main.pattern_point_relative_to_parent, self.main.pattern);
+                try drawCaseExtra(camera, self.main.pattern_point_relative_to_parent, self.main, null);
+                drawer.setTransparency(1);
+            }
+
+            pub fn update(self: *CaseParticleState, delta_seconds: f32) !void {
+                self.main.pattern_point_relative_to_parent = self.main.pattern_point_relative_to_parent
+                    .applyToLocalPoint(.lerp(.{}, self.velocity, delta_seconds));
+                self.remaining_lifetime -= delta_seconds * 4;
+                self.remaining_lifetime = @max(0, self.remaining_lifetime);
+            }
+        };
 
         const ParticleState = struct {
             main: PhysicalSexpr,
@@ -2709,6 +2741,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 else
                     .none,
                 .particles = .init(platform.gpa),
+                .particles_cases = .init(platform.gpa),
             };
         }
 
@@ -2967,14 +3000,27 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
             }
 
-            for (self.particles.items) |*p| try p.update(delta_seconds);
             {
-                var k: usize = 0;
-                while (k < self.particles.items.len) {
-                    if (self.particles.items[k].remaining_lifetime <= 0) {
-                        _ = self.particles.swapRemove(k);
-                    } else {
-                        k += 1;
+                for (self.particles.items) |*p| try p.update(delta_seconds);
+                {
+                    var k: usize = 0;
+                    while (k < self.particles.items.len) {
+                        if (self.particles.items[k].remaining_lifetime <= 0) {
+                            _ = self.particles.swapRemove(k);
+                        } else {
+                            k += 1;
+                        }
+                    }
+                }
+                for (self.particles_cases.items) |*p| try p.update(delta_seconds);
+                {
+                    var k: usize = 0;
+                    while (k < self.particles_cases.items.len) {
+                        if (self.particles_cases.items[k].remaining_lifetime <= 0) {
+                            _ = self.particles_cases.swapRemove(k);
+                        } else {
+                            k += 1;
+                        }
                     }
                 }
             }
@@ -3002,6 +3048,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 .toolbar_special_case => unreachable,
                             }
                         } else {
+                            try self.particles_cases.append(.initFloater(grabbing.case));
+                            // try addParticlesForCase(&self.particles, grabbing.case);
                             self.focus = .{ .nothing = {} };
                         }
                     },
@@ -3154,6 +3202,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             for (self.particles.items) |p| try p.draw(camera);
+            for (self.particles_cases.items) |p| try p.draw(camera);
 
             const wildcard_names_in_grabbing_sexpr: ?std.ArrayList([]const u8) = blk: {
                 switch (self.focus) {
