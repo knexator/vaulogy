@@ -95,6 +95,14 @@ pub const Sexpr = union(enum) {
         };
     }
 
+    pub fn usesWildcardAnywhere(x: *const Sexpr, v: []const u8) bool {
+        return switch (x.*) {
+            .atom_lit => false,
+            .atom_var => |name| std.mem.eql(u8, v, name.value),
+            .pair => |p| p.left.usesWildcardAnywhere(v) and p.right.usesWildcardAnywhere(v),
+        };
+    }
+
     pub fn assertLit(x: *const Sexpr) void {
         std.debug.assert(x.isFullyResolved());
     }

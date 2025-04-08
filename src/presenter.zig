@@ -1635,6 +1635,17 @@ const CaseGroup = struct {
     cases: std.ArrayListUnmanaged(CaseState),
     unfolded: usize,
 
+    pub fn usesWildcardAnywhere(self: CaseGroup, wildcard_name: []const u8) bool {
+        for (self.cases.items) |asdf| {
+            if (asdf.fnk_name.usesWildcardAnywhere(wildcard_name)) return true;
+            if (asdf.pattern.usesWildcardAnywhere(wildcard_name)) return true;
+            if (asdf.template.usesWildcardAnywhere(wildcard_name)) return true;
+            if (asdf.next) |next| {
+                if (next.usesWildcardAnywhere(wildcard_name)) return true;
+            }
+        } else return false;
+    }
+
     // TODO: revise self.unfolded (make it optional, or ensure its always in bounds)
     pub fn getUnfoldedChild(self: CaseGroup) ?CaseState {
         return safeAt(CaseState, self.cases.items, self.unfolded);
@@ -2267,10 +2278,16 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 random_instance: std.Random.DefaultPrng = std.Random.DefaultPrng.init(0),
                 next_value: *const Sexpr = &Sexpr.doVar("first_var"),
 
-                pub fn next(self: *@This(), mem: *VeryPermamentGameStuff) !void {
+                pub fn next(self: *@This(), mem: *VeryPermamentGameStuff, cases: CaseGroup) !void {
                     const new_name = try mem.gpa.alloc(u8, 10);
-                    Random.init(self.random_instance.random()).alphanumeric_bytes(new_name);
-                    self.next_value = try mem.storeSexpr(Sexpr.doVar(new_name));
+                    while (true) {
+                        Random.init(self.random_instance.random()).alphanumeric_bytes(new_name);
+
+                        if (!cases.usesWildcardAnywhere(new_name)) {
+                            self.next_value = try mem.storeSexpr(Sexpr.doVar(new_name));
+                            break;
+                        }
+                    }
                 }
             } = .{};
 
@@ -2279,10 +2296,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 random_instance: std.Random.DefaultPrng = std.Random.DefaultPrng.init(1),
                 next_var: *const Sexpr = Sexpr.builtin.vars.v1,
 
-                pub fn next(self: *@This(), mem: *VeryPermamentGameStuff) !void {
+                pub fn next(self: *@This(), mem: *VeryPermamentGameStuff, cases: CaseGroup) !void {
                     const new_name = try mem.gpa.alloc(u8, 10);
-                    Random.init(self.random_instance.random()).alphanumeric_bytes(new_name);
-                    self.next_var = try mem.storeSexpr(Sexpr.doVar(new_name));
+                    while (true) {
+                        Random.init(self.random_instance.random()).alphanumeric_bytes(new_name);
+                        if (!cases.usesWildcardAnywhere(new_name)) {
+                            self.next_var = try mem.storeSexpr(Sexpr.doVar(new_name));
+                            break;
+                        }
+                    }
                 }
 
                 pub fn value(self: @This()) CaseState {
@@ -2716,6 +2738,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 solved_samples,
             );
 
+            try toolbar.special_var_state.next(mem, cases);
+            try toolbar.special_case_state.next(mem, cases);
+
             return .{
                 .fnk_name = fnk_name,
                 .samples = builtin_samples,
@@ -3131,7 +3156,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     .case = toolbar.special_case_state.value(),
                                     .address_if_released = null,
                                 } };
-                                try toolbar.special_case_state.next(self.mem);
+                                try toolbar.special_case_state.next(self.mem, self.cases);
                             },
                         }
                     },
@@ -3156,7 +3181,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 (try self.cases.caseRefAt(hovering.address.full_address.case_address)).fnk_name = Sexpr.builtin.identity;
                                 try self.onChangedSomething();
                             } else if (std.meta.activeTag(hovering.address) == .toolbar_special_var) {
-                                try toolbar.special_var_state.next(self.mem);
+                                try toolbar.special_var_state.next(self.mem, self.cases);
                             }
                         }
                     },

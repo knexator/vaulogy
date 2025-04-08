@@ -6,13 +6,11 @@
 - by second level, had forgotten about placing data in main_input to run it
 - 1st tutorial: show a "late" case so the player sees failed matches
 - wildcard: keeps placing new wildcards, maybe rename them to "imitators" or "mimics"
-- prefers permanent main_input
 - avoid solving the mapOlympianPair by hardcoding all cases
 - names for Data: Pieza, Conjunto
 - tut4 (nested cases): don't allow manipulating the parent case
 - editor: warn about repeated wildcards in patterns
 - editor: warn about undefined wildcards in templates
-- confused by copy/paste, maybe draw the old data "vanishing" after replacing it
 - teaching wildcards: having them match a pair could be useful
 - particle effect on the incompatible parts of failed matches
 - wants some common graphical structure to all vau names vs general atoms
@@ -21,6 +19,7 @@
 discarded for now:
 - particle effect when a wildcard starts "resolving"
 - during tutorial, show a 'toast' notification when data binds a wildcard
+- prefers permanent main_input
 
 done:
 - round vaus or ">.. .>" instead of the current "<.. .>", currently they look like arrows
@@ -33,6 +32,7 @@ done:
 - execution is too fast for nested cases
 - cases should hang from a string!
 - mix ryhtms in animation, to highlight the important parts
+- confused by copy/paste, maybe draw the old data "vanishing" after replacing it
 
 ###
 
@@ -66,7 +66,6 @@ done:
 - tries to place case as template & template as case
 - took a while to make "b -> f(a)", maybe do a level like (x . y) -> x to learn about discarding stuff
 - confused about deleting data/cases
-- draw discarded cases on match
 
 discarded:
 - wants to pick wildcard from the broken cable
@@ -78,3 +77,4 @@ done:
 - the wildcard restriction is very much needed
 - level 3: outline where to put the vau position
 - level 4: "you can add cases with this v"
+- draw discarded cases on match
