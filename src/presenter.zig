@@ -2397,7 +2397,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         // TODO: these vars should live on an instance, not the class
         const samples_reel = struct {
-            const top_left: Point = .{ .pos = .new(-6, 0.25), .scale = 0.75 };
+            const top_left: Point = .{ .pos = .new(14.5, -3.5), .scale = 0.75 };
             // TODO: the -1 is a tutorial hack, make it 0 once the scroll bar is finished
             var scroll: f32 = -1;
 
@@ -2476,7 +2476,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     }
                 }
                 drawScrollBar(camera, samples.len);
-                drawer.drawDebugText(camera, .{ .pos = rect.get(.top_center).addY(0.2) }, "tests", .black);
+                drawer.drawDebugText(camera, .{ .pos = rect.get(.top_center).addY(-0.35) }, "tests", .black);
             }
 
             // TODO: mouse-interactable scrollbar
@@ -3365,7 +3365,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         // drawer.drawDebugText(camera, .{ .pos = .new(6, -1.85), .scale = 0.75 }, "↓ That gray thing is the current Data;\nfeel free to change it by\ndropping some other Data on it.", .black);
                         drawer.drawDebugText(camera, .{ .pos = .new(3.5, -4), .scale = 0.75 }, "← Click Play to see the Vau applied to the current Data.", .black);
                     }
-                    drawer.drawDebugText(camera, .{ .pos = .new(-3.25, 7), .scale = 0.75 }, "↑\nThese Tests are the Data\ntransformations your Vau\nmust achieve.", .black);
+                    drawer.drawDebugText(camera, .{ .pos = samples_reel.top_left.pos.add(.new(2.75, 6.75)), .scale = 0.75 }, "↑\nThese Tests are the Data\ntransformations your Vau\nmust achieve.", .black);
                     // drawer.drawDebugText(camera, .{ .pos = .new(10, 1), .scale = 0.75 }, "↓ These are the Cases that make up the Vau.", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(3, 9.5), .scale = 0.75 }, "Once all Tests are green, the Vau is done and you can go to the next one.", .black);
                 },
