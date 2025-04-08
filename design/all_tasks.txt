@@ -1,3 +1,4 @@
 - feedback_tasks.txt
 - don't crash on infinite execution
 - allow skipping known vaus during execution
+- dropped data particle: use mouse velocity
