@@ -3761,7 +3761,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         thread: core.ExecutionThread,
         camera: Camera,
         ui_state: UI.State,
-        result_ui_state: UI.State,
+        good_result_ui_state: UI.State,
+        bad_result_ui_state: UI.State,
 
         // TODO: better rewind
         thread_initial_params: struct {
@@ -3821,10 +3822,15 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     "⏮",
                     "⏭",
                 }) },
-                .result_ui_state = .{ .buttons = try platform.gpa.dupe(UI.Button, &[1]UI.Button{
+                .good_result_ui_state = .{ .buttons = try platform.gpa.dupe(UI.Button, &[1]UI.Button{
                     .{ .pos = .fromCenterAndSize(text_pos.applyToLocalPosition(
                         .new(5, 4),
                     ), .new(3, 1)), .text = "Back to menu" },
+                }) },
+                .bad_result_ui_state = .{ .buttons = try platform.gpa.dupe(UI.Button, &[1]UI.Button{
+                    .{ .pos = .fromCenterAndSize(text_pos.applyToLocalPosition(
+                        .new(5, 4),
+                    ), .new(3, 1)), .text = "Keep editing" },
                 }) },
                 .main_input = if (DESIGN.no_current_data) input else .invalid_field,
                 .expected_output = expected_output,
@@ -3860,12 +3866,19 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     else => return error.TODO,
                 };
 
-            if (self.result) |result| {
-                if (self.anim_t >= 1) {
-                    if (std.meta.activeTag(result) == .result) {
-                        if (self.result_ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button| {
+            if (self.result != null and self.anim_t >= 1) {
+                if (self.all_tests_good) |all_tests_good| {
+                    if (all_tests_good) {
+                        if (self.good_result_ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button| {
                             switch (pressed_button) {
                                 0 => return .back_to_menu,
+                                else => return error.TODO,
+                            }
+                        }
+                    } else {
+                        if (self.bad_result_ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button| {
+                            switch (pressed_button) {
+                                0 => return .back_to_editing,
                                 else => return error.TODO,
                             }
                         }
@@ -3967,9 +3980,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             if (self.all_tests_good) |all_tests_good| {
                                 if (all_tests_good) {
                                     drawer.drawDebugText(camera, text_pos.applyToLocalPoint(.{ .pos = .new(3, 2), .scale = 0.4 }), "All Tests complete!", .black);
-                                    self.result_ui_state.draw(drawer);
+                                    self.good_result_ui_state.draw(drawer);
                                 } else {
-                                    drawer.drawDebugText(camera, text_pos.applyToLocalPoint(.{ .pos = .new(3, 2), .scale = 0.4 }), "Failed this Test.", .black);
+                                    drawer.drawDebugText(camera, text_pos.applyToLocalPoint(.{ .pos = .new(3, 2), .scale = 0.4 }), "Failed this Test", .black);
+                                    self.bad_result_ui_state.draw(drawer);
                                 }
                             }
                         },
