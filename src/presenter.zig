@@ -4044,14 +4044,14 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             switch (self.anim_state) {
                 .paused => {},
                 .normal => |speed| {
-                    self.anim_t += debug_slowdown * speed * delta_seconds * BASE_SPEED * stepSpeed(self.anim_t, self.thread.last_visual_state, self.thread.stack.items.len);
+                    self.anim_t += debug_slowdown * speed * delta_seconds * BASE_SPEED * self.curStepSpeed();
                     if (self.anim_t >= 1 and self.result != null) {
                         self.anim_t = 1;
                         self.anim_state = .paused;
                     }
                 },
                 .advancing => {
-                    const advance_step_size = delta_seconds * SKIP_SPEED_MULT * BASE_SPEED * stepSpeed(self.anim_t, self.thread.last_visual_state, self.thread.stack.items.len);
+                    const advance_step_size = delta_seconds * SKIP_SPEED_MULT * BASE_SPEED * self.curStepSpeed();
                     self.anim_t += advance_step_size;
                     if (self.anim_t >= 1) {
                         self.anim_t = 1;
@@ -4060,7 +4060,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .backwards => |*asdf| {
                     if (asdf.*) |x| {
-                        const advance_step_size = delta_seconds * SKIP_SPEED_MULT * BASE_SPEED * stepSpeed(self.anim_t, self.thread.last_visual_state, self.thread.stack.items.len);
+                        const advance_step_size = delta_seconds * SKIP_SPEED_MULT * BASE_SPEED * self.curStepSpeed();
                         self.anim_t -= advance_step_size;
                         if (self.anim_t < 0) {
                             self.anim_t += 1;
@@ -4070,7 +4070,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             asdf.* = null;
                         }
                     } else {
-                        const advance_step_size = delta_seconds * SKIP_SPEED_MULT * BASE_SPEED * stepSpeed(self.anim_t, self.thread.last_visual_state, self.thread.stack.items.len);
+                        const advance_step_size = delta_seconds * SKIP_SPEED_MULT * BASE_SPEED * self.curStepSpeed();
                         self.anim_t -= advance_step_size;
                         if (self.anim_t <= 0.0) {
                             self.anim_t = @max(0.0, self.anim_t);
@@ -4094,10 +4094,14 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             // }
         }
 
-        fn stepSpeed(anim_t: f32, state: core.ExecutionThread.VisualState, execution_stack_count: usize) f32 {
+        fn curStepSpeed(self: Self) f32 {
+            return stepSpeed(self.anim_t, self.thread.last_visual_state, self.thread.stack.items.len, self.result_point_for_test != null);
+        }
+
+        fn stepSpeed(anim_t: f32, state: core.ExecutionThread.VisualState, execution_stack_count: usize, is_test: bool) f32 {
             return switch (state) {
                 .just_started => @panic("TODO"),
-                .ended => lerp(2, 4, anim_t),
+                .ended => if (is_test) 1 else lerp(2, 4, anim_t),
                 else => 1,
                 .matched => |matched| if (matched.added_new_fnk_to_stack and anim_t > 0.5)
                     lerp(0.5, 0.8, math.smoothstep(anim_t, 0.7, 0.9))
