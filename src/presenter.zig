@@ -444,6 +444,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             editing_fnk: EditingFnk(platform, drawer),
             editing_fnk_to_testing: EditingFnkToTesting(platform, drawer),
             executing_fnk: ExecutingFnk(platform, drawer),
+            testing_fnk: TestingFnk(platform, drawer),
         },
         // kinda hacky, could maybe be a stack
         prev_editing_state: ?EditingFnk(platform, drawer),
@@ -513,6 +514,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 .level_select_to_editing_fnk => |*anim| if (anim.update(delta_seconds)) {
                     try self.initEditing(anim.level.fnk_name, anim.level.manual_samples);
                 },
+                // TODO: remove?
                 .editing_fnk_to_testing => |*anim| if (try anim.update(delta_seconds, &self.mem)) {
                     self.scoring_run = try core.ScoringRun.initFromFnks(
                         self.persistence.fnks,
@@ -546,25 +548,13 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         try self.persistence.updateSolvedStatusOfAll(&self.mem);
                         try platform.setPlayerData(self.persistence, &self.mem);
                         self.prev_editing_state = editing.*;
-                        const failing_sample_index: ?usize = blk: for (editing.solved_samples, 0..) |value, k| {
-                            if (!value) break :blk k;
-                        } else null;
-                        const sample_index: usize = failing_sample_index orelse @intFromFloat(1.5 + @TypeOf(editing.*).samples_reel.scroll);
-                        self.state = .{ .editing_fnk_to_testing = .init(
+                        self.state = .{ .testing_fnk = .init(
                             editing.camera,
-                            .{
-                                .value = editing.samples[sample_index].input,
-                                .pos = @TypeOf(editing.*).samples_reel.getPoint(sample_index, .input),
-                                .is_pattern = 0,
-                            },
-                            .{
-                                .value = editing.samples[sample_index].output.?,
-                                .pos = @TypeOf(editing.*).samples_reel.getPoint(sample_index, .output),
-                                .is_pattern = 0,
-                            },
+                            editing.samples,
+                            editing.solved_samples,
                             editing.fnk_name,
                             editing.cases,
-                            failing_sample_index == null,
+                            try .initFromFnks(self.persistence.fnks, &self.mem),
                         ) };
                     },
                     .launch_execution => |input| {
@@ -604,6 +594,10 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         self.prev_editing_state = null;
                         self.state = .{ .level_select = try .init(&self.persistence) };
                     },
+                },
+                .testing_fnk => |*testing| switch (try testing.update(delta_seconds, &self.mem)) {
+                    .nothing => {},
+                    .back_to_editing => self.state = .{ .editing_fnk = self.prev_editing_state.? },
                 },
                 inline else => |*x| x.update(delta_seconds),
             }
@@ -1812,6 +1806,134 @@ const CaseGroup = struct {
         }
     }
 };
+
+fn TestingFnk(platform: Platform, drawer: Drawer) type {
+    return struct {
+        const Self = @This();
+        const artist = Artist(platform, drawer);
+        const Editing = EditingFnk(platform, drawer);
+
+        cur_sample_index: usize,
+        state: union(enum) {
+            starting: struct {
+                t: f32,
+            },
+            executing: ExecutingFnk(platform, drawer),
+        },
+        samples: []const Sample,
+        solved_samples: []const bool,
+        fnk_name: *const Sexpr,
+        fnk_cases: CaseGroup,
+        scoring_run: core.ScoringRun,
+        camera: Camera,
+
+        pub fn init(
+            camera: Camera,
+            samples: []const Sample,
+            solved_samples: []const bool,
+            fnk_name: *const Sexpr,
+            fnk_cases: CaseGroup,
+            scoring_run: core.ScoringRun,
+        ) Self {
+            var cases = fnk_cases;
+            cases.setAllUnfoldedToZero();
+            return .{
+                .cur_sample_index = 0,
+                .state = .{ .starting = .{ .t = 0 } },
+                .camera = camera,
+                .samples = samples,
+                .solved_samples = solved_samples,
+                .fnk_name = fnk_name,
+                .fnk_cases = cases,
+                .scoring_run = scoring_run,
+            };
+        }
+
+        pub fn update(self: *Self, delta_seconds: f32, mem: *VeryPermamentGameStuff) !enum { nothing, back_to_editing } {
+            switch (self.state) {
+                .starting => |*starting| {
+                    math.towards(&starting.t, 1, delta_seconds / 0.5);
+                    _ = try EditingFnk(platform, drawer).updateCasePositionsAndReturnMouseOverlap(
+                        mem,
+                        &.{},
+                        null,
+                        self.fnk_cases,
+                        delta_seconds,
+                    );
+
+                    if (starting.t >= 1) {
+                        self.state = .{ .executing = try .init(
+                            .{
+                                .value = self.samples[self.cur_sample_index].input,
+                                .is_pattern = 0,
+                                .pos = MAIN_INPUT_POS,
+                            },
+                            self.fnk_name,
+                            &self.scoring_run,
+                            self.camera,
+                            null,
+                            null,
+                        ) };
+                    }
+                },
+                .executing => |*executing| {
+                    _ = try executing.update(delta_seconds);
+                    if (executing.isFinished()) {
+                        if (self.cur_sample_index + 1 < self.samples.len) {
+                            self.cur_sample_index += 1;
+                            self.state = .{ .starting = .{ .t = 0 } };
+                        } else {
+                            return .back_to_editing;
+                        }
+                    }
+                },
+            }
+
+            return .nothing;
+        }
+
+        pub fn draw(self: Self) !void {
+            switch (self.state) {
+                .starting => |starting| {
+                    drawer.clear(Color.gray(128));
+                    try artist.drawSexpr(self.camera, .lerp(
+                        Editing.samples_reel.getPoint(self.cur_sample_index, .input),
+                        MAIN_INPUT_POS,
+                        starting.t,
+                    ), self.samples[self.cur_sample_index].input);
+                    artist.drawOffscreenCableTo(self.camera, MAIN_INPUT_POS);
+                    try artist.drawHoldedFnk(self.camera, MAIN_FNK_POS, 1, self.fnk_name);
+                    try Editing.drawCases(self.camera, true, .{}, self.fnk_cases, null);
+                    try Editing.samples_reel.draw(self.camera, self.samples, self.solved_samples);
+                    drawer.drawRect(self.camera, .fromCenterAndSize(
+                        if (self.cur_sample_index > 0) .lerp(
+                            sampleCenter(self.cur_sample_index - 1),
+                            sampleCenter(self.cur_sample_index),
+                            starting.t,
+                        ) else sampleCenter(self.cur_sample_index),
+                        .new(5.75, 1.75),
+                    ), .white, null);
+                },
+                .executing => |*executing| {
+                    try executing.draw();
+                    try Editing.samples_reel.draw(self.camera, self.samples, self.solved_samples);
+                    drawer.drawRect(self.camera, .fromCenterAndSize(
+                        sampleCenter(self.cur_sample_index),
+                        .new(5.75, 1.75),
+                    ), .white, null);
+                },
+            }
+        }
+
+        fn sampleCenter(index: usize) Vec2 {
+            return Point.lerp(
+                Editing.samples_reel.getPoint(index, .input),
+                Editing.samples_reel.getPoint(index, .output),
+                0.75,
+            ).applyToLocalPosition(.zero);
+        }
+    };
+}
 
 fn EditingFnkToTesting(platform: Platform, drawer: Drawer) type {
     return struct {
@@ -3856,6 +3978,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             return result;
         }
 
+        pub fn isFinished(self: Self) bool {
+            return self.result != null and self.anim_t >= 1;
+        }
+
         pub fn update(self: *Self, delta_seconds: f32) OoM!union(enum) { nothing, back_to_editing, back_to_menu } {
             if (self.ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button|
                 switch (pressed_button) {
@@ -3877,7 +4003,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     else => return error.TODO,
                 };
 
-            if (self.result != null and self.anim_t >= 1) {
+            if (self.isFinished()) {
                 if (self.all_tests_good) |all_tests_good| {
                     if (all_tests_good) {
                         if (self.good_result_ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button| {
