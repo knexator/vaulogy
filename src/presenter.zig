@@ -4100,7 +4100,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         fn stepSpeed(anim_t: f32, state: core.ExecutionThread.VisualState, execution_stack_count: usize, is_test: bool) f32 {
             return switch (state) {
                 .just_started => @panic("TODO"),
-                .ended => if (is_test) 1 else lerp(2, 4, anim_t),
+                .ended => if (is_test) lerp(1.2, 0.8, anim_t) else lerp(2, 4, anim_t),
                 else => 1,
                 .matched => |matched| if (matched.added_new_fnk_to_stack and anim_t > 0.5)
                     lerp(0.5, 0.8, math.smoothstep(anim_t, 0.7, 0.9))
