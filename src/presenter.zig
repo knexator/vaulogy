@@ -1901,7 +1901,7 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn draw(self: Self) !void {
-            try Editing.samples_reel.draw(self.camera, self.samples, self.solved_samples);
+            try Editing.samples_reel.draw(self.camera, self.samples, self.solved_samples, self.cur_sample_index);
             switch (self.state) {
                 .starting => |starting| {
                     try artist.drawSexpr(self.camera, .lerp(
@@ -2262,6 +2262,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         // TODO: allow user-created Samples
         samples: []const Sample,
         solved_samples: []bool,
+        display_solved_status: bool = false,
         fnk_name: *const Sexpr,
         available_fnks: []const *const Sexpr,
         cases: CaseGroup,
@@ -2527,8 +2528,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             // TODO: the -1 is a tutorial hack, make it 0 once the scroll bar is finished
             var scroll: f32 = -1;
 
-            var display_solved_status: bool = false;
-
             const rect: Rect = .{ .top_left = top_left.pos, .size = Vec2.new(7, 7.5).scale(top_left.scale) };
 
             const N_VISIBLE_SAMPLES = 3;
@@ -2578,14 +2577,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 return null;
             }
 
-            pub fn draw(camera: Camera, samples: []const Sample, solved_status: []const bool) !void {
+            pub fn draw(camera: Camera, samples: []const Sample, solved_status: []const bool, n_revealed_cases: usize) !void {
                 std.debug.assert(samples.len == solved_status.len);
                 drawer.drawRect(camera, rect, .black, null);
                 for (samples, solved_status, 0..) |sample, solved, k| {
                     drawer.drawArrowForSample(camera, getPoint(k, .output).applyToLocalPoint(.{
                         .pos = .new(-1.25, 0),
                         .scale = 0.25,
-                    }), if (display_solved_status) solved else null);
+                    }), if (k < n_revealed_cases) solved else null);
                     try artist.drawSexpr(
                         camera,
                         getPoint(k, .input),
@@ -2909,7 +2908,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         // TODO: don't call this if nothing actually changed
         fn onChangedSomething(self: *Self) !void {
-            samples_reel.display_solved_status = false;
+            self.display_solved_status = false;
             try updateSolvedSamples(try self.getFnk(), self.samples, self.persistence, self.mem, self.solved_samples);
             _ = try self.cases.updateWildcards(platform.gpa);
         }
@@ -2969,7 +2968,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     0 => return .back_to_level_select,
                     1 => self.camera = DEFAULT_CAM,
                     2 => {
-                        samples_reel.display_solved_status = true;
+                        self.display_solved_status = true;
                         return .launch_test;
                     },
                     3 => if (DESIGN.no_current_data) unreachable else return .launch_execution,
@@ -3383,7 +3382,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             //     .hidden => {},
             // }
 
-            try samples_reel.draw(camera, self.samples, self.solved_samples);
+            try samples_reel.draw(camera, self.samples, self.solved_samples, if (self.display_solved_status) self.solved_samples.len else 0);
             if (self.tutorial_state.allowPickingVaus()) try fnks_reel.draw(camera, self.available_fnks, self.tutorial_state.getFnksReel());
             if (self.tutorial_state.allowCreatingVaus()) try fnk_manager.draw(camera);
             if (self.meta_enabled) try meta_converter.draw(camera);
