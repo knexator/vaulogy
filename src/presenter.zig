@@ -1856,13 +1856,14 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
             switch (self.state) {
                 .starting => |*starting| {
                     math.towards(&starting.t, 1, delta_seconds / 0.5);
-                    _ = try EditingFnk(platform, drawer).updateCasePositionsAndReturnMouseOverlap(
+                    _ = try Editing.updateCasePositionsAndReturnMouseOverlap(
                         mem,
                         &.{},
                         null,
                         self.fnk_cases,
                         delta_seconds,
                     );
+                    math.lerp_towards(&Editing.samples_reel.scroll, clamp(tof32(self.cur_sample_index) - 1, 0, Editing.samples_reel.getMaxScroll(self.samples.len)), 0.1, delta_seconds);
 
                     if (starting.t >= 1) {
                         self.state = .{ .executing = try .init(
