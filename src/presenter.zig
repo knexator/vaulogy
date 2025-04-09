@@ -3494,16 +3494,16 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     drawer.drawDebugText(camera, .{ .pos = .new(3, 9.5), .scale = 0.75 }, "Once all Tests are green, the Vau is done and you can go to the next one.", .black);
                 },
                 .second_level => {
-                    drawer.drawDebugText(camera, .{ .pos = .new(11, -3.5), .scale = 0.75 }, "↓ This special Data is called a Wildcard, and will match with any other Data.", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(7, -3.75), .scale = 0.75 }, "↓ This special Data is called a Wildcard,\nand will match with any other Data.", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(8, 8), .scale = 0.75 }, "All the Tests for this Vau have the same structure; use a Wildcard to solve them with a single Case.", .black);
                 },
                 .third_level => {
                     drawer.drawDebugText(camera, .{ .pos = .new(2.5, 7.25), .scale = 0.75 }, "← your collection of Vaus.", .black);
-                    drawer.drawDebugText(camera, .{ .pos = .new(14.35, 0.75), .scale = 0.75 }, "↓ Place a Vau name here to call it on the result.", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(9, 0.6), .scale = 0.75 }, "Place a Vau name here to call it on the result.\n↓", .black);
                     if (!DESIGN.no_current_data) drawer.drawDebugText(camera, .{ .pos = .new(2.5, -4), .scale = 0.75 }, "← Don't forget to hit Play to see the Vau in action!", .black);
                 },
                 .fourth_level => {
-                    drawer.drawDebugText(camera, .{ .pos = .new(14, -3.5), .scale = 0.75 }, "↓ Use this to add new Cases.", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(8.125, -3.5), .scale = 0.75 }, "Add new cases with this ↓", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(3, 6), .scale = 0.75 }, "Nested Cases will\nbe called on the result →", .black);
                 },
                 .fifth_level => {
