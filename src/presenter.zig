@@ -1877,7 +1877,10 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
                     }
                 },
                 .executing => |*executing| {
-                    _ = try executing.update(delta_seconds);
+                    switch (try executing.update(delta_seconds)) {
+                        .nothing => {},
+                        .back_to_menu, .back_to_editing => return .back_to_editing,
+                    }
                     if (executing.isFinished()) {
                         if (self.cur_sample_index + 1 < self.samples.len) {
                             self.cur_sample_index += 1;
