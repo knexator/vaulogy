@@ -531,6 +531,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         anim.camera,
                         anim.output.value,
                         anim.all_tests_good,
+                        null,
                     ) };
                 },
                 .editing_fnk => |*editing| switch (try editing.update(delta_seconds)) {
@@ -574,6 +575,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                             editing.camera,
                             null,
                             null,
+                            null,
                         ) };
                     },
                     .change_to => |fnk_name| {
@@ -604,6 +606,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn draw(self: Self) OoM!void {
+            drawer.clear(Color.gray(128));
             try switch (self.state) {
                 inline else => |x| x.draw(),
             };
@@ -1873,6 +1876,7 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
                             self.camera,
                             null,
                             null,
+                            Editing.samples_reel.getPoint(self.cur_sample_index, .output),
                         ) };
                     }
                 },
@@ -1896,9 +1900,9 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn draw(self: Self) !void {
+            try Editing.samples_reel.draw(self.camera, self.samples, self.solved_samples);
             switch (self.state) {
                 .starting => |starting| {
-                    drawer.clear(Color.gray(128));
                     try artist.drawSexpr(self.camera, .lerp(
                         Editing.samples_reel.getPoint(self.cur_sample_index, .input),
                         MAIN_INPUT_POS,
@@ -1907,7 +1911,6 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
                     artist.drawOffscreenCableTo(self.camera, MAIN_INPUT_POS);
                     try artist.drawHoldedFnk(self.camera, MAIN_FNK_POS, 1, self.fnk_name);
                     try Editing.drawCases(self.camera, true, .{}, self.fnk_cases, null);
-                    try Editing.samples_reel.draw(self.camera, self.samples, self.solved_samples);
                     drawer.drawRect(self.camera, .fromCenterAndSize(
                         if (self.cur_sample_index > 0) .lerp(
                             sampleCenter(self.cur_sample_index - 1),
@@ -1919,7 +1922,6 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .executing => |*executing| {
                     try executing.draw();
-                    try Editing.samples_reel.draw(self.camera, self.samples, self.solved_samples);
                     drawer.drawRect(self.camera, .fromCenterAndSize(
                         sampleCenter(self.cur_sample_index),
                         .new(5.75, 1.75),
@@ -1986,7 +1988,6 @@ fn EditingFnkToTesting(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn draw(self: Self) !void {
-            drawer.clear(Color.gray(128));
             try artist.drawSexpr(self.camera, .lerp(self.input.pos, MAIN_INPUT_POS, self.t), self.input.value);
             try artist.drawSexpr(self.camera, .lerp(self.output.pos, ExecutingFnk(platform, drawer).expected_output_pos, self.t), self.output.value);
             {
@@ -2028,7 +2029,6 @@ fn LevelSelectToEditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn draw(self: Self) !void {
-            drawer.clear(Color.gray(128));
             try artist.drawHoldedFnk(camera, Point.lerp(self.starting_point, MAIN_FNK_POS, self.t), 1, self.level.fnk_name);
         }
     };
@@ -3351,7 +3351,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         pub fn draw(self: Self) !void {
             const camera = self.camera;
-            drawer.clear(Color.gray(128));
             {
                 artist.drawOffscreenCableTo(camera, MAIN_INPUT_POS);
                 if (!DESIGN.no_current_data) try artist.drawSexpr(
@@ -3930,8 +3929,12 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
         result: ?core.ExecutionThread.Result = null,
         main_input: if (DESIGN.no_current_data) PhysicalSexpr else enum { invalid_field },
+
+        // TODO: remove these
         expected_output: ?*const Sexpr,
         all_tests_good: ?bool = null,
+
+        result_point_for_test: ?Point,
 
         pub fn init(
             input: if (DESIGN.no_current_data) PhysicalSexpr else *const Sexpr,
@@ -3940,6 +3943,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             camera: Camera,
             expected_output: ?*const Sexpr,
             all_tests_good: ?bool,
+            result_point_for_test: ?Point,
         ) !Self {
             const thread_initial_params: @FieldType(Self, "thread_initial_params") = .{
                 .value = if (DESIGN.no_current_data) input.value else input,
@@ -3971,6 +3975,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 .main_input = if (DESIGN.no_current_data) input else .invalid_field,
                 .expected_output = expected_output,
                 .all_tests_good = all_tests_good,
+                .result_point_for_test = result_point_for_test,
             };
 
             // for now, skip the "start" anim
@@ -4103,8 +4108,6 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn draw(self: Self) !void {
-            drawer.clear(Color.gray(128));
-
             if (self.expected_output) |expected_result| {
                 try drawExpected(expected_result);
             }
@@ -4115,15 +4118,17 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
                     switch (result) {
                         .result => |value| {
-                            drawer.drawDebugText(camera, text_pos, "Result:", .black);
-                            try artist.drawSexpr(camera, result_pos, value);
-                            if (self.all_tests_good) |all_tests_good| {
-                                if (all_tests_good) {
-                                    drawer.drawDebugText(camera, text_pos.applyToLocalPoint(.{ .pos = .new(3, 2), .scale = 0.4 }), "All Tests complete!", .black);
-                                    self.good_result_ui_state.draw(drawer);
-                                } else {
-                                    drawer.drawDebugText(camera, text_pos.applyToLocalPoint(.{ .pos = .new(3, 2), .scale = 0.4 }), "Failed this Test", .black);
-                                    self.bad_result_ui_state.draw(drawer);
+                            if (self.result_point_for_test == null) {
+                                drawer.drawDebugText(camera, text_pos, "Result:", .black);
+                                try artist.drawSexpr(camera, result_pos, value);
+                                if (self.all_tests_good) |all_tests_good| {
+                                    if (all_tests_good) {
+                                        drawer.drawDebugText(camera, text_pos.applyToLocalPoint(.{ .pos = .new(3, 2), .scale = 0.4 }), "All Tests complete!", .black);
+                                        self.good_result_ui_state.draw(drawer);
+                                    } else {
+                                        drawer.drawDebugText(camera, text_pos.applyToLocalPoint(.{ .pos = .new(3, 2), .scale = 0.4 }), "Failed this Test", .black);
+                                        self.bad_result_ui_state.draw(drawer);
+                                    }
                                 }
                             }
                         },
@@ -4538,7 +4543,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .ended => |result| {
                     const cam = Camera.lerp(camera, DEFAULT_CAM, self.anim_t);
-                    const p = Point.lerp(MAIN_INPUT_POS, result_pos, self.anim_t);
+                    const p = Point.lerp(MAIN_INPUT_POS, self.result_point_for_test orelse result_pos, self.anim_t);
                     artist.drawOffscreenCableTo(cam, p);
                     try artist.drawSexpr(cam, p, result);
                 },
@@ -4967,7 +4972,6 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn draw(self: Self) OoM!void {
-            drawer.clear(Color.gray(128));
             for (self.level_select_buttons.buttons, 0..) |button, k| {
                 if (!button.enabled) drawer.setTransparency(0.5);
                 defer if (!button.enabled) drawer.setTransparency(1);
@@ -5087,7 +5091,6 @@ pub fn IntroSequence(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn draw(self: Self) void {
-            drawer.clear(Color.gray(128));
             const camera = Camera.lerp(
                 initial_camera,
                 second_camera,
