@@ -2857,13 +2857,25 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             _ = try cases.updateWildcards(platform.gpa);
             const main_input: *const Sexpr = Sexpr.builtin.nil;
 
-            const ui_state = UI.State{ .buttons = try UI.Button.row(platform.gpa, .zero, .one, &(.{
-                "Back",
-                "Reset\nView",
-                "Check",
-            } ++ if (DESIGN.no_current_data) .{} else .{
-                "⏵",
-            })) };
+            const ui_state = UI.State{
+                .buttons = try UI.Button.rowWithExtra(platform.gpa, .zero, .one, &(.{
+                    "Back",
+                    "Reset\nView",
+                    // TODO: remove this one
+                    "Check",
+                } ++ if (DESIGN.no_current_data) .{} else .{
+                    "⏵",
+                }), &[1]UI.Button{
+                    .{
+                        // .pos = .fromCenterAndSize(samples_reel.rect.top_left, .new(3, 1)),
+                        .pos = .from(.{
+                            .{ .bottom_center = samples_reel.rect.get(.top_center) },
+                            .{ .size = .new(3, 1) },
+                        }),
+                        .text = "Check",
+                    },
+                }),
+            };
 
             const solved_samples = try mem.gpa.alloc(bool, builtin_samples.len);
             try updateSolvedSamples(
@@ -4923,6 +4935,15 @@ const UI = struct {
             for (texts, result, 0..) |text, *target, k| {
                 target.* = .{ .pos = Rect{ .top_left = top_left.addX(size.x * tof32(k)), .size = size }, .text = text };
             }
+            return result;
+        }
+
+        pub fn rowWithExtra(alloc: std.mem.Allocator, top_left: Vec2, size: Vec2, texts: []const ?[:0]const u8, extra: []const Button) ![]Button {
+            const result: []Button = try alloc.alloc(Button, texts.len + extra.len);
+            for (texts, result[0..texts.len], 0..) |text, *target, k| {
+                target.* = .{ .pos = Rect{ .top_left = top_left.addX(size.x * tof32(k)), .size = size }, .text = text };
+            }
+            @memcpy(result[texts.len..], extra);
             return result;
         }
     };

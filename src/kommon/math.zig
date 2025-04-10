@@ -275,10 +275,21 @@ pub const Rect = struct {
         return self.top_left.add(self.size.scale(0.5));
     }
 
-    pub fn get(self: Rect, which: enum { top_center, top_right }) Vec2 {
+    // TODO: autogen from enum
+    /// They are all Vec2 since otherwise .get wouldn't know what to return
+    const Measure = union(enum) {
+        top_center: Vec2,
+        top_right: Vec2,
+        bottom_center: Vec2,
+        size: Vec2,
+    };
+
+    pub fn get(self: Rect, which: std.meta.FieldEnum(Measure)) Vec2 {
         return switch (which) {
             .top_center => self.top_left.addX(self.size.x / 2),
             .top_right => self.top_left.addX(self.size.x),
+            .size => self.size,
+            .bottom_center => self.top_left.add(self.size.mul(.new(0.5, 1))),
         };
     }
 
@@ -293,6 +304,20 @@ pub const Rect = struct {
 
     pub fn fromCenterAndSize(center: Vec2, size: Vec2) Rect {
         return .{ .top_left = center.sub(size.scale(0.5)), .size = size };
+    }
+
+    pub fn from(measures: [2]Measure) Rect {
+        switch (measures[0]) {
+            else => @panic("TODO"),
+            .bottom_center => |bottom_center| {
+                switch (measures[1]) {
+                    else => @panic("TODO"),
+                    .size => |size| {
+                        return .{ .size = size, .top_left = bottom_center.sub(size.mul(.new(0.5, 1))) };
+                    },
+                }
+            },
+        }
     }
 };
 
