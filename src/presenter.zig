@@ -1855,7 +1855,7 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
         pub fn update(self: *Self, delta_seconds: f32, mem: *VeryPermamentGameStuff) !enum { nothing, back_to_editing } {
             switch (self.state) {
                 .starting => |*starting| {
-                    math.towards(&starting.t, 1, delta_seconds / 0.5);
+                    math.towards(&starting.t, 1, delta_seconds / 0.75);
                     _ = try Editing.updateCasePositionsAndReturnMouseOverlap(
                         mem,
                         &.{},
@@ -1907,7 +1907,7 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
                     try artist.drawSexpr(self.camera, .lerp(
                         Editing.samples_reel.getWorldPoint(self.camera, self.cur_sample_index, .input),
                         MAIN_INPUT_POS,
-                        starting.t,
+                        math.smoothstep(starting.t, 0.15, 1),
                     ), self.samples[self.cur_sample_index].input);
                     artist.drawOffscreenCableTo(self.camera, MAIN_INPUT_POS);
                     try artist.drawHoldedFnk(self.camera, MAIN_FNK_POS, 1, self.fnk_name);
@@ -1916,7 +1916,7 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
                         if (self.cur_sample_index > 0) .lerp(
                             sampleCenter(self.cur_sample_index - 1),
                             sampleCenter(self.cur_sample_index),
-                            starting.t,
+                            clamp01(remap(starting.t, 0, 0.2, 0, 1)),
                         ) else sampleCenter(self.cur_sample_index),
                         .new(5.75, 1.75),
                     ), .white, null);
@@ -2610,7 +2610,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     }
                 }
                 drawScrollBar(samples.len);
-                drawer.drawDebugText(camera, .{ .pos = rect.get(.top_center).addY(-0.35) }, "tests", .black);
+                // drawer.drawDebugText(camera, .{ .pos = rect.get(.top_center).addY(-0.35) }, "tests", .black);
             }
 
             // TODO: mouse-interactable scrollbar
@@ -2996,7 +2996,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
             }
 
-            inline for (.{ samples_reel, fnks_reel }) |x| {
+            inline for (.{samples_reel}) |x| {
+                if (x.rect.contains(mouse.cur.pos(UI.cam))) {
+                    x.scroll -= delta_seconds * 10 * mouse.cur.scrolled.toNumber();
+                    mouse.cur.scrolled = .none;
+                }
+                x.updateScroll(self.*, delta_seconds);
+            }
+            inline for (.{fnks_reel}) |x| {
                 if (x.rect.contains(mouse.cur.pos(self.camera))) {
                     x.scroll -= delta_seconds * 10 * mouse.cur.scrolled.toNumber();
                     mouse.cur.scrolled = .none;
