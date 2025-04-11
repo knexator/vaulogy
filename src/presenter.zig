@@ -1829,6 +1829,7 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
         fnk_cases: CaseGroup,
         scoring_run: core.ScoringRun,
         camera: Camera,
+        fast: bool,
 
         pub fn init(
             camera: Camera,
@@ -1849,13 +1850,14 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
                 .fnk_name = fnk_name,
                 .fnk_cases = cases,
                 .scoring_run = scoring_run,
+                .fast = false,
             };
         }
 
         pub fn update(self: *Self, delta_seconds: f32, mem: *VeryPermamentGameStuff) !enum { nothing, back_to_editing } {
             switch (self.state) {
                 .starting => |*starting| {
-                    math.towards(&starting.t, 1, delta_seconds / 0.75);
+                    math.towards(&starting.t, 1, (if (self.fast) tof32(4) else tof32(1)) * delta_seconds / 0.75);
                     _ = try Editing.updateCasePositionsAndReturnMouseOverlap(
                         mem,
                         &.{},
@@ -1863,7 +1865,8 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
                         self.fnk_cases,
                         delta_seconds,
                     );
-                    math.lerp_towards(&Editing.samples_reel.scroll, clamp(tof32(self.cur_sample_index) - 1, 0, Editing.samples_reel.getMaxScroll(self.samples.len)), 0.1, delta_seconds);
+                    const target_scroll: f32 = clamp(tof32(self.cur_sample_index) - 1, 0, Editing.samples_reel.getMaxScroll(self.samples.len));
+                    math.lerp_towards(&Editing.samples_reel.scroll, target_scroll, 0.1, delta_seconds);
 
                     if (starting.t >= 1) {
                         self.state = .{ .executing = try .init(
@@ -1879,6 +1882,8 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
                             null,
                             Editing.samples_reel.getUIPoint(self.cur_sample_index, .output),
                         ) };
+                        self.state.executing.fast = self.fast;
+                        Editing.samples_reel.scroll = target_scroll;
                     }
                 },
                 .executing => |*executing| {
@@ -1887,6 +1892,7 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
                         .back_to_menu, .back_to_editing => return .back_to_editing,
                     }
                     if (executing.isFinished()) {
+                        self.fast = executing.fast;
                         if (self.cur_sample_index + 1 < self.samples.len) {
                             self.cur_sample_index += 1;
                             self.state = .{ .starting = .{ .t = 0 } };
@@ -3948,12 +3954,12 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
         anim_t: f32 = 0,
         anim_state: union(enum) {
-            /// speed multiplier
-            normal: f32,
+            normal,
             paused,
             advancing,
             backwards: ?core.ExecutionThread,
-        } = .{ .normal = 1 },
+        } = .normal,
+        fast: bool = false,
 
         result: ?core.ExecutionThread.Result = null,
         main_input: if (DESIGN.no_current_data) PhysicalSexpr else enum { invalid_field },
@@ -4024,10 +4030,13 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     0 => return .back_to_editing,
                     1 => self.camera = DEFAULT_CAM,
                     2 => self.anim_state = switch (self.anim_state) {
-                        .paused => .{ .normal = 1 },
+                        .paused => .normal,
                         else => .paused,
                     },
-                    3 => self.anim_state = .{ .normal = 4 },
+                    3 => {
+                        self.anim_state = .normal;
+                        self.fast = !self.fast;
+                    },
                     4 => self.anim_state = .{ .backwards = if (self.done_steps == 0 or self.anim_t > 0)
                         null
                     else
@@ -4070,7 +4079,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             const debug_slowdown: f32 = if (platform.getMouse().cur.isDown(.right)) 0.05 else 1;
             switch (self.anim_state) {
                 .paused => {},
-                .normal => |speed| {
+                .normal => {
+                    const speed: f32 = if (self.fast) 4 else 1;
                     self.anim_t += debug_slowdown * speed * delta_seconds * BASE_SPEED * self.curStepSpeed();
                     if (self.anim_t >= 1 and self.result != null) {
                         self.anim_t = 1;
