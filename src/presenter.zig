@@ -3417,6 +3417,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             // }
 
             try samples_reel.draw(self.samples, self.solved_samples, if (self.display_solved_status) self.solved_samples.len else 0);
+            if (self.display_solved_status and allTrue(self.solved_samples)) {
+                drawer.drawDebugText(UI.cam, .{ .pos = samples_reel.top_left.pos.add(.new(2.75, 6)), .scale = 0.75 }, "All Tests passed!", .black);
+            }
             if (self.tutorial_state.allowPickingVaus()) try fnks_reel.draw(camera, self.available_fnks, self.tutorial_state.getFnksReel());
             if (self.tutorial_state.allowCreatingVaus()) try fnk_manager.draw(camera);
             if (self.meta_enabled) try meta_converter.draw(camera);
@@ -3523,9 +3526,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         // drawer.drawDebugText(camera, .{ .pos = .new(6, -1.85), .scale = 0.75 }, "↓ That gray thing is the current Data;\nfeel free to change it by\ndropping some other Data on it.", .black);
                         drawer.drawDebugText(camera, .{ .pos = .new(3.5, -4), .scale = 0.75 }, "← Click Play to see the Vau applied to the current Data.", .black);
                     }
-                    drawer.drawDebugText(UI.cam, .{ .pos = samples_reel.top_left.pos.add(.new(2.75, 6.75)), .scale = 0.75 }, "↑\nThese Tests are the Data\ntransformations your Vau\nmust achieve.", .black);
                     // drawer.drawDebugText(camera, .{ .pos = .new(10, 1), .scale = 0.75 }, "↓ These are the Cases that make up the Vau.", .black);
-                    drawer.drawDebugText(camera, .{ .pos = .new(3, 9.5), .scale = 0.75 }, "Once all Tests are green, the Vau is done and you can go to the next one.", .black);
+                    // TODO NOW
+                    if (!(self.display_solved_status and allTrue(self.solved_samples))) {
+                        drawer.drawDebugText(UI.cam, .{ .pos = samples_reel.top_left.pos.add(.new(2.75, 6.75)), .scale = 0.75 }, "↑\nThese Tests are the Data\ntransformations your Vau\nmust achieve.", .black);
+                    } else {
+                        drawer.drawDebugText(camera, .{ .pos = .new(3, 9.5), .scale = 0.75 }, "Once all Tests are green, the Vau is done and you can go to the next one.", .black);
+                    }
                 },
                 .second_level => {
                     drawer.drawDebugText(camera, .{ .pos = .new(7, -3.75), .scale = 0.75 }, "↓ This special Data is called a Wildcard,\nand will match with any other Data.", .black);
@@ -5240,4 +5247,10 @@ fn removeBoundNamesV3(list: *std.ArrayList([]const u8), bindings: BindingsState)
     if (if (bindings.anim_t) |t| t > 0.4 else false) {
         try removeBoundNames(list, bindings.new);
     }
+}
+
+fn allTrue(arr: []const bool) bool {
+    for (arr) |v| {
+        if (!v) return false;
+    } else return true;
 }
