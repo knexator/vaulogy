@@ -2483,7 +2483,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
             } = .{};
 
-            const special_case_point = Point{ .pos = .new(11, -2.5), .scale = 0.5 };
+            const special_case_point = things[things.len - 1].point.applyToLocalPoint(.{ .pos = .new(5.4, 0) });
             var special_case_state: struct {
                 random_instance: std.Random.DefaultPrng = std.Random.DefaultPrng.init(1),
                 next_var: *const Sexpr = Sexpr.builtin.vars.v1,
