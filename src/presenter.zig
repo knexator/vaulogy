@@ -549,7 +549,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         try self.persistence.updateSolvedStatusOfAll(&self.mem);
                         try platform.setPlayerData(self.persistence, &self.mem);
                         self.prev_editing_state = editing.*;
-                        self.state = .{ .testing_fnk = .init(
+                        self.state = .{ .testing_fnk = try .init(
                             editing.camera,
                             editing.samples,
                             editing.solved_samples,
@@ -1832,6 +1832,7 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
         camera: Camera,
         fast: bool,
         samples_reel: Editing.SamplesReel,
+        ui_state: UI.State,
 
         pub fn init(
             camera: Camera,
@@ -1841,7 +1842,7 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
             fnk_cases: CaseGroup,
             scoring_run: core.ScoringRun,
             samples_reel: Editing.SamplesReel,
-        ) Self {
+        ) !Self {
             var cases = fnk_cases;
             cases.setAllUnfoldedToZero();
             return .{
@@ -1855,12 +1856,23 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
                 .scoring_run = scoring_run,
                 .fast = false,
                 .samples_reel = samples_reel,
+                .ui_state = .{ .buttons = try UI.Button.row(platform.gpa, .zero, .one, &.{
+                    "⏹",
+                    "Reset\nView",
+                }) },
             };
         }
 
         pub fn update(self: *Self, delta_seconds: f32, mem: *VeryPermamentGameStuff) !enum { nothing, back_to_editing } {
             switch (self.state) {
                 .starting => |*starting| {
+                    if (self.ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button| {
+                        switch (pressed_button) {
+                            0 => return .back_to_editing,
+                            1 => self.camera = DEFAULT_CAM,
+                            else => return error.TODO,
+                        }
+                    }
                     math.towards(&starting.t, 1, (if (self.fast) tof32(4) else tof32(1)) * delta_seconds / 0.75);
                     _ = try Editing.updateCasePositionsAndReturnMouseOverlap(
                         mem,
@@ -1914,6 +1926,7 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
             try self.samples_reel.draw(self.samples, self.solved_samples, self.cur_sample_index);
             switch (self.state) {
                 .starting => |starting| {
+                    self.ui_state.draw(drawer);
                     try artist.drawSexpr(self.camera, .lerp(
                         self.samples_reel.getWorldPoint(self.camera, self.cur_sample_index, .input),
                         MAIN_INPUT_POS,
