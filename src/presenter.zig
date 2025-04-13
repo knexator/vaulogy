@@ -226,6 +226,10 @@ pub const Drawer = struct {
     drawPatternVariable: fn (camera: Camera, world_point: Point, visuals: AtomVisuals) void,
     drawWildcardsCable: fn (camera: Camera, points: []const Vec2, visuals: []const AtomVisuals) void,
 
+    pub fn drawCaseHolderFromPatternPoint(self: Drawer, camera: Camera, pattern_point: Point) void {
+        self.drawCaseHolder(camera, .{ .pos = pattern_point.pos.sub(.new(3, 0)) });
+    }
+
     pub fn drawCaseHolderExtended(self: Drawer, camera: Camera, world_point: Point, enabled: bool) void {
         if (!enabled) self.setTransparency(0.5);
         self.drawCaseHolder(camera, world_point);
@@ -3573,6 +3577,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     grabbing.case.pattern,
                                 );
                                 try drawCaseExtra(camera, pattern_point, grabbing.case, null);
+                                drawer.drawCaseHolderFromPatternPoint(camera, pattern_point);
                                 const pos = pattern_point.applyToLocalPosition(.new(0, 1));
                                 const esquina = pos.sub(.new(if (address.ghost.address.len == 1) 5 else 3, 0));
                                 drawer.drawCable(camera, esquina, pos, 1, 0);
