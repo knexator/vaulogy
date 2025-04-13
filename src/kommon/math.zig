@@ -309,6 +309,14 @@ pub const Rect = struct {
     pub fn from(measures: [2]Measure) Rect {
         switch (measures[0]) {
             else => @panic("TODO"),
+            .top_center => |top_center| {
+                switch (measures[1]) {
+                    else => @panic("TODO"),
+                    .size => |size| {
+                        return .{ .size = size, .top_left = top_center.sub(size.mul(.new(0.5, 0))) };
+                    },
+                }
+            },
             .bottom_center => |bottom_center| {
                 switch (measures[1]) {
                     else => @panic("TODO"),

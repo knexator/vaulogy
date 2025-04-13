@@ -2264,6 +2264,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         mem: *VeryPermamentGameStuff,
         camera: Camera = DEFAULT_CAM,
         ui_state: UI.State,
+        result_ui_state: UI.State,
         meta_enabled: bool,
         // TODO: allow user-created Samples
         samples: []const Sample,
@@ -2890,6 +2891,18 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     },
                 }),
             };
+            const result_ui_state = UI.State{
+                .buttons = try UI.Button.rowWithExtra(platform.gpa, .zero, .one, &.{}, &[1]UI.Button{
+                    .{
+                        // .pos = .fromCenterAndSize(samples_reel.rect.top_left, .new(3, 1)),
+                        .pos = .from(.{
+                            .{ .top_center = samples_reel.rect.get(.bottom_center).addY(0.8) },
+                            .{ .size = .new(samples_reel.rect.size.x, 0.8) },
+                        }),
+                        .text = "Back to menu",
+                    },
+                }),
+            };
 
             const solved_samples = try mem.gpa.alloc(bool, builtin_samples.len);
             try updateSolvedSamples(
@@ -2912,6 +2925,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .cases = cases,
                 .main_input = if (DESIGN.no_current_data) .invalid_field else main_input,
                 .ui_state = ui_state,
+                .result_ui_state = result_ui_state,
                 .available_fnks = available_fnks,
                 // TODO: figure out when to enable the meta features
                 .meta_enabled = false,
@@ -2999,6 +3013,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     },
                     3 => if (DESIGN.no_current_data) unreachable else return .launch_execution,
                     else => @panic("oops"),
+                }
+            }
+
+            if (self.display_solved_status and allTrue(self.solved_samples)) {
+                if (self.result_ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button| {
+                    switch (pressed_button) {
+                        0 => return .back_to_level_select,
+                        else => @panic("oops"),
+                    }
                 }
             }
 
@@ -3419,6 +3442,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             try samples_reel.draw(self.samples, self.solved_samples, if (self.display_solved_status) self.solved_samples.len else 0);
             if (self.display_solved_status and allTrue(self.solved_samples)) {
                 drawer.drawDebugText(UI.cam, .{ .pos = samples_reel.top_left.pos.add(.new(2.75, 6)), .scale = 0.75 }, "All Tests passed!", .black);
+                self.result_ui_state.draw(drawer);
             }
             if (self.tutorial_state.allowPickingVaus()) try fnks_reel.draw(camera, self.available_fnks, self.tutorial_state.getFnksReel());
             if (self.tutorial_state.allowCreatingVaus()) try fnk_manager.draw(camera);
@@ -3530,8 +3554,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     // TODO NOW
                     if (!(self.display_solved_status and allTrue(self.solved_samples))) {
                         drawer.drawDebugText(UI.cam, .{ .pos = samples_reel.top_left.pos.add(.new(2.75, 6.75)), .scale = 0.75 }, "↑\nThese Tests are the Data\ntransformations your Vau\nmust achieve.", .black);
-                    } else {
-                        drawer.drawDebugText(camera, .{ .pos = .new(3, 9.5), .scale = 0.75 }, "Once all Tests are green, the Vau is done and you can go to the next one.", .black);
+                        // } else {
+                        //     drawer.drawDebugText(camera, .{ .pos = .new(3, 9.5), .scale = 0.75 }, "Once all Tests are green, the Vau is done and you can go to the next one.", .black);
                     }
                 },
                 .second_level => {
