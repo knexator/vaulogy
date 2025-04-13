@@ -2296,8 +2296,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             },
         } = .{ .nothing = {} },
 
-        // TODO: the -1 is a tutorial hack, make it 0 once the scroll bar is finished
-        samples_reel: SamplesReel = .{ .scroll = -1 },
+        samples_reel: SamplesReel,
 
         // TODO: abstract
         particles: std.ArrayList(ParticleState),
@@ -2531,14 +2530,21 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         // TODO: these vars should live on an instance, not the class
         const SamplesReel = struct {
             scroll: f32,
-
             /// in UI coords
-            const top_left: Point = .{ .pos = .new(20.75, 1), .scale = 0.75 };
-
+            top_left: Point,
             /// in UI coords
-            const rect: Rect = .{ .top_left = top_left.pos, .size = Vec2.new(7, 7.5).scale(top_left.scale) };
+            rect: Rect,
 
             const N_VISIBLE_SAMPLES = 3;
+
+            pub fn init(top_left: Point) SamplesReel {
+                return .{
+                    // TODO: the -1 is a tutorial hack, make it 0 once the scroll bar is finished
+                    .scroll = -1,
+                    .top_left = top_left,
+                    .rect = .{ .top_left = top_left.pos, .size = Vec2.new(7, 7.5).scale(top_left.scale) },
+                };
+            }
 
             fn getMaxScroll(samples_len: usize) f32 {
                 return @max(0, tof32(samples_len) - N_VISIBLE_SAMPLES);
@@ -2556,7 +2562,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     math.smoothstep(index, -0.5, 0),
                     math.smoothstep(index, 2.5, 2),
                 );
-                return top_left.applyToLocalPoint(.{ .pos = .new(switch (which) {
+                return self.top_left.applyToLocalPoint(.{ .pos = .new(switch (which) {
                     .input => 0.75,
                     .output => 4.5,
                 }, y), .scale = scale });
@@ -2594,7 +2600,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             pub fn draw(self: SamplesReel, samples: []const Sample, solved_status: []const bool, n_revealed_cases: usize) !void {
                 const camera = UI.cam;
                 std.debug.assert(samples.len == solved_status.len);
-                drawer.drawRect(camera, rect, .black, null);
+                drawer.drawRect(camera, self.rect, .black, null);
                 for (samples, solved_status, 0..) |sample, solved, k| {
                     drawer.drawArrowForSample(camera, self.getUIPoint(k, .output).applyToLocalPoint(.{
                         .pos = .new(-1.25, 0),
@@ -2627,7 +2633,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 drawer.drawRect(
                     camera,
                     .{
-                        .top_left = rect.get(.top_right).addY((rect.size.y - bar_height) * scroll_perc),
+                        .top_left = self.rect.get(.top_right).addY((self.rect.size.y - bar_height) * scroll_perc),
                         .size = .new(0.2, bar_height),
                     },
                     null,
@@ -2646,7 +2652,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         // TODO: would be nice to classify fnks by name
         const fnks_reel = struct {
-            const top_left: Point = .{ .pos = .new(-6, 0.5 + SamplesReel.rect.size.y), .scale = 0.75 };
+            const top_left: Point = .{ .pos = .new(-6, 0.5 + 7.5 * 0.75), .scale = 0.75 };
             var scroll: f32 = 0;
 
             const rect: Rect = .{ .top_left = top_left.pos, .size = Vec2.new(7, 5.5).scale(top_left.scale) };
@@ -2881,6 +2887,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             _ = try cases.updateWildcards(platform.gpa);
             const main_input: *const Sexpr = Sexpr.builtin.nil;
 
+            const samples_reel: SamplesReel = .init(.{ .pos = .new(20.75, 1), .scale = 0.75 });
+
             const ui_state = UI.State{
                 .buttons = try UI.Button.rowWithExtra(platform.gpa, .zero, .one, &(.{
                     "Back",
@@ -2891,7 +2899,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{
                         // .pos = .fromCenterAndSize(samples_reel.rect.top_left, .new(3, 1)),
                         .pos = .from(.{
-                            .{ .bottom_center = SamplesReel.rect.get(.top_center) },
+                            .{ .bottom_center = samples_reel.rect.get(.top_center) },
                             .{ .size = .new(3, 0.8) },
                         }),
                         .text = "Check",
@@ -2903,8 +2911,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{
                         // .pos = .fromCenterAndSize(samples_reel.rect.top_left, .new(3, 1)),
                         .pos = .from(.{
-                            .{ .top_center = SamplesReel.rect.get(.bottom_center).addY(0.8) },
-                            .{ .size = .new(SamplesReel.rect.size.x, 0.8) },
+                            .{ .top_center = samples_reel.rect.get(.bottom_center).addY(0.8) },
+                            .{ .size = .new(samples_reel.rect.size.x, 0.8) },
                         }),
                         .text = "Back to menu",
                     },
@@ -2924,6 +2932,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             try toolbar.special_case_state.next(mem, cases);
 
             return .{
+                .samples_reel = samples_reel,
                 .fnk_name = fnk_name,
                 .samples = builtin_samples,
                 .solved_samples = solved_samples,
@@ -3032,9 +3041,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
             }
 
-            inline for (.{SamplesReel}, .{&self.samples_reel}) |x, instance| {
+            inline for (.{&self.samples_reel}) |instance| {
                 // TODO: move this logic to samples_reel
-                if (x.rect.contains(mouse.cur.pos(UI.cam))) {
+                if (instance.rect.contains(mouse.cur.pos(UI.cam))) {
                     instance.scroll -= delta_seconds * 10 * mouse.cur.scrolled.toNumber();
                     mouse.cur.scrolled = .none;
                 }
@@ -3449,7 +3458,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             try self.samples_reel.draw(self.samples, self.solved_samples, if (self.display_solved_status) self.solved_samples.len else 0);
             if (self.display_solved_status and allTrue(self.solved_samples)) {
-                drawer.drawDebugText(UI.cam, .{ .pos = SamplesReel.top_left.pos.add(.new(2.75, 6)), .scale = 0.75 }, "All Tests passed!", .black);
+                drawer.drawDebugText(UI.cam, .{ .pos = self.samples_reel.top_left.pos.add(.new(2.75, 6)), .scale = 0.75 }, "All Tests passed!", .black);
                 self.result_ui_state.draw(drawer);
             }
             if (self.tutorial_state.allowPickingVaus()) try fnks_reel.draw(camera, self.available_fnks, self.tutorial_state.getFnksReel());
@@ -3549,7 +3558,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .none => {},
                 .first_level => {
                     drawer.drawDebugText(camera, .{ .pos = .new(-3.55, -2), .scale = 0.75 }, "That's the name of →\nthe Vau you're editing.", .black);
-                    drawer.drawDebugText(UI.cam, .{ .pos = SamplesReel.top_left.applyToLocalPosition(.new(-5, -0.5)), .scale = 0.75 }, "Click Check to see if you Vau works →", .black);
+                    drawer.drawDebugText(UI.cam, .{ .pos = self.samples_reel.top_left.applyToLocalPosition(.new(-5, -0.5)), .scale = 0.75 }, "Click Check to see if you Vau works →", .black);
                     if (DESIGN.no_current_data) {
                         drawer.drawDebugText(camera, .{ .pos = .new(8, 0), .scale = 0.75 }, "↓ a Vau is a list of Cases: if the left Data matches,\nthe result will be the right side's Data.", .black);
                         // drawer.drawDebugText(camera, .{ .pos = .new(9, 0), .scale = 0.75 }, "← Place some Data here to run the Vau on it.", .black);
@@ -3559,11 +3568,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         drawer.drawDebugText(camera, .{ .pos = .new(3.5, -4), .scale = 0.75 }, "← Click Play to see the Vau applied to the current Data.", .black);
                     }
                     // drawer.drawDebugText(camera, .{ .pos = .new(10, 1), .scale = 0.75 }, "↓ These are the Cases that make up the Vau.", .black);
-                    // TODO NOW
                     if (!(self.display_solved_status and allTrue(self.solved_samples))) {
-                        drawer.drawDebugText(UI.cam, .{ .pos = SamplesReel.top_left.pos.add(.new(2.75, 6.75)), .scale = 0.75 }, "↑\nThese Tests are the Data\ntransformations your Vau\nmust achieve.", .black);
-                        // } else {
-                        //     drawer.drawDebugText(camera, .{ .pos = .new(3, 9.5), .scale = 0.75 }, "Once all Tests are green, the Vau is done and you can go to the next one.", .black);
+                        drawer.drawDebugText(UI.cam, .{ .pos = self.samples_reel.top_left.pos.add(.new(2.75, 6.75)), .scale = 0.75 }, "↑\nThese Tests are the Data\ntransformations your Vau\nmust achieve.", .black);
                     }
                 },
                 .second_level => {
