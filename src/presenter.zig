@@ -345,12 +345,14 @@ pub const Drawer = struct {
 };
 
 fn moveCamera(camera: *Camera, delta_seconds: f32, keyboard: Keyboard, mouse: Mouse) void {
-    const mouse_pos = mouse.cur.pos(camera.*);
-    camera.* = camera.zoom(mouse_pos, camera.height * switch (mouse.cur.scrolled) {
-        .none => tof32(1.0),
-        .down => 1.1,
-        .up => 0.9,
-    });
+    if (DESIGN.allow_zoom) {
+        const mouse_pos = mouse.cur.pos(camera.*);
+        camera.* = camera.zoom(mouse_pos, camera.height * switch (mouse.cur.scrolled) {
+            .none => tof32(1.0),
+            .down => 1.1,
+            .up => 0.9,
+        });
+    }
 
     inline for (.{
         .{ KeyboardButton.left, Vec2.new(-1, 0) },

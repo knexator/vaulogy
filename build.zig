@@ -4,6 +4,7 @@ const DESIGN = struct {
     no_current_data: bool = true,
     autograb_wildcard_template_after_pattern: bool = true,
     round_data: bool = true,
+    allow_zoom: bool = false,
 
     pub const default: @This() = .{};
     pub const variants: []const struct {
@@ -12,6 +13,7 @@ const DESIGN = struct {
     } = &.{
         .{ .name = "main", .design = .{} },
         .{ .name = "pointy_data", .design = .{ .round_data = false } },
+        .{ .name = "zoomable", .design = .{ .allow_zoom = true } },
     };
 
     fn toOptions(self: @This(), b: *std.Build) *std.Build.Step.Options {
