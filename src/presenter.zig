@@ -556,6 +556,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                             editing.fnk_name,
                             editing.cases,
                             try .initFromFnks(self.persistence.fnks, &self.mem),
+                            editing.samples_reel_scroll,
                         ) };
                     },
                     .launch_execution => |input| {
@@ -1830,6 +1831,7 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
         scoring_run: core.ScoringRun,
         camera: Camera,
         fast: bool,
+        samples_reel_scroll: f32,
 
         pub fn init(
             camera: Camera,
@@ -1838,6 +1840,7 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
             fnk_name: *const Sexpr,
             fnk_cases: CaseGroup,
             scoring_run: core.ScoringRun,
+            samples_reel_scroll: f32,
         ) Self {
             var cases = fnk_cases;
             cases.setAllUnfoldedToZero();
@@ -1851,6 +1854,7 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
                 .fnk_cases = cases,
                 .scoring_run = scoring_run,
                 .fast = false,
+                .samples_reel_scroll = samples_reel_scroll,
             };
         }
 
@@ -1866,7 +1870,7 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
                         delta_seconds,
                     );
                     const target_scroll: f32 = clamp(tof32(self.cur_sample_index) - 1, 0, Editing.samples_reel.getMaxScroll(self.samples.len));
-                    math.lerp_towards(&Editing.samples_reel.scroll, target_scroll, 0.1, delta_seconds);
+                    math.lerp_towards(&self.samples_reel_scroll, target_scroll, 0.1, delta_seconds);
 
                     if (starting.t >= 1) {
                         self.state = .{ .executing = try .init(
@@ -1880,10 +1884,10 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
                             self.camera,
                             null,
                             null,
-                            Editing.samples_reel.getUIPoint(self.cur_sample_index, .output),
+                            Editing.samples_reel.getUIPoint(self.cur_sample_index, .output, self.samples_reel_scroll),
                         ) };
                         self.state.executing.fast = self.fast;
-                        Editing.samples_reel.scroll = target_scroll;
+                        self.samples_reel_scroll = target_scroll;
                     }
                 },
                 .executing => |*executing| {
@@ -1907,11 +1911,11 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn draw(self: Self) !void {
-            try Editing.samples_reel.draw(self.samples, self.solved_samples, self.cur_sample_index);
+            try Editing.samples_reel.draw(self.samples, self.solved_samples, self.cur_sample_index, self.samples_reel_scroll);
             switch (self.state) {
                 .starting => |starting| {
                     try artist.drawSexpr(self.camera, .lerp(
-                        Editing.samples_reel.getWorldPoint(self.camera, self.cur_sample_index, .input),
+                        Editing.samples_reel.getWorldPoint(self.camera, self.cur_sample_index, .input, self.samples_reel_scroll),
                         MAIN_INPUT_POS,
                         math.smoothstep(starting.t, 0.15, 1),
                     ), self.samples[self.cur_sample_index].input);
@@ -1920,27 +1924,28 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
                     try Editing.drawCases(self.camera, true, .{}, self.fnk_cases, null);
                     drawer.drawRect(UI.cam, .fromCenterAndSize(
                         if (self.cur_sample_index > 0) .lerp(
-                            sampleCenter(self.cur_sample_index - 1),
-                            sampleCenter(self.cur_sample_index),
+                            sampleCenter(self.cur_sample_index - 1, self.samples_reel_scroll),
+                            sampleCenter(self.cur_sample_index, self.samples_reel_scroll),
                             clamp01(remap(starting.t, 0, 0.2, 0, 1)),
-                        ) else sampleCenter(self.cur_sample_index),
+                        ) else sampleCenter(self.cur_sample_index, self.samples_reel_scroll),
                         .new(5.75, 1.75),
                     ), .white, null);
                 },
                 .executing => |*executing| {
                     try executing.draw();
                     drawer.drawRect(UI.cam, .fromCenterAndSize(
-                        sampleCenter(self.cur_sample_index),
+                        sampleCenter(self.cur_sample_index, self.samples_reel_scroll),
                         .new(5.75, 1.75),
                     ), .white, null);
                 },
             }
         }
 
-        fn sampleCenter(index: usize) Vec2 {
+        // TODO: move to samples_reel
+        fn sampleCenter(index: usize, scroll: f32) Vec2 {
             return Point.lerp(
-                Editing.samples_reel.getUIPoint(index, .input),
-                Editing.samples_reel.getUIPoint(index, .output),
+                Editing.samples_reel.getUIPoint(index, .input, scroll),
+                Editing.samples_reel.getUIPoint(index, .output, scroll),
                 0.75,
             ).applyToLocalPosition(.zero);
         }
@@ -2127,7 +2132,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .main_input => |local| if (DESIGN.no_current_data) MAIN_INPUT_POS else SexprView.sexprChildView(MAIN_INPUT_POS, local),
                     .main_fnk_name => |local| SexprView.sexprChildView(MAIN_FNK_POS, local),
                     .toolbar_special_var => toolbar.special_var_point,
-                    .sample => |sample| SexprView.sexprChildView(samples_reel.getWorldPoint(self.camera, sample.index, sample.which), sample.local),
+                    .sample => |sample| SexprView.sexprChildView(samples_reel.getWorldPoint(self.camera, sample.index, sample.which, self.samples_reel_scroll), sample.local),
                     .external_fnk => |fnk| SexprView.sexprChildView(fnks_reel.getPoint(fnk.index), fnk.local),
                     .fnk_manager => fnk_manager.sexpr_point,
                     .meta_converter => |local| SexprView.sexprChildView(meta_converter.sexpr_point, local),
@@ -2299,6 +2304,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 limitation: enum { none, pattern, template },
             },
         } = .{ .nothing = {} },
+
+        // TODO: the -1 is a tutorial hack, make it 0 once the scroll bar is finished
+        samples_reel_scroll: f32 = -1,
 
         // TODO: abstract
         particles: std.ArrayList(ParticleState),
@@ -2533,8 +2541,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         const samples_reel = struct {
             /// in UI coords
             const top_left: Point = .{ .pos = .new(20.75, 1), .scale = 0.75 };
-            // TODO: the -1 is a tutorial hack, make it 0 once the scroll bar is finished
-            var scroll: f32 = -1;
 
             /// in UI coords
             const rect: Rect = .{ .top_left = top_left.pos, .size = Vec2.new(7, 7.5).scale(top_left.scale) };
@@ -2545,12 +2551,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 return @max(0, tof32(samples_len) - N_VISIBLE_SAMPLES);
             }
 
-            pub fn updateScroll(main: Self, delta_seconds: f32) void {
-                math.lerp_towards_range(&samples_reel.scroll, 0, getMaxScroll(main.samples.len), 0.1, delta_seconds);
+            pub fn updateScroll(scroll: *f32, samples_len: usize, delta_seconds: f32) void {
+                math.lerp_towards_range(scroll, 0, getMaxScroll(samples_len), 0.1, delta_seconds);
             }
 
             /// in UI coords
-            pub fn getUIPoint(k: usize, which: Sample.Part) Point {
+            pub fn getUIPoint(k: usize, which: Sample.Part, scroll: f32) Point {
                 const index: f32 = tof32(k) - scroll;
                 const y = 1.25 + index * 2.5;
                 const scale = @min(
@@ -2564,16 +2570,16 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             /// in world coords
-            pub fn getWorldPoint(camera: Camera, k: usize, which: Sample.Part) Point {
-                return Camera.remap(UI.cam, getUIPoint(k, which), camera);
+            pub fn getWorldPoint(camera: Camera, k: usize, which: Sample.Part, scroll: f32) Point {
+                return Camera.remap(UI.cam, getUIPoint(k, which, scroll), camera);
             }
 
-            pub fn findOverlap(mouse_ui_pos: Vec2, samples: []const Sample) !?Sample.Address {
+            pub fn findOverlap(mouse_ui_pos: Vec2, samples: []const Sample, scroll: f32) !?Sample.Address {
                 for (samples, 0..) |sample, k| {
                     if (try SexprView.overlapsSexpr(
                         platform.gpa,
                         sample.input,
-                        getUIPoint(k, .input),
+                        getUIPoint(k, .input, scroll),
                         mouse_ui_pos,
                     )) |local| {
                         return Sample.Address{ .index = k, .local = local, .which = .input };
@@ -2582,7 +2588,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         if (try SexprView.overlapsSexpr(
                             platform.gpa,
                             output,
-                            getUIPoint(k, .output),
+                            getUIPoint(k, .output, scroll),
                             mouse_ui_pos,
                         )) |local| {
                             return Sample.Address{ .index = k, .local = local, .which = .output };
@@ -2592,36 +2598,36 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 return null;
             }
 
-            pub fn draw(samples: []const Sample, solved_status: []const bool, n_revealed_cases: usize) !void {
+            pub fn draw(samples: []const Sample, solved_status: []const bool, n_revealed_cases: usize, scroll: f32) !void {
                 const camera = UI.cam;
                 std.debug.assert(samples.len == solved_status.len);
                 drawer.drawRect(camera, rect, .black, null);
                 for (samples, solved_status, 0..) |sample, solved, k| {
-                    drawer.drawArrowForSample(camera, getUIPoint(k, .output).applyToLocalPoint(.{
+                    drawer.drawArrowForSample(camera, getUIPoint(k, .output, scroll).applyToLocalPoint(.{
                         .pos = .new(-1.25, 0),
                         .scale = 0.25,
                     }), if (k < n_revealed_cases) solved else null);
                     try artist.drawSexpr(
                         camera,
-                        getUIPoint(k, .input),
+                        getUIPoint(k, .input, scroll),
                         sample.input,
                     );
                     if (sample.output) |output| {
                         try artist.drawSexpr(
                             camera,
-                            getUIPoint(k, .output),
+                            getUIPoint(k, .output, scroll),
                             output,
                         );
                     } else {
                         return error.TODO;
                     }
                 }
-                drawScrollBar(samples.len);
+                drawScrollBar(samples.len, scroll);
                 // drawer.drawDebugText(camera, .{ .pos = rect.get(.top_center).addY(-0.35) }, "tests", .black);
             }
 
             // TODO: mouse-interactable scrollbar
-            fn drawScrollBar(samples_len: usize) void {
+            fn drawScrollBar(samples_len: usize, scroll: f32) void {
                 const camera = UI.cam;
                 const scroll_perc = scroll / getMaxScroll(samples_len);
                 const bar_height = N_VISIBLE_SAMPLES / getMaxScroll(samples_len);
@@ -3025,12 +3031,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
             }
 
-            inline for (.{samples_reel}) |x| {
+            inline for (.{samples_reel}, .{&self.samples_reel_scroll}) |x, scroll| {
+                // TODO: move this logic to samples_reel
                 if (x.rect.contains(mouse.cur.pos(UI.cam))) {
-                    x.scroll -= delta_seconds * 10 * mouse.cur.scrolled.toNumber();
+                    scroll.* -= delta_seconds * 10 * mouse.cur.scrolled.toNumber();
                     mouse.cur.scrolled = .none;
                 }
-                x.updateScroll(self.*, delta_seconds);
+                samples_reel.updateScroll(scroll, self.samples.len, delta_seconds);
             }
             inline for (.{fnks_reel}) |x| {
                 if (x.rect.contains(mouse.cur.pos(self.camera))) {
@@ -3131,7 +3138,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     overlap
                 else if (toolbar.findOverlap(mouse_pos, self.tutorial_state.getToolbar())) |overlap|
                     .{ .sexpr = .{ .toolbar = overlap.index } }
-                else if (try samples_reel.findOverlap(mouse_ui_pos, self.samples)) |overlap|
+                else if (try samples_reel.findOverlap(mouse_ui_pos, self.samples, self.samples_reel_scroll)) |overlap|
                     .{ .sexpr = .{ .sample = overlap } }
                 else if (if (self.tutorial_state.allowPickingVaus()) try fnks_reel.findOverlap(mouse_pos, self.available_fnks, self.tutorial_state.getFnksReel()) else null) |overlap|
                     .{ .sexpr = .{ .external_fnk = overlap } }
@@ -3439,7 +3446,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             //     .hidden => {},
             // }
 
-            try samples_reel.draw(self.samples, self.solved_samples, if (self.display_solved_status) self.solved_samples.len else 0);
+            try samples_reel.draw(self.samples, self.solved_samples, if (self.display_solved_status) self.solved_samples.len else 0, self.samples_reel_scroll);
             if (self.display_solved_status and allTrue(self.solved_samples)) {
                 drawer.drawDebugText(UI.cam, .{ .pos = samples_reel.top_left.pos.add(.new(2.75, 6)), .scale = 0.75 }, "All Tests passed!", .black);
                 self.result_ui_state.draw(drawer);
