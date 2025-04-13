@@ -4097,9 +4097,12 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 switch (pressed_button) {
                     0 => return .back_to_editing,
                     1 => self.camera = DEFAULT_CAM,
-                    2 => self.anim_state = switch (self.anim_state) {
-                        .paused => .normal,
-                        else => .paused,
+                    2 => {
+                        self.anim_state = switch (self.anim_state) {
+                            .paused => .normal,
+                            else => .paused,
+                        };
+                        self.fast = false;
                     },
                     3 => {
                         self.anim_state = .normal;
