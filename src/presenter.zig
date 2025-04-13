@@ -1318,20 +1318,42 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             drawer.drawPatternAtom(camera, world_point, visuals);
         }
 
+        const BindingParticle = struct {
+            point: Point,
+            t: f32,
+        };
+
         pub fn drawSexprWithBindings(camera: Camera, world_point: Point, sexpr: *const Sexpr, bindings: BindingsState) !void {
+            var out_particles: std.ArrayList(BindingParticle) = .init(platform.gpa);
+            defer out_particles.deinit();
+            try _drawSexprWithBindings(camera, world_point, sexpr, bindings, &out_particles);
+            for (out_particles.items) |particle| {
+                drawer.drawRect(
+                    camera,
+                    .fromCenterAndSize(
+                        particle.point.applyToLocalPosition(.new(1, 0)),
+                        .both(lerp(7.5, 2.5, particle.t) * particle.point.scale),
+                    ),
+                    .white,
+                    null,
+                );
+            }
+        }
+
+        fn _drawSexprWithBindings(camera: Camera, world_point: Point, sexpr: *const Sexpr, bindings: BindingsState, out_particles: *std.ArrayList(BindingParticle)) !void {
             switch (sexpr.*) {
                 .atom_lit => |lit| {
                     try drawAtom(camera, world_point, lit.value);
                 },
                 .pair => |pair| {
-                    try drawSexprWithBindings(camera, world_point.applyToLocalPoint(.{
+                    try _drawSexprWithBindings(camera, world_point.applyToLocalPoint(.{
                         .pos = .new(0.5, -0.5),
                         .scale = 0.5,
-                    }), pair.left, bindings);
-                    try drawSexprWithBindings(camera, world_point.applyToLocalPoint(.{
+                    }), pair.left, bindings, out_particles);
+                    try _drawSexprWithBindings(camera, world_point.applyToLocalPoint(.{
                         .pos = .new(0.5, 0.5),
                         .scale = 0.5,
-                    }), pair.right, bindings);
+                    }), pair.right, bindings, out_particles);
                     drawer.drawPairHolder(camera, world_point);
                     try drawTemplateWildcardLinesNonRecursive(camera, pair.left, pair.right, world_point, bindings);
                 },
@@ -1348,6 +1370,11 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                                 drawer.setTransparency(1 - anim_t);
                                 try drawVariable(camera, world_point, x.value);
                                 drawer.setTransparency(1);
+
+                                if (anim_t < 0.5) {
+                                    try out_particles.append(.{ .point = world_point, .t = t });
+                                }
+
                                 break;
                             }
                         }
