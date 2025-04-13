@@ -795,6 +795,38 @@ const builtin_levels: []const BuiltinLevel = &.{
         &Sexpr.doPair(Vals.Aphrodite, Vals.Hermes),
         &Sexpr.doPair(Vals.Zeus, Vals.Ares),
     }), .description = "Translate two Datas at once", .premade_solution = null },
+    .{
+        .fnk_name = &Sexpr.doLit("planetListFromOlympianList"),
+        .manual_samples = &funk.map(struct {
+            pub fn anon(comptime values: []const *const Sexpr) Sample {
+                return .{ .input = toList(values), .output = toMappedList(values) };
+            }
+            fn toList(comptime values: []const *const Sexpr) *const Sexpr {
+                if (values.len == 0) return Sexpr.builtin.nil;
+                return &Sexpr.doPair(values[0], toList(values[1..]));
+            }
+            fn toMappedList(comptime values: []const *const Sexpr) *const Sexpr {
+                if (values.len == 0) return Sexpr.builtin.nil;
+                return &Sexpr.doPair(Vals.planetFromOlympian(values[0]).?, toMappedList(values[1..]));
+            }
+        }.anon, &.{
+            &.{},
+            &.{Vals.Hermes},
+            &.{Vals.Aphrodite},
+            &.{Vals.Ares},
+            &.{Vals.Zeus},
+            &.{ Vals.Hermes, Vals.Aphrodite },
+            &.{ Vals.Ares, Vals.Zeus },
+            &.{ Vals.Aphrodite, Vals.Aphrodite },
+            &.{ Vals.Zeus, Vals.Ares },
+            &.{ Vals.Zeus, Vals.Aphrodite, Vals.Ares },
+            &.{ Vals.Hermes, Vals.Zeus, Vals.Hermes },
+            &.{ Vals.Zeus, Vals.Zeus, Vals.Zeus, Vals.Zeus, Vals.Zeus },
+            &.{ Vals.Hermes, Vals.Aphrodite, Vals.Ares, Vals.Zeus, Vals.Zeus, Vals.Ares, Vals.Aphrodite, Vals.Hermes },
+        }),
+        .description = "Translate a list of Datas",
+        .premade_solution = null,
+    },
 };
 
 // code smell
@@ -2268,6 +2300,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             fourth_level,
             /// free level: map a pair
             fifth_level,
+            lists_level,
 
             pub fn allowPickingVaus(self: TutorialState) bool {
                 return switch (self) {
@@ -3019,6 +3052,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .fourth_level
                 else if (fnk_name.equals(builtin_levels[4].fnk_name))
                     .fifth_level
+                else if (fnk_name.equals(builtin_levels[5].fnk_name))
+                    .lists_level
                 else
                     .none,
                 .particles = .init(platform.gpa),
@@ -3616,6 +3651,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             switch (self.tutorial_state) {
                 .none => {},
+                .lists_level => {},
                 .first_level => {
                     drawer.drawDebugText(camera, .{ .pos = .new(-3.55, -2), .scale = 0.75 }, "That's the name of →\nthe Vau you're editing.", .black);
                     drawer.drawDebugText(UI.cam, .{ .pos = self.samples_reel.top_left.applyToLocalPosition(.new(-5, -0.5)), .scale = 0.75 }, "Click Check to see if you Vau works →", .black);
@@ -5104,13 +5140,14 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
             const res = platform.gpa.alloc(UI.Button, builtin_levels.len) catch unreachable;
             for (res, 0..) |*b, k| {
                 b.* = .{
-                    .pos = Rect{ .top_left = .new(2, 2.5 + 2.5 * @as(f32, @floatFromInt(k))), .size = .one },
+                    .pos = Rect{ .top_left = .new(2 + 2.5 * tof32(@divFloor(k, 5)), 2.5 + 2.5 * @as(f32, @floatFromInt(@mod(k, 5)))), .size = .one },
                     .enabled = switch (k) {
                         0 => true,
                         1 => persistence.is_builtin_level_solved[0],
                         2 => persistence.is_builtin_level_solved[1],
                         3 => persistence.is_builtin_level_solved[2],
                         4 => persistence.is_builtin_level_solved[3],
+                        5 => persistence.is_builtin_level_solved[4],
                         else => return error.TODO,
                     },
                 };
