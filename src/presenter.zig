@@ -2527,13 +2527,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         };
 
-        // TODO: these vars should live on an instance, not the class
         const SamplesReel = struct {
             scroll: f32,
             /// in UI coords
             top_left: Point,
             /// in UI coords
             rect: Rect,
+            scroll_bar_active: bool = false,
 
             const N_VISIBLE_SAMPLES = 3;
 
@@ -2546,12 +2546,30 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 };
             }
 
+            // TODO: don't take a pointer to Mouse
+            pub fn update(self: *SamplesReel, samples_len: usize, mouse: *Mouse, delta_seconds: f32) void {
+                if (self.scroll_bar_active) {
+                    if (!mouse.cur.isDown(.left)) {
+                        self.scroll_bar_active = false;
+                    } else {
+                        self.scroll += (mouse.cur.pos(UI.cam).y - mouse.prev.pos(UI.cam).y) * self.top_left.scale;
+                    }
+                } else if (self.scrollBarRect(samples_len).contains(mouse.cur.pos(UI.cam)) and mouse.wasPressed(.left)) {
+                    self.scroll_bar_active = true;
+                }
+                if (self.rect.contains(mouse.cur.pos(UI.cam))) {
+                    self.scroll -= delta_seconds * 10 * mouse.cur.scrolled.toNumber();
+                    mouse.cur.scrolled = .none;
+                }
+                self.updateScroll(samples_len, delta_seconds);
+            }
+
             fn getMaxScroll(samples_len: usize) f32 {
                 return @max(0, tof32(samples_len) - N_VISIBLE_SAMPLES);
             }
 
-            pub fn updateScroll(scroll: *f32, samples_len: usize, delta_seconds: f32) void {
-                math.lerp_towards_range(scroll, 0, getMaxScroll(samples_len), 0.1, delta_seconds);
+            pub fn updateScroll(self: *SamplesReel, samples_len: usize, delta_seconds: f32) void {
+                math.lerp_towards_range(&self.scroll, 0, getMaxScroll(samples_len), 0.1, delta_seconds);
             }
 
             /// in UI coords
@@ -2625,20 +2643,17 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 // drawer.drawDebugText(camera, .{ .pos = rect.get(.top_center).addY(-0.35) }, "tests", .black);
             }
 
-            // TODO: mouse-interactable scrollbar
-            fn drawScrollBar(self: SamplesReel, samples_len: usize) void {
-                const camera = UI.cam;
+            fn scrollBarRect(self: SamplesReel, samples_len: usize) Rect {
                 const scroll_perc = self.scroll / getMaxScroll(samples_len);
                 const bar_height = N_VISIBLE_SAMPLES / getMaxScroll(samples_len);
-                drawer.drawRect(
-                    camera,
-                    .{
-                        .top_left = self.rect.get(.top_right).addY((self.rect.size.y - bar_height) * scroll_perc),
-                        .size = .new(0.2, bar_height),
-                    },
-                    null,
-                    .black,
-                );
+                return .{
+                    .top_left = self.rect.get(.top_right).addY((self.rect.size.y - bar_height) * scroll_perc),
+                    .size = .new(0.2, bar_height),
+                };
+            }
+
+            fn drawScrollBar(self: SamplesReel, samples_len: usize) void {
+                drawer.drawRect(UI.cam, self.scrollBarRect(samples_len), null, .black);
             }
 
             pub fn sampleCenter(self: SamplesReel, index: usize) Vec2 {
@@ -3042,12 +3057,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             inline for (.{&self.samples_reel}) |instance| {
-                // TODO: move this logic to samples_reel
-                if (instance.rect.contains(mouse.cur.pos(UI.cam))) {
-                    instance.scroll -= delta_seconds * 10 * mouse.cur.scrolled.toNumber();
-                    mouse.cur.scrolled = .none;
-                }
-                SamplesReel.updateScroll(&instance.scroll, self.samples.len, delta_seconds);
+                instance.update(self.samples.len, &mouse, delta_seconds);
             }
             inline for (.{fnks_reel}) |x| {
                 if (x.rect.contains(mouse.cur.pos(self.camera))) {
