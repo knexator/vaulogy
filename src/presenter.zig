@@ -600,7 +600,10 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 },
                 .testing_fnk => |*testing| switch (try testing.update(delta_seconds, &self.mem)) {
                     .nothing => {},
-                    .back_to_editing => self.state = .{ .editing_fnk = self.prev_editing_state.? },
+                    .back_to_editing => {
+                        self.prev_editing_state.?.samples_reel = testing.samples_reel;
+                        self.state = .{ .editing_fnk = self.prev_editing_state.? };
+                    },
                 },
                 inline else => |*x| x.update(delta_seconds),
             }
