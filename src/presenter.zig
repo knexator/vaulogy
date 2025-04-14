@@ -793,7 +793,8 @@ const builtin_levels: []const BuiltinLevel = &.{
     \\wrappedPlanetFromOlympian {
     \\ @v -> planetFromOlympian: @v {
     \\   Mercury -> ((top . Mercury) . bottom);
-    \\   Venus -> ((top . Venus) . bottom);
+    \\   // Venus -> ((top . Venus) . bottom);
+    \\   Ares -> ((top . Ares) . bottom);
     \\ }
     \\ // Hermes -> ((top . Mercury) . bottom);
     \\ // Aphrodite -> ((top . Venus) . bottom);
@@ -3156,9 +3157,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .third_level
                 else if (fnk_name.equals(builtin_levels[3].fnk_name))
                     .fourth_level
-                else if (fnk_name.equals(builtin_levels[4].fnk_name))
+                else if (fnk_name.equals(builtin_levels[4].fnk_name) or fnk_name.equals(builtin_levels[5].fnk_name))
                     .fifth_level
-                else if (fnk_name.equals(builtin_levels[5].fnk_name))
+                else if (fnk_name.equals(builtin_levels[6].fnk_name))
                     .lists_level
                 else
                     .none,
@@ -3799,7 +3800,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     if (!DESIGN.no_current_data) drawer.drawDebugText(camera, .{ .pos = .new(2.5, -4), .scale = 0.75 }, "← Don't forget to hit Play to see the Vau in action!", .black);
                 },
                 .fourth_level => {
-                    drawer.drawDebugText(camera, .{ .pos = .new(8.125, -3.5), .scale = 0.75 }, "Add new cases with this ↓", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(8.125, -3.5), .scale = 0.75 }, "Add new Cases with this ↓", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(3, 6), .scale = 0.75 }, "Nested Cases will\nbe called on the result →", .black);
                 },
                 .fifth_level => {

@@ -78,3 +78,26 @@ done:
 - level 3: outline where to put the vau position
 - level 4: "you can add cases with this v"
 - draw discarded cases on match
+
+###
+
+- level 1: que le de al Check antes de poder modificar nada
+- level 1: enfasis check
+- level 1: no right click
+- undo button
+- symmetrical pattern-template?
+- level 1: se lia entre cases y tests
+- level 1: cree que los casos son secuenciales
+- sfx
+- move camera with middle click
+- Explain "execute" at the start? ??????????????????????
+- Show 'got/expected' on tests
+- got wildcards!!
+- trouble for putting template wildcard on a nested data
+- have some feedback when trying to interact with locked elements
+- test runner: UI for skipping tests
+- move toolbar to UI layer
+- allow infinite loops
+- intenta poner wildcard template en la pattern del caso hijo
+- horizontal nested cases?
+- most of the previous vaus are pointless

@@ -1,0 +1,8 @@
+Playtesters:
+V0:
+...
+V1:
+?pinchazumos
+?becario0
+?becario1
+?Don Eduardo González Vaquero
