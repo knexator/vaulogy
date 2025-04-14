@@ -801,6 +801,19 @@ const builtin_levels: []const BuiltinLevel = &.{
     \\ // Zeus -> ((top . Jupiter) . bottom);
     \\}
     },
+    .{ .fnk_name = &Sexpr.doLit("olympianToBoth"), .manual_samples = &funk.map(struct {
+        pub fn anon(comptime v: *const Sexpr) Sample {
+            return .{ .input = v, .output = &Sexpr.doPair(
+                v,
+                Vals.planetFromOlympian(v).?,
+            ) };
+        }
+    }.anon, &.{
+        Vals.Hermes,
+        Vals.Aphrodite,
+        Vals.Ares,
+        Vals.Zeus,
+    }), .description = "Show both the input & the result", .premade_solution = null },
     .{ .fnk_name = &Sexpr.doLit("planetPairFromOlympianPair"), .manual_samples = &funk.map(struct {
         pub fn anon(comptime v: *const Sexpr) Sample {
             return .{ .input = v, .output = &Sexpr.doPair(
@@ -4164,7 +4177,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         const artist = Artist(platform, drawer);
 
         const BASE_SPEED = 1;
-        const SKIP_SPEED_MULT = 3;
+        const SKIP_SPEED_MULT = 1.5;
 
         const text_pos: Point = (Point{ .pos = DEFAULT_CAM.center, .scale = 3 }).applyToLocalPoint(.{ .pos = .new(0, -1) });
         pub const result_pos: Point = text_pos.applyToLocalPoint(.{ .pos = .new(-1, 2) });
@@ -5249,15 +5262,7 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
             for (res, 0..) |*b, k| {
                 b.* = .{
                     .pos = Rect{ .top_left = .new(2 + 2.5 * tof32(@divFloor(k, 5)), 2.5 + 2.5 * @as(f32, @floatFromInt(@mod(k, 5)))), .size = .one },
-                    .enabled = switch (k) {
-                        0 => true,
-                        1 => persistence.is_builtin_level_solved[0],
-                        2 => persistence.is_builtin_level_solved[1],
-                        3 => persistence.is_builtin_level_solved[2],
-                        4 => persistence.is_builtin_level_solved[3],
-                        5 => persistence.is_builtin_level_solved[4],
-                        else => return error.TODO,
-                    },
+                    .enabled = if (k == 0) true else persistence.is_builtin_level_solved[k - 1],
                 };
             }
             return Self{
