@@ -1511,7 +1511,9 @@ fn Artist(platform: Platform, drawer: Drawer) type {
 
         fn computeUnbalance(a: usize, b: usize) f32 {
             // perfectly balanced
-            return tof32(b + 1) / tof32(a + b + 2);
+            // return tof32(b + 1) / tof32(a + b + 2);
+            // half biased to blindness
+            return lerp(tof32(b + 1) / tof32(a + b + 2), 0.5, 0.5);
         }
 
         pub fn drawSexpr(camera: Camera, world_point: Point, sexpr: *const Sexpr) OoM!void {
