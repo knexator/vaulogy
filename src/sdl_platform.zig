@@ -81,6 +81,23 @@ const SdlDrawer = struct {
         // TODO
     }
 
+    pub fn drawShape(camera: Camera, points: []const Vec2, stroke: ?Color, fill: ?Color) void {
+        // TODO
+        _ = camera;
+        _ = points;
+        _ = stroke;
+        _ = fill;
+    }
+
+    pub fn drawShapeV2(camera: Camera, parent_world_point: Point, local_points: []const Vec2, stroke: ?Color, fill: ?Color) void {
+        // TODO
+        _ = camera;
+        _ = parent_world_point;
+        _ = local_points;
+        _ = stroke;
+        _ = fill;
+    }
+
     pub fn drawLine(camera: Camera, points: []const Vec2, color: Color) void {
         const screen_positions = gpa.allocator().alloc(Vec2, points.len) catch @panic("OoM");
         defer gpa.allocator().free(screen_positions);
@@ -495,6 +512,8 @@ const sdl_drawer = presenter.Drawer{
     .endClip = SdlDrawer.endClip,
     .drawLine = SdlDrawer.drawLine,
     .drawRect = SdlDrawer.drawRect,
+    .drawShape = SdlDrawer.drawShape,
+    .drawShapeV2 = SdlDrawer.drawShapeV2,
     .drawDebugText = SdlDrawer.drawDebugText,
     .drawAtom = SdlDrawer.drawAtom,
     .drawPatternAtom = SdlDrawer.drawPatternAtom,

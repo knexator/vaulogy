@@ -257,6 +257,48 @@ const WebDrawer = struct {
         js.canvas.stroke();
     }
 
+    pub fn drawShapeV2(camera: Camera, parent_world_point: Point, local_points: []const Vec2, stroke: ?Color, fill: ?Color) void {
+        const screen_positions = gpa.allocator().alloc(Vec2, local_points.len) catch @panic("OoM");
+        defer gpa.allocator().free(screen_positions);
+
+        for (local_points, screen_positions) |local_pos, *screen_pos| {
+            screen_pos.* = screenFromWorldPosition(camera, parent_world_point.applyToLocalPosition(local_pos));
+        }
+
+        js_better.canvas.pathLoop(screen_positions);
+
+        if (stroke) |col| {
+            js.canvas.setLineWidth(1);
+            js_better.canvas.setStrokeColor(col);
+            js.canvas.stroke();
+        }
+        if (fill) |col| {
+            js_better.canvas.setFillColor(col);
+            js.canvas.fill();
+        }
+    }
+
+    pub fn drawShape(camera: Camera, points: []const Vec2, stroke: ?Color, fill: ?Color) void {
+        const screen_positions = gpa.allocator().alloc(Vec2, points.len) catch @panic("OoM");
+        defer gpa.allocator().free(screen_positions);
+
+        for (points, screen_positions) |world_pos, *screen_pos| {
+            screen_pos.* = screenFromWorldPosition(camera, world_pos);
+        }
+
+        js_better.canvas.pathLoop(screen_positions);
+
+        if (stroke) |col| {
+            js.canvas.setLineWidth(1);
+            js_better.canvas.setStrokeColor(col);
+            js.canvas.stroke();
+        }
+        if (fill) |col| {
+            js_better.canvas.setFillColor(col);
+            js.canvas.fill();
+        }
+    }
+
     pub fn drawRect(camera: Camera, rect: Rect, stroke: ?Color, fill: ?Color) void {
         const screen_top_left = screenFromWorldPosition(camera, rect.top_left);
         const screen_size = screenFromWorldSize(camera, rect.size);
@@ -696,6 +738,8 @@ const web_drawer = presenter.Drawer{
     .endClip = WebDrawer.endClip,
     .drawLine = WebDrawer.drawLine,
     .drawRect = WebDrawer.drawRect,
+    .drawShape = WebDrawer.drawShape,
+    .drawShapeV2 = WebDrawer.drawShapeV2,
     .drawDebugText = WebDrawer.drawDebugText,
     .drawAtom = WebDrawer.drawAtom,
     .drawPatternAtom = WebDrawer.drawPatternAtom,

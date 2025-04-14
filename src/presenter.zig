@@ -208,6 +208,8 @@ pub const Drawer = struct {
     setTransparency: fn (alpha: f32) void,
     drawLine: fn (camera: Camera, points: []const Vec2, color: Color) void,
     drawRect: fn (camera: Camera, rect: Rect, stroke: ?Color, fill: ?Color) void,
+    drawShape: fn (camera: Camera, points: []const Vec2, stroke: ?Color, fill: ?Color) void,
+    drawShapeV2: fn (camera: Camera, parent_world_point: Point, local_points: []const Vec2, stroke: ?Color, fill: ?Color) void,
     clipAtomRegion: fn (camera: Camera, point: Point) void,
     endClip: fn () void,
     drawDebugText: fn (camera: Camera, center: Point, text: [:0]const u8, color: Color) void,
@@ -300,6 +302,25 @@ pub const Drawer = struct {
             pub fn anon(camera: Camera, rect: Rect, stroke: ?Color, fill: ?Color) void {
                 _ = camera;
                 _ = rect;
+                _ = stroke;
+                _ = fill;
+                unreachable;
+            }
+        }.anon,
+        .drawShape = struct {
+            pub fn anon(camera: Camera, points: []const Vec2, stroke: ?Color, fill: ?Color) void {
+                _ = camera;
+                _ = points;
+                _ = stroke;
+                _ = fill;
+                unreachable;
+            }
+        }.anon,
+        .drawShapeV2 = struct {
+            pub fn anon(camera: Camera, parent_world_point: Point, local_points: []const Vec2, stroke: ?Color, fill: ?Color) void {
+                _ = camera;
+                _ = parent_world_point;
+                _ = local_points;
                 _ = stroke;
                 _ = fill;
                 unreachable;
@@ -1428,22 +1449,91 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             }
         }
 
-        pub fn drawSexpr(camera: Camera, world_point: Point, sexpr: *const Sexpr) !void {
+        // unbalance 0 = full left, 1 = full right
+        fn unbalancedOffset(which: core.SexprAddressItem, unbalance: f32) Point {
+            return switch (which) {
+                .left => .{ .scale = 1 - unbalance, .pos = .new(unbalance, -unbalance) },
+                .right => .{ .scale = unbalance, .pos = .new(1 - unbalance, 1 - unbalance) },
+            };
+        }
+
+        pub fn drawPairHolderUnbalanced(camera: Camera, world_point: Point, unbalance: f32) void {
+            const local_positions = if (DESIGN.round_data)
+                funk.fromCount(32, struct {
+                    pub fn anon(k: usize) Vec2 {
+                        return Vec2.fromTurns(math.lerp(0.75, 0.25, math.tof32(k) / 32)).addX(0.5);
+                    }
+                }.anon) ++ funk.fromCountAndCtx(32, struct {
+                    pub fn anon(k: usize, ctx_unbalance: f32) Vec2 {
+                        const local: Vec2 = Vec2.fromTurns(math.lerp(0.25, 0.75, math.tof32(k) / 32)).addX(0.5);
+                        return unbalancedOffset(.right, ctx_unbalance).applyToLocalPosition(local);
+                    }
+                }.anon, unbalance) ++ funk.fromCountAndCtx(32, struct {
+                    pub fn anon(k: usize, ctx_unbalance: f32) Vec2 {
+                        const local = Vec2.fromTurns(math.lerp(0.25, 0.75, math.tof32(k) / 32)).addX(0.5);
+                        return unbalancedOffset(.left, ctx_unbalance).applyToLocalPosition(local);
+                    }
+                }.anon, unbalance)
+            else
+                // TODO: this
+                [_]Vec2{
+                    Vec2.new(-0.5, 0),
+                    Vec2.new(0, 1),
+                    Vec2.new(0.5, 1),
+                    Vec2.new(0.25, 0.5),
+                    Vec2.new(0.5, 0),
+                    Vec2.new(0.25, -0.5),
+                    Vec2.new(0.5, -1),
+                    Vec2.new(0, -1),
+                };
+            drawer.drawShapeV2(camera, world_point, &local_positions, .black, .gray(96));
+            // drawer.drawShapeV2(camera, world_point, &local_positions, null, .gray(96));
+        }
+
+        // TODO: use this somewhere
+        pub fn drawSexprUnbalanced(camera: Camera, world_point: Point, sexpr: *const Sexpr, unbalance: f32) !void {
             switch (sexpr.*) {
                 .atom_lit => |lit| {
                     try drawAtom(camera, world_point, lit.value);
                 },
                 .pair => |pair| {
+                    drawPairHolderUnbalanced(camera, world_point, unbalance);
+                    // TODO
+                    // try drawTemplateWildcardLinesNonRecursive(camera, pair.left, pair.right, world_point, .none);
+                    try drawSexpr(camera, world_point.applyToLocalPoint(unbalancedOffset(.left, unbalance)), pair.left);
+                    try drawSexpr(camera, world_point.applyToLocalPoint(unbalancedOffset(.right, unbalance)), pair.right);
+                },
+                .atom_var => |x| {
+                    try drawVariable(camera, world_point, x.value);
+                },
+            }
+        }
+
+        fn computeUnbalance(a: usize, b: usize) f32 {
+            // perfectly balanced
+            return tof32(b + 1) / tof32(a + b + 2);
+        }
+
+        pub fn drawSexpr(camera: Camera, world_point: Point, sexpr: *const Sexpr) OoM!void {
+            switch (sexpr.*) {
+                .atom_lit => |lit| {
+                    try drawAtom(camera, world_point, lit.value);
+                },
+                .pair => |pair| {
+                    if (false) {
+                        try drawSexprUnbalanced(
+                            camera,
+                            world_point,
+                            sexpr,
+                            computeUnbalance(pair.left.getMaxDepth(), pair.right.getMaxDepth()),
+                        );
+                        return;
+                    }
+
                     drawer.drawPairHolder(camera, world_point);
                     try drawTemplateWildcardLinesNonRecursive(camera, pair.left, pair.right, world_point, .none);
-                    try drawSexpr(camera, world_point.applyToLocalPoint(.{
-                        .pos = .new(0.5, -0.5),
-                        .scale = 0.5,
-                    }), pair.left);
-                    try drawSexpr(camera, world_point.applyToLocalPoint(.{
-                        .pos = .new(0.5, 0.5),
-                        .scale = 0.5,
-                    }), pair.right);
+                    try drawSexpr(camera, world_point.applyToLocalPoint(OFFSET_TEMPLATE_PAIR_LEFT), pair.left);
+                    try drawSexpr(camera, world_point.applyToLocalPoint(OFFSET_TEMPLATE_PAIR_RIGHT), pair.right);
                 },
                 .atom_var => |x| {
                     try drawVariable(camera, world_point, x.value);

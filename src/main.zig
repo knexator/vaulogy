@@ -103,6 +103,13 @@ pub const Sexpr = union(enum) {
         };
     }
 
+    pub fn getMaxDepth(x: *const Sexpr) usize {
+        return switch (x.*) {
+            .atom_lit, .atom_var => 0,
+            .pair => |p| 1 + @max(p.left.getMaxDepth(), p.right.getMaxDepth()),
+        };
+    }
+
     pub fn assertLit(x: *const Sexpr) void {
         std.debug.assert(x.isFullyResolved());
     }
