@@ -2323,10 +2323,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             pub fn getFnksReel(self: TutorialState) fnks_reel.Modifier {
-                return switch (self) {
-                    .none => .normal,
-                    else => .only_first,
-                };
+                _ = self;
+                return .normal;
+                // return switch (self) {
+                //     .none => .normal,
+                //     else => .only_first,
+                // };
             }
 
             pub fn allowGrabbingCases(self: TutorialState) bool {
@@ -2621,8 +2623,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             pub fn init(top_left: Point) SamplesReel {
                 return .{
-                    // TODO: the -1 is a tutorial hack, make it 0 once the scroll bar is finished
-                    .scroll = -1,
+                    .scroll = 0,
                     .top_left = top_left,
                     .rect = .{ .top_left = top_left.pos, .size = Vec2.new(7, 7.5).scale(top_left.scale) },
                 };
@@ -3643,6 +3644,19 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         //     case.pattern_point,
                         //     full_address.sexpr_address,
                         // ));
+                        switch (hovering.address) {
+                            else => {},
+                            .external_fnk => |address| if (address.local.len == 0) {
+                                if (findBuiltinLevel(value)) |level| {
+                                    const asdf: SamplesReel = .init(Camera.remap(DEFAULT_CAM, .{ .pos = .new(-6, 0.25), .scale = 0.75 }, UI.cam));
+                                    const foo: []bool = try platform.gpa.alloc(bool, level.manual_samples.len);
+                                    defer platform.gpa.free(foo);
+                                    drawer.setTransparency(0.5);
+                                    defer drawer.setTransparency(1);
+                                    try asdf.draw(level.manual_samples, foo, 0);
+                                }
+                            },
+                        }
                     }
                 },
             }
@@ -3663,6 +3677,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         // drawer.drawDebugText(camera, .{ .pos = .new(6, -1.85), .scale = 0.75 }, "↓ That gray thing is the current Data;\nfeel free to change it by\ndropping some other Data on it.", .black);
                         drawer.drawDebugText(camera, .{ .pos = .new(3.5, -4), .scale = 0.75 }, "← Click Play to see the Vau applied to the current Data.", .black);
                     }
+                    drawer.drawDebugText(camera, .{ .pos = .new(-3, 7), .scale = 0.75 }, "Left click to\npick/drop Data", .black);
                     // drawer.drawDebugText(camera, .{ .pos = .new(10, 1), .scale = 0.75 }, "↓ These are the Cases that make up the Vau.", .black);
                     if (!(self.display_solved_status and allTrue(self.solved_samples))) {
                         drawer.drawDebugText(UI.cam, .{ .pos = self.samples_reel.top_left.pos.add(.new(2.75, 6.75)), .scale = 0.75 }, "↑\nThese Tests are the Data\ntransformations your Vau\nmust achieve.", .black);
@@ -3673,6 +3688,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     drawer.drawDebugText(camera, .{ .pos = .new(8, 8), .scale = 0.75 }, "All the Tests for this Vau have the same structure; use a Wildcard to solve them with a single Case.", .black);
                 },
                 .third_level => {
+                    drawer.drawDebugText(camera, .{ .pos = .new(-3.65, -2), .scale = 0.75 }, "Remember, each Vau\nhas a name →", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(2.5, 7.25), .scale = 0.75 }, "← your collection of Vaus.", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(9, 0.6), .scale = 0.75 }, "Place a Vau name here to call it on the result.\n↓", .black);
                     if (!DESIGN.no_current_data) drawer.drawDebugText(camera, .{ .pos = .new(2.5, -4), .scale = 0.75 }, "← Don't forget to hit Play to see the Vau in action!", .black);
