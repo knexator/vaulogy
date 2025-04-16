@@ -5,6 +5,7 @@ const DESIGN = struct {
     autograb_wildcard_template_after_pattern: bool = true,
     round_data: bool = true,
     allow_zoom: bool = false,
+    instant_feedback: bool = false,
 
     pub const default: @This() = .{};
     pub const variants: []const struct {
@@ -12,8 +13,8 @@ const DESIGN = struct {
         design: DESIGN,
     } = &.{
         .{ .name = "main", .design = .{} },
-        .{ .name = "pointy_data", .design = .{ .round_data = false } },
-        .{ .name = "zoomable", .design = .{ .allow_zoom = true } },
+        // .{ .name = "pointy_data", .design = .{ .round_data = false } },
+        .{ .name = "zoomable", .design = .{ .allow_zoom = true, .instant_feedback = true } },
     };
 
     fn toOptions(self: @This(), b: *std.Build) *std.Build.Step.Options {

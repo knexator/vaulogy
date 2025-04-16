@@ -734,6 +734,16 @@ pub const ExecutionThread = struct {
         }
     }
 
+    pub fn getFinalResultBounded(this: *ExecutionThread, scoring_run: *ScoringRun, max_steps: ?usize) !*const Sexpr {
+        if (max_steps) |max| {
+            for (0..max) |_| {
+                if (try this.advanceStep(scoring_run)) |res| {
+                    return res;
+                }
+            } else return error.TookTooLong;
+        } else return getFinalResult(this, scoring_run);
+    }
+
     pub fn deinit(this: *ExecutionThread) void {
         this.stack.deinit();
     }

@@ -395,26 +395,29 @@ const WebDrawer = struct {
 
     pub fn drawAtomDebug(camera: Camera, world_point: Point) void {
         // std.debug.assert(!DESIGN.round_data);
-        const screen_point = screenFromWorld(camera, world_point);
-        const local_positions = [_]Vec2{
-            Vec2.new(-0.5, 0),
-            Vec2.new(0, 1),
-            Vec2.new(2, 1),
-            Vec2.new(2.2, 1.0 / 3.0),
-            Vec2.new(1.8, -1.0 / 3.0),
-            Vec2.new(2, -1),
-            Vec2.new(0, -1),
-        };
-        var screen_positions: [local_positions.len]Vec2 = undefined;
-        for (local_positions, 0..) |pos, i| {
-            screen_positions[i] = screen_point.applyToLocalPosition(pos);
-        }
-        js_better.canvas.pathLoop(&screen_positions);
-        js.canvas.setLineWidth(1);
-        js_better.canvas.setFillColor(Color.white);
-        js_better.canvas.setStrokeColor(Color.black);
-        js.canvas.fill();
-        js.canvas.stroke();
+        const local_positions = if (DESIGN.round_data)
+            funk.fromCount(32, struct {
+                pub fn anon(k: usize) Vec2 {
+                    return Vec2.fromTurns(math.lerp(0.75, 0.25, math.tof32(k) / 32)).addX(0.5);
+                }
+            }.anon) ++ [_]Vec2{
+                .new(2, 1),
+                .new(2.2, 1.0 / 3.0),
+                .new(1.8, -1.0 / 3.0),
+                .new(2, -1),
+            }
+        else
+            [_]Vec2{
+                .new(-0.5, 0),
+                .new(0, 1),
+                .new(2, 1),
+                .new(2.2, 1.0 / 3.0),
+                .new(1.8, -1.0 / 3.0),
+                .new(2, -1),
+                .new(0, -1),
+            };
+
+        drawShapeV2(camera, world_point, &local_positions, .black, .white);
     }
 
     pub fn drawAtom(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {
