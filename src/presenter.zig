@@ -2811,6 +2811,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             // pub fn getRowPos(self: Reel, k: usize) struct { top_left: Vec2, scale: f32 } {
+
+            // pub fn getRowPos(self: Reel, k: usize) struct { top_left: Vec2, scale: f32 } {
             pub fn getTestsReelUIPos(self: Reel, k: usize, which: TestCase.Part) Point {
                 const index: f32 = tof32(k) - self.scroll;
                 const y = 1.25 + index * 2.5;
@@ -3095,10 +3097,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 const x = 1.25 + tof32(k % N_FNKS_PER_ROW) * 2.1;
                 const scale = @min(
                     math.smoothstep(v_index, -0.5, 0),
-                    math.smoothstep(v_index, 1.5, 1),
+                    math.smoothstep(v_index, tof32(reel.n_visible_rows) - 0.5, 1),
                 );
                 return reel.top_left.applyToLocalPoint(.{
-                    .pos = .new(x, y),
+                    .pos = .new(x, y - if (y < reel.rect.size.y / 2.0) 0 else lerp(1, 0, scale)),
                     .scale = scale * 0.75,
                     .turns = -0.25,
                 });
