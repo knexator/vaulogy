@@ -3072,36 +3072,32 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         // TODO: would be nice to classify fnks by name
         const fnks_reel = struct {
-            const top_left: Point = Camera.remap(.{ .center = .new(7, 3), .height = 15.0 }, .{ .pos = .new(-6, 0.5 + 7.5 * 0.75), .scale = 0.75 }, UI.cam);
-            var scroll: f32 = 0;
+            var reel: Reel = blk: {
+                const top_left: Point = Camera.remap(.{ .center = .new(7, 3), .height = 15.0 }, .{ .pos = .new(-6, 0.5 + 7.5 * 0.75), .scale = 0.75 }, UI.cam);
+                break :blk .{
+                    .top_left = top_left,
+                    .rect = .{ .top_left = top_left.pos, .size = Vec2.new(7, 5.5).scale(top_left.scale) },
+                    .n_visible_rows = 2,
+                };
+            };
 
-            const rect: Rect = .{ .top_left = top_left.pos, .size = Vec2.new(7, 5.5).scale(top_left.scale) };
             const N_FNKS_PER_ROW = 3;
-            const N_VISIBLE_FNKS = 2;
 
             pub const Address = struct {
                 index: usize,
                 local: core.SexprAddress,
             };
 
-            fn getMaxScroll(fnks_len: usize) f32 {
-                return @max(0, tof32(std.math.divCeil(usize, fnks_len, N_FNKS_PER_ROW) catch unreachable) - N_VISIBLE_FNKS);
-            }
-
-            pub fn updateScroll(main: Self, delta_seconds: f32) void {
-                math.lerp_towards_range(&fnks_reel.scroll, 0, getMaxScroll(main.available_fnks.len), 0.1, delta_seconds);
-            }
-
             /// in UI coords
             fn getUIPoint(k: usize) Point {
-                const v_index: f32 = tof32(k / N_FNKS_PER_ROW) - scroll;
+                const v_index: f32 = tof32(k / N_FNKS_PER_ROW) - reel.scroll;
                 const y = 2 + v_index * 2.5;
                 const x = 1.25 + tof32(k % N_FNKS_PER_ROW) * 2.1;
                 const scale = @min(
                     math.smoothstep(v_index, -0.5, 0),
                     math.smoothstep(v_index, 1.5, 1),
                 );
-                return top_left.applyToLocalPoint(.{
+                return reel.top_left.applyToLocalPoint(.{
                     .pos = .new(x, y),
                     .scale = scale * 0.75,
                     .turns = -0.25,
@@ -3131,28 +3127,18 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             pub fn draw(available_fnks: []const *const Sexpr, modifier: Modifier) !void {
                 const camera = UI.cam;
-                drawer.drawRect(camera, rect, .black, null);
+                drawer.drawRect(camera, reel.rect, .black, null);
                 for (available_fnks, 0..) |fnk_name, k| {
                     try artist.drawSexpr(camera, getUIPoint(k), fnk_name);
                     if (modifier == .only_first and k == 0) drawer.setTransparency(0.5);
                 }
                 if (modifier == .only_first) drawer.setTransparency(1);
-                drawScrollBar(camera, available_fnks.len);
-                drawer.drawDebugText(camera, .{ .pos = rect.get(.top_center).addY(0.2) }, "vaus", .black);
+                reel.drawScrollBar(nRows(available_fnks.len));
+                drawer.drawDebugText(camera, .{ .pos = reel.rect.get(.top_center).addY(0.2) }, "vaus", .black);
             }
 
-            fn drawScrollBar(camera: Camera, fnks_len: usize) void {
-                const scroll_perc = scroll / getMaxScroll(fnks_len);
-                const bar_height = N_VISIBLE_FNKS / getMaxScroll(fnks_len);
-                drawer.drawRect(
-                    camera,
-                    .{
-                        .top_left = rect.get(.top_right).addY((rect.size.y - bar_height) * scroll_perc),
-                        .size = .new(0.2, bar_height),
-                    },
-                    null,
-                    .black,
-                );
+            fn nRows(fnks_len: usize) usize {
+                return std.math.divCeil(usize, fnks_len, N_FNKS_PER_ROW) catch unreachable;
             }
         };
 
@@ -3486,13 +3472,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             inline for (.{&self.tests_reel}) |instance| {
                 instance.update(self.samples.len, &mouse, delta_seconds);
             }
-            inline for (.{fnks_reel}) |x| {
-                if (x.rect.contains(mouse.cur.pos(UI.cam))) {
-                    x.scroll -= delta_seconds * 10 * mouse.cur.scrolled.toNumber();
-                    mouse.cur.scrolled = .none;
-                }
-                x.updateScroll(self.*, delta_seconds);
-            }
+            fnks_reel.reel.update(fnks_reel.nRows(self.available_fnks.len), &mouse, delta_seconds);
             moveCamera(&self.camera, delta_seconds, platform.getKeyboard(), mouse);
 
             const camera = self.camera;
@@ -4035,7 +4015,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .third_level => {
                     drawer.drawDebugText(camera, .{ .pos = .new(-3.2, -2), .scale = 0.6 }, "Remember, each Vau\nhas a name →", .black);
-                    drawer.drawDebugText(UI.cam, .{ .pos = fnks_reel.rect.get(.top_right).add(.new(3.5, 1)), .scale = 0.75 }, "← your collection of Vaus.", .black);
+                    drawer.drawDebugText(UI.cam, .{ .pos = fnks_reel.reel.rect.get(.top_right).add(.new(3.5, 1)), .scale = 0.75 }, "← your collection of Vaus.", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(9, 0.6), .scale = 0.75 }, "Place a Vau name here to call it on the result.\n↓", .black);
                     if (!DESIGN.no_current_data) drawer.drawDebugText(camera, .{ .pos = .new(2.5, -4), .scale = 0.75 }, "← Don't forget to hit Play to see the Vau in action!", .black);
                 },
