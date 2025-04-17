@@ -428,7 +428,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             /// not used for now
             intro: IntroSequence(platform, drawer),
             level_select: LevelSelect(platform, drawer),
-            level_select_to_editing_fnk: LoadingAnEditingFnk(platform, drawer),
+            loading_editing_fnk: LoadingAnEditingFnk(platform, drawer),
             editing_fnk: EditingFnk(platform, drawer),
             executing_fnk: struct { main: ExecutingFnk(platform, drawer), prev_editing: EditingFnk(platform, drawer) },
             testing_fnk: struct { main: TestingFnk(platform, drawer), prev_editing: EditingFnk(platform, drawer) },
@@ -503,10 +503,10 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             switch (self.state) {
                 .level_select => |*ui| if (ui.update(delta_seconds)) |level_index| {
                     self.state = .{
-                        .level_select_to_editing_fnk = .init(ui.*, level_index),
+                        .loading_editing_fnk = .initFromLevelSelect(ui.*, level_index),
                     };
                 },
-                .level_select_to_editing_fnk => |*anim| if (anim.update(delta_seconds)) {
+                .loading_editing_fnk => |*anim| if (anim.update(delta_seconds)) {
                     try self.initEditingAndMaybeFindLevel(anim.fnk_name);
                 },
                 .editing_fnk => |*editing| switch (try editing.update(delta_seconds)) {
@@ -554,7 +554,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         try self.persistence.fnks.put(fnk.name, fnk.body);
                         try platform.setPlayerData(self.persistence, &self.mem);
                         self.state = .{
-                            .level_select_to_editing_fnk = .initFromPoint(fnk_name, Camera.remap(
+                            .loading_editing_fnk = .initFromPoint(fnk_name, Camera.remap(
                                 UI.cam,
                                 EditingFnk(platform, drawer).fnk_manager.sexpr_point,
                                 editing.camera,
@@ -2266,7 +2266,7 @@ fn LoadingAnEditingFnk(platform: Platform, drawer: Drawer) type {
             };
         }
 
-        pub fn init(prev: LevelSelect(platform, drawer), level_index: usize) Self {
+        pub fn initFromLevelSelect(prev: LevelSelect(platform, drawer), level_index: usize) Self {
             return .{
                 .fnk_name = builtin_levels[level_index].fnk_name,
                 .starting_point = Camera.remap(
