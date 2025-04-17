@@ -95,7 +95,6 @@ done:
 - intenta poner wildcard template en la pattern del caso hijo
 - horizontal nested cases?
 - most of the previous vaus are pointless
-- move toolbar to UI layer
 
 ok:
 - got wildcards!!
@@ -104,6 +103,7 @@ discarded:
 - symmetrical pattern-template? -> no, xq estarían feas las listas
 
 done:
+- move toolbar to UI layer
 - Show 'got/expected' on tests
 - level 1: enfasis check
 - allow infinite loops

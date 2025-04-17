@@ -2361,10 +2361,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         Point{},
                         full_address,
                     ),
-                    .toolbar => |index| toolbar.things[index].point,
+                    .toolbar => |index| Camera.remap(UI.cam, toolbar.things[index].point, self.camera),
                     .main_input => |local| if (DESIGN.no_current_data) MAIN_INPUT_POS else SexprView.sexprChildView(MAIN_INPUT_POS, local),
                     .main_fnk_name => |local| SexprView.sexprChildView(MAIN_FNK_POS, local),
-                    .toolbar_special_var => toolbar.special_var_point,
+                    .toolbar_special_var => Camera.remap(UI.cam, toolbar.special_var_point, self.camera),
                     .sample => |sample| SexprView.sexprChildView(self.tests_reel.getWorldPoint(self.camera, sample.index, sample.which), sample.local),
                     .external_fnk => |fnk| SexprView.sexprChildView(fnks_reel.getWorldPoint(self.camera, fnk.index), fnk.local),
                     .fnk_manager => fnk_manager.sexpr_point,
@@ -2619,7 +2619,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         // TODO: cooler, by taking a 'hot' param
-        fn drawTinyCase(camera: Camera, case_point: Point, pattern: *const Sexpr, template: *const Sexpr) !void {
+        fn drawTinyCase(case_point: Point, pattern: *const Sexpr, template: *const Sexpr) !void {
+            const camera = UI.cam;
             try artist.drawPatternSexpr(camera, case_point
                 .applyToLocalPoint(.{ .pos = .new(-1, 0) }), pattern);
             try artist.drawSexpr(camera, case_point
@@ -2634,7 +2635,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             );
         }
 
-        fn drawTinyCaseHolder(camera: Camera, case_point: Point, hot: f32) void {
+        fn drawTinyCaseHolder(case_point: Point, hot: f32) void {
+            const camera = UI.cam;
             // TODO: cooler
             drawer.drawCaseHolder(camera, case_point
                 .applyToLocalPoint(.{ .pos = .new(-2, 0) })
@@ -2651,16 +2653,16 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             const things = blk: {
                 var result: [atom_values.len]struct { value: *const Sexpr, point: Point, index: usize } = undefined;
                 for (atom_values, 0..) |atom, k| {
-                    result[k] = .{ .value = atom, .point = .{
+                    result[k] = .{ .value = atom, .point = Camera.remap(DEFAULT_CAM, .{
                         .pos = .new(tof32(k) * 1.6 + 3.5, -2.5),
                         .scale = 0.5,
-                    }, .index = k };
+                    }, UI.cam), .index = k };
                 }
                 const xx = result;
                 break :blk xx;
             };
 
-            const special_var_point = Point{ .pos = .new(2.5, -2.5), .scale = 0.5 };
+            const special_var_point = things[0].point.applyToLocalPoint(.{ .pos = .new(-2, 0) });
             var special_var_state: struct {
                 random_instance: std.Random.DefaultPrng = std.Random.DefaultPrng.init(0),
                 next_value: *const Sexpr = &Sexpr.doVar("first_var"),
@@ -2694,13 +2696,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     }
                 }
 
-                pub fn value(self: @This()) CaseState {
+                pub fn value(self: @This(), camera: Camera) CaseState {
                     return .{
                         .fnk_name = Sexpr.builtin.identity,
                         .pattern = self.next_var,
                         .template = self.next_var,
                         .next = null,
-                        .pattern_point_relative_to_parent = special_case_point,
+                        .pattern_point_relative_to_parent = Camera.remap(UI.cam, special_case_point, camera),
                         .incoming_wildcards = &.{},
                         .outgoing_wildcards = &.{},
                     };
@@ -2735,26 +2737,28 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
             };
 
-            pub fn overlapsWithSpecialVar(mouse_pos: Vec2, modifier: Modifier, wildcard_in_play: bool) bool {
-                return modifier.specialVarEnabled(wildcard_in_play) and SexprView.overlapsPatternAtom(special_var_point, mouse_pos, .atom);
+            pub fn overlapsWithSpecialVar(mouse_ui_pos: Vec2, modifier: Modifier, wildcard_in_play: bool) bool {
+                return modifier.specialVarEnabled(wildcard_in_play) and SexprView.overlapsPatternAtom(special_var_point, mouse_ui_pos, .atom);
             }
 
-            pub fn overlapsWithSpecialCase(mouse_pos: Vec2, modifier: Modifier) bool {
-                return modifier.specialCaseEnabled() and overlapsWithTinyCase(mouse_pos, special_case_point);
+            pub fn overlapsWithSpecialCase(mouse_ui_pos: Vec2, modifier: Modifier) bool {
+                return modifier.specialCaseEnabled() and overlapsWithTinyCase(mouse_ui_pos, special_case_point);
             }
 
-            pub fn findOverlap(mouse_pos: Vec2, modifier: Modifier) ?std.meta.Elem(@TypeOf(things)) {
+            pub fn findOverlap(mouse_ui_pos: Vec2, modifier: Modifier) ?std.meta.Elem(@TypeOf(things)) {
                 if (!modifier.thingsEnabled()) return null;
                 for (things) |thing| {
-                    if (SexprView.overlapsAtom(thing.point, mouse_pos, .atom)) {
+                    if (SexprView.overlapsAtom(thing.point, mouse_ui_pos, .atom)) {
                         return thing;
                     }
                 }
                 return null;
             }
 
-            pub fn draw(camera: Camera, modifier: Modifier, wildcard_in_play: bool) !void {
+            pub fn draw(modifier: Modifier, wildcard_in_play: bool) !void {
                 if (modifier == .hidden) return;
+
+                const camera = UI.cam;
 
                 drawer.setTransparency(if (modifier.specialVarEnabled(wildcard_in_play)) 1 else 0.5);
                 try artist.drawPatternSexpr(camera, special_var_point, special_var_state.next_value);
@@ -2765,7 +2769,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
 
                 drawer.setTransparency(if (modifier.specialCaseEnabled()) 1 else 0.5);
-                try drawTinyCase(camera, special_case_point, special_case_state.value().pattern, special_case_state.value().template);
+                try drawTinyCase(special_case_point, special_case_state.value(undefined).pattern, special_case_state.value(undefined).template);
 
                 if (modifier != .normal) drawer.setTransparency(1);
             }
@@ -3271,7 +3275,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
                 if (case) |c| {
                     // TODO: case fnk_name and "has_next"
-                    try drawTinyCase(camera, case_point, c.pattern, c.template);
+                    try drawTinyCase(case_point, c.pattern, c.template);
                 } else {
                     drawer.drawRect(
                         camera,
@@ -3605,7 +3609,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         break :blk null;
                 }) |overlap|
                     overlap
-                else if (toolbar.findOverlap(mouse_pos, self.tutorial_state.getToolbar())) |overlap|
+                else if (toolbar.findOverlap(mouse_ui_pos, self.tutorial_state.getToolbar())) |overlap|
                     .{ .sexpr = .{ .toolbar = overlap.index } }
                 else if (try self.tests_reel.findOverlap(mouse_ui_pos, self.samples)) |overlap|
                     .{ .sexpr = .{ .sample = overlap } }
@@ -3616,7 +3620,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 else if (if (self.meta_enabled) try meta_converter.findOverlap(mouse_pos) else null) |overlap| switch (overlap) {
                     .sexpr => |local| .{ .sexpr = .{ .meta_converter = local } },
                     .case => .{ .case = .meta_converter },
-                } else if (toolbar.overlapsWithSpecialVar(mouse_pos, self.tutorial_state.getToolbar(), self.cases.anyWildcardInPlay()))
+                } else if (toolbar.overlapsWithSpecialVar(mouse_ui_pos, self.tutorial_state.getToolbar(), self.cases.anyWildcardInPlay()))
                     .{ .sexpr = .toolbar_special_var }
                 else if (DESIGN.no_current_data and SexprView.overlapsAtom(MAIN_INPUT_POS, mouse_pos, .atom))
                     .{ .sexpr = .main_input }
@@ -3624,7 +3628,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .{ .main_input = overlap } }
                 else if (try SexprView.overlapsSexpr(self.mem.gpa, self.fnk_name, MAIN_FNK_POS, mouse_pos)) |overlap|
                     .{ .sexpr = .{ .main_fnk_name = overlap } }
-                else if (toolbar.overlapsWithSpecialCase(mouse_pos, self.tutorial_state.getToolbar()))
+                else if (toolbar.overlapsWithSpecialCase(mouse_ui_pos, self.tutorial_state.getToolbar()))
                     .{ .case = .toolbar_special_case }
                 else
                     null;
@@ -3822,7 +3826,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             },
                             .toolbar_special_case => {
                                 self.focus = .{ .grabbing_case = .{
-                                    .case = toolbar.special_case_state.value(),
+                                    .case = toolbar.special_case_state.value(self.camera),
                                     .address_if_released = null,
                                 } };
                                 try toolbar.special_case_state.next(self.mem, self.cases);
@@ -3909,7 +3913,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             };
             defer if (wildcard_names_in_grabbing_sexpr) |x| x.deinit();
             try drawCases(camera, true, .{}, self.cases, if (wildcard_names_in_grabbing_sexpr) |x| x.items else null);
-            try toolbar.draw(camera, self.tutorial_state.getToolbar(), self.cases.anyWildcardInPlay());
+            try toolbar.draw(self.tutorial_state.getToolbar(), self.cases.anyWildcardInPlay());
             // switch (self.tutorial_state.getToolbar()) {
             //     .normal =>
             //     .hidden => {},
@@ -3947,10 +3951,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         }, self.tutorial_state != .first_level);
                     },
                     .meta_converter => if (meta_converter.case != null) {
-                        drawTinyCaseHolder(camera, meta_converter.case_point, hovering.hot);
+                        drawTinyCaseHolder(meta_converter.case_point, hovering.hot);
                     },
                     .toolbar_special_case => {
-                        drawTinyCaseHolder(camera, toolbar.special_case_point, hovering.hot);
+                        drawTinyCaseHolder(toolbar.special_case_point, hovering.hot);
                     },
                 },
                 .grabbing_sexpr => |grabbing| {
