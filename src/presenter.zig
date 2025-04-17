@@ -3513,7 +3513,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 instance.update(self.samples.len, &mouse, delta_seconds);
             }
             inline for (.{fnks_reel}) |x| {
-                if (x.rect.contains(mouse.cur.pos(self.camera))) {
+                if (x.rect.contains(mouse.cur.pos(UI.cam))) {
                     x.scroll -= delta_seconds * 10 * mouse.cur.scrolled.toNumber();
                     mouse.cur.scrolled = .none;
                 }
