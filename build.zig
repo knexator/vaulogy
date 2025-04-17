@@ -37,13 +37,15 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const fast = b.option(bool, "fast", "generate only the main webgame version") orelse false;
+
     const check = b.step("check", "Check if the project compiles");
 
     const test_filters = b.option([]const []const u8, "test-filter", "Skip tests that do not match any filter") orelse &[0][]const u8{};
     const test_step = b.step("test", "Run unit tests");
 
     // CLI tool
-    {
+    if (!fast) {
         const exe = b.addExecutable(.{
             .name = "vaulogy",
             .root_source_file = b.path("src/main.zig"),
@@ -99,7 +101,7 @@ pub fn build(b: *std.Build) void {
     }
 
     // Build the sdlgame
-    {
+    if (!fast) {
         const sdlgame_exe = b.addExecutable(.{
             .name = "sdlgame",
             .root_source_file = b.path("src/sdl_platform.zig"),
@@ -134,7 +136,7 @@ pub fn build(b: *std.Build) void {
     // Building the webgame
     const webgame_install_dir = std.Build.InstallDir{ .custom = "dist" };
     {
-        for (DESIGN.variants) |variant| {
+        for (if (fast) DESIGN.variants[0..1] else DESIGN.variants) |variant| {
             const webgame_wasm = b.addExecutable(
                 .{
                     .name = variant.name,
@@ -199,7 +201,7 @@ pub fn build(b: *std.Build) void {
     }
 
     // dev server for testing the webgame
-    {
+    if (!fast) {
         const dev_server_exe = b.addExecutable(.{
             .name = "dev_server",
             .root_source_file = b.path("src/tools/dev_server.zig"),
