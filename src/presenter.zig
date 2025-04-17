@@ -796,6 +796,12 @@ const Vals = struct {
         if (input.equals(Vals.Zeus)) return Vals.Jupiter;
         return null;
     }
+
+    pub fn toPeano(comptime n: usize) *const Sexpr {
+        @setEvalBranchQuota(1100 + n * 2);
+        if (n == 0) return Sexpr.builtin.nil;
+        return &Sexpr.doPair(Sexpr.builtin.true, toPeano(n - 1));
+    }
 };
 
 const builtin_levels: []const BuiltinLevel = &.{
@@ -915,6 +921,57 @@ const builtin_levels: []const BuiltinLevel = &.{
             &.{ Vals.Hermes, Vals.Aphrodite, Vals.Ares, Vals.Zeus, Vals.Zeus, Vals.Ares, Vals.Aphrodite, Vals.Hermes },
         }),
         .description = "Translate a list of Datas",
+        .premade_solution = null,
+    },
+    .{
+        .fnk_name = &Sexpr.doLit("peanoSum"),
+        .manual_samples = &funk.map(struct {
+            pub fn anon(comptime vs: [2]usize) Sample {
+                const a = vs[0];
+                const b = vs[1];
+                return .{
+                    .input = &Sexpr.doPair(Vals.toPeano(a), Vals.toPeano(b)),
+                    .output = Vals.toPeano(a + b),
+                };
+            }
+        }.anon, &.{
+            .{ 1, 0 },
+            .{ 0, 1 },
+            .{ 1, 1 },
+            .{ 2, 0 },
+            .{ 0, 2 },
+            .{ 0, 0 },
+            .{ 3, 2 },
+            .{ 7, 2 },
+            .{ 3, 6 },
+        }),
+        .description = "Sum two numbers",
+        .premade_solution = null,
+    },
+    .{
+        .fnk_name = &Sexpr.doLit("peanoMul"),
+        .manual_samples = &funk.map(struct {
+            pub fn anon(comptime vs: [2]usize) Sample {
+                const a = vs[0];
+                const b = vs[1];
+                return .{
+                    .input = &Sexpr.doPair(Vals.toPeano(a), Vals.toPeano(b)),
+                    .output = Vals.toPeano(a * b),
+                };
+            }
+        }.anon, &.{
+            .{ 1, 1 },
+            .{ 3, 1 },
+            .{ 1, 3 },
+            .{ 3, 2 },
+            .{ 2, 3 },
+            .{ 0, 3 },
+            .{ 0, 5 },
+            .{ 7, 0 },
+            .{ 9, 2 },
+            .{ 3, 6 },
+        }),
+        .description = "Multiply two numbers",
         .premade_solution = null,
     },
 };
@@ -2367,7 +2424,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .toolbar_special_var => Camera.remap(UI.cam, toolbar.special_var_point, self.camera),
                     .sample => |sample| SexprView.sexprChildView(self.tests_reel.getWorldPoint(self.camera, sample.index, sample.which), sample.local),
                     .external_fnk => |fnk| SexprView.sexprChildView(fnks_reel.getWorldPoint(self.camera, fnk.index), fnk.local),
-                    .fnk_manager => fnk_manager.sexpr_point,
+                    .fnk_manager => Camera.remap(UI.cam, fnk_manager.sexpr_point, self.camera),
                     .meta_converter => |local| SexprView.sexprChildView(meta_converter.sexpr_point, local),
                 };
             }
@@ -2459,9 +2516,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             third_level,
             /// nested case
             fourth_level,
-            /// free level: map a pair
+            /// free level
             fifth_level,
-            lists_level,
+            not_yet_creating_vaus,
 
             pub fn allowPickingVaus(self: TutorialState) bool {
                 return switch (self) {
@@ -3163,13 +3220,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         /// create/edit/delete fnks
         const fnk_manager = struct {
-            const sexpr_point: Point = .{ .pos = .new(-5, -1.5), .scale = 0.5, .turns = -0.25 };
+            const sexpr_point: Point = .{ .pos = .new(2, 3), .scale = 0.5, .turns = -0.25 };
 
-            pub fn findOverlap(mouse_pos: Vec2) bool {
-                return SexprView.overlapsAtom(sexpr_point, mouse_pos, .atom);
+            pub fn findOverlap(mouse_ui_pos: Vec2) bool {
+                return SexprView.overlapsAtom(sexpr_point, mouse_ui_pos, .atom);
             }
 
-            pub fn draw(camera: Camera) !void {
+            pub fn draw() !void {
+                const camera = UI.cam;
                 drawer.drawRect(
                     camera,
                     Rect.fromCenterAndSize(sexpr_point.pos, .both(sexpr_point.scale)),
@@ -3383,12 +3441,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .third_level
                 else if (fnk_name.equals(builtin_levels[3].fnk_name))
                     .fourth_level
-                else if (fnk_name.equals(builtin_levels[4].fnk_name) or fnk_name.equals(builtin_levels[5].fnk_name))
+                else if (fnk_name.equals(builtin_levels[4].fnk_name))
                     .fifth_level
-                else if (fnk_name.equals(builtin_levels[6].fnk_name))
-                    .lists_level
                 else
-                    .none,
+                    .not_yet_creating_vaus,
                 .particles = .init(platform.gpa),
                 .particles_cases = .init(platform.gpa),
             };
@@ -3588,7 +3644,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .{ .sample = overlap } }
                 else if (if (self.tutorial_state.allowPickingVaus()) try fnks_reel.findOverlap(mouse_ui_pos, self.available_fnks, self.tutorial_state.getFnksReel()) else null) |overlap|
                     .{ .sexpr = .{ .external_fnk = overlap } }
-                else if (self.tutorial_state.allowCreatingVaus() and fnk_manager.findOverlap(mouse_pos))
+                else if (self.tutorial_state.allowCreatingVaus() and fnk_manager.findOverlap(mouse_ui_pos))
                     .{ .sexpr = .fnk_manager }
                 else if (if (self.meta_enabled) try meta_converter.findOverlap(mouse_pos) else null) |overlap| switch (overlap) {
                     .sexpr => |local| .{ .sexpr = .{ .meta_converter = local } },
@@ -3900,7 +3956,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 self.check_all_ui_state.draw(drawer);
             }
             if (self.tutorial_state.allowPickingVaus()) try fnks_reel.draw(self.available_fnks, self.tutorial_state.getFnksReel());
-            if (self.tutorial_state.allowCreatingVaus()) try fnk_manager.draw(camera);
+            if (self.tutorial_state.allowCreatingVaus()) try fnk_manager.draw();
             if (self.meta_enabled) try meta_converter.draw(camera);
 
             if (self.tutorial_state == .third_level and self.cases.cases.items.len > 0) {
@@ -4008,8 +4064,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             switch (self.tutorial_state) {
                 // ↑←
-                .none => {},
-                .lists_level => {},
+                .none, .not_yet_creating_vaus => {},
                 .first_level => {
                     // drawer.drawDebugText(camera, .{ .pos = .new(-3.55, -2), .scale = 0.75 }, "That's the name of →\nthe Vau you're editing.", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(4.5, -2), .scale = 0.75 }, "← That's the name of\nthe Vau you're editing.", .black);
@@ -4040,7 +4095,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .fourth_level => {
                     drawer.drawDebugText(camera, .{ .pos = .new(8.125, -3.5), .scale = 0.75 }, "Add new Cases with this ↓", .black);
-                    drawer.drawDebugText(camera, .{ .pos = .new(3.25, 6), .scale = 0.75 }, "Nested Cases will\nbe called on the result →", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(3, 6), .scale = 0.75 }, "Nested Cases will\nbe called on the result →", .black);
                 },
                 .fifth_level => {
                     drawer.drawDebugText(camera, .{ .pos = .new(5, 9.5), .scale = 0.75 }, "You're now on your own. Good luck!", .black);
