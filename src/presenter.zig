@@ -5635,12 +5635,12 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
 
             if (self.selected_level) |selected| {
                 const level = builtin_levels[selected];
-                drawer.drawDebugText(UI.cam, .{ .pos = UI.cam.center }, level.description, .black);
+                drawer.drawDebugText(UI.cam, .{ .pos = UI.cam.center.addX(2) }, level.description, .black);
                 self.play_level_button.draw(drawer);
             } else {
                 drawer.drawDebugText(
                     UI.cam,
-                    .{ .pos = UI.cam.center },
+                    .{ .pos = UI.cam.center.addX(2) },
                     if (!self.persistence.is_builtin_level_solved[0])
                         \\Welcome to the Vaulogy lab! 
                         \\Vaus are simple machines for transforming Data into Data.
