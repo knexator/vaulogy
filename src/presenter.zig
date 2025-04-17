@@ -2831,7 +2831,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .input => 0.75,
                     .expected => 3.75,
                     .actual => 6.75,
-                }, y), .scale = scale });
+                }, y) }).applyToLocalPoint(.{ .scale = scale, .pos = .lerp(.new(0.5, math.maybeMirror(0.5, y > self.rect.size.y / 2.0)), .zero, scale) });
             }
 
             /// in world coords
