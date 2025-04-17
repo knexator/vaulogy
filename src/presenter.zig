@@ -2803,7 +2803,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             pub fn getMaxScroll(self: Reel, n_rows: usize) f32 {
-                return @max(0, tof32(n_rows - self.n_visible_rows));
+                return @max(0, tof32(n_rows -| self.n_visible_rows));
             }
 
             pub fn updateScroll(self: *Reel, n_rows: usize, delta_seconds: f32) void {
