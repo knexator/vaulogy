@@ -120,8 +120,8 @@ pub const PlayerData = struct {
             };
             defer exec.deinit();
 
-            const actual_output = exec.getFinalResult(&score) catch |err| switch (err) {
-                error.FnkNotFound, error.NoMatchingCase, error.InvalidMetaFnk, error.UsedUndefinedVariable => return false,
+            const actual_output = exec.getFinalResultBounded(&score, 10_000) catch |err| switch (err) {
+                error.FnkNotFound, error.NoMatchingCase, error.InvalidMetaFnk, error.UsedUndefinedVariable, error.TookTooLong => return false,
                 error.OutOfMemory => return err,
                 error.BAD_INPUT => return err,
             };
