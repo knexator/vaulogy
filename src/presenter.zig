@@ -2835,8 +2835,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     math.smoothstep(index, tof32(self.n_visible_rows) - 0.5, tof32(self.n_visible_rows) - 1),
                 );
                 return self.top_left.applyToLocalPoint(.{ .pos = .new(switch (which) {
-                    .input => 0.75,
-                    .output => 4.5,
+                    .input => 0.65,
+                    .output => 3.95,
                 }, y) }).applyToLocalPoint(.{ .scale = scale, .pos = .lerp(.new(0.5, math.maybeMirror(0.5, y > self.rect.size.y / 2.0)), .zero, scale) });
             }
 
@@ -2988,12 +2988,22 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         const SamplesReel = struct {
             reel: Reel,
 
-            pub fn init(top_left: Point) SamplesReel {
-                return .{ .reel = .{
-                    .top_left = top_left,
-                    .n_visible_rows = 3,
-                    .rect = .{ .top_left = top_left.pos, .size = Vec2.new(7, 7.5).scale(top_left.scale) },
-                } };
+            pub fn init() SamplesReel {
+                const rect_size: Vec2 = .new(fnks_reel.reel.rect.size.x, 7.5 * 0.75);
+                const top_left_pos: Vec2 = fnks_reel.reel.rect.top_left.addY(-rect_size.y).addY(-0.25);
+                return .{
+                    .reel = .{
+                        .top_left = .{
+                            .pos = top_left_pos,
+                            .scale = 0.75,
+                        },
+                        .n_visible_rows = 3,
+                        .rect = .{
+                            .top_left = top_left_pos,
+                            .size = rect_size,
+                        },
+                    },
+                };
             }
 
             // TODO: don't take a pointer to Mouse
@@ -3075,10 +3085,17 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         // TODO: would be nice to classify fnks by name
         const fnks_reel = struct {
             var reel: Reel = blk: {
-                const top_left: Point = Camera.remap(.{ .center = .new(7, 3), .height = 15.0 }, .{ .pos = .new(-6, 0.5 + 7.5 * 0.75), .scale = 0.75 }, UI.cam);
+                const top_left: Point = Camera.remap(
+                    .{ .center = .new(7, 3), .height = 15.0 },
+                    .{ .pos = .new(-6.1, 0.75 + 7.5 * 0.75), .scale = 0.75 },
+                    UI.cam,
+                );
                 break :blk .{
                     .top_left = top_left,
-                    .rect = .{ .top_left = top_left.pos, .size = Vec2.new(7, 5.5).scale(top_left.scale) },
+                    .rect = .{
+                        .top_left = top_left.pos,
+                        .size = Vec2.new(6.25, 5.25).scale(top_left.scale),
+                    },
                     .n_visible_rows = 2,
                 };
             };
@@ -3094,7 +3111,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             fn getUIPoint(k: usize) Point {
                 const v_index: f32 = tof32(k / N_FNKS_PER_ROW) - reel.scroll;
                 const y = 2 + v_index * 2.5;
-                const x = 1.25 + tof32(k % N_FNKS_PER_ROW) * 2.1;
+                const x = 1.1 + tof32(k % N_FNKS_PER_ROW) * 2;
                 const scale = @min(
                     math.smoothstep(v_index, -0.5, 0),
                     math.smoothstep(v_index, tof32(reel.n_visible_rows) - 0.5, 1),
@@ -3136,7 +3153,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
                 if (modifier == .only_first) drawer.setTransparency(1);
                 reel.drawScrollBar(nRows(available_fnks.len));
-                drawer.drawDebugText(camera, .{ .pos = reel.rect.get(.top_center).addY(0.2) }, "vaus", .black);
+                // drawer.drawDebugText(camera, .{ .pos = reel.rect.get(.top_center).addY(0.2) }, "vaus", .black);
             }
 
             fn nRows(fnks_len: usize) usize {
@@ -3974,7 +3991,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             else => {},
                             .external_fnk => |address| if (address.local.len == 0) {
                                 if (findBuiltinLevel(value)) |level| {
-                                    const asdf: SamplesReel = .init(Camera.remap(.{ .center = .new(7, 3), .height = 15.0 }, .{ .pos = .new(-6, 0.25), .scale = 0.75 }, UI.cam));
+                                    const asdf: SamplesReel = .init();
                                     const foo: []bool = try platform.gpa.alloc(bool, level.manual_samples.len);
                                     defer platform.gpa.free(foo);
                                     drawer.setTransparency(0.5);
