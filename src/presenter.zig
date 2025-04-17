@@ -433,6 +433,8 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             executing_fnk: struct { main: ExecutingFnk(platform, drawer), prev_editing: EditingFnk(platform, drawer) },
             testing_fnk: struct { main: TestingFnk(platform, drawer), prev_editing: EditingFnk(platform, drawer) },
         },
+        /// only valid when state is editing_fnk
+        prev_editing_names: std.SegmentedList(*const Sexpr, 8) = .{},
 
         pub fn init(result: *Self) !void {
             const platform_alloc = platform.gpa;
@@ -516,7 +518,11 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         try self.persistence.fnks.put(fnk.name, fnk.body);
                         try self.persistence.updateSolvedStatusOfAll(&self.mem);
                         try platform.setPlayerData(self.persistence, &self.mem);
-                        self.state = .{ .level_select = try .init(&self.persistence) };
+                        if (self.prev_editing_names.pop()) |prev| {
+                            try self.initEditingAndMaybeFindLevel(prev);
+                        } else {
+                            self.state = .{ .level_select = try .init(&self.persistence) };
+                        }
                     },
                     .launch_test => {
                         const fnk = try editing.getFnk();
@@ -550,6 +556,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         ), .prev_editing = editing.* } };
                     },
                     .change_to => |fnk_name| {
+                        try self.prev_editing_names.append(platform.gpa, editing.fnk_name);
                         const fnk = try editing.getFnk();
                         try self.persistence.fnks.put(fnk.name, fnk.body);
                         try platform.setPlayerData(self.persistence, &self.mem);
