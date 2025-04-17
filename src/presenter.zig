@@ -2107,8 +2107,8 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
                         self.fnk_cases,
                         delta_seconds,
                     );
-                    const target_scroll: f32 = clamp(tof32(self.cur_sample_index) - 1, 0, Editing.TestsReel.getMaxScroll(self.samples.len));
-                    math.lerp_towards(&self.tests_reel.scroll, target_scroll, 0.1, delta_seconds);
+                    const target_scroll: f32 = clamp(tof32(self.cur_sample_index) - 1, 0, self.tests_reel.reel.getMaxScroll(self.samples.len));
+                    math.lerp_towards(&self.tests_reel.reel.scroll, target_scroll, 0.1, delta_seconds);
 
                     if (starting.t >= 1) {
                         self.state = .{ .executing = try .init(
@@ -2125,7 +2125,7 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
                             self.tests_reel.getUIPoint(self.cur_sample_index, .actual),
                         ) };
                         self.state.executing.fast = self.fast;
-                        self.tests_reel.scroll = target_scroll;
+                        self.tests_reel.reel.scroll = target_scroll;
                     }
                 },
                 .executing => |*executing| {
@@ -2775,67 +2775,104 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         };
 
-        // TODO: remove duplication with SamplesReel and FnksReel
-        const TestsReel = struct {
-            scroll: f32,
+        const Reel = struct {
+            scroll: f32 = 0,
             /// in UI coords
             top_left: Point,
             /// in UI coords
             rect: Rect,
             scroll_bar_active: bool = false,
-
-            const N_VISIBLE_SAMPLES = 4;
-
-            pub fn init(top_left: Point) TestsReel {
-                return .{
-                    .scroll = 0,
-                    .top_left = top_left,
-                    .rect = .{
-                        .top_left = top_left.pos,
-                        .size = Vec2.new(9.25, 10).scale(top_left.scale),
-                    },
-                };
-            }
+            n_visible_rows: usize,
 
             // TODO: don't take a pointer to Mouse
-            pub fn update(self: *TestsReel, samples_len: usize, mouse: *Mouse, delta_seconds: f32) void {
+            pub fn update(self: *Reel, n_rows: usize, mouse: *Mouse, delta_seconds: f32) void {
                 if (self.scroll_bar_active) {
                     if (!mouse.cur.isDown(.left)) {
                         self.scroll_bar_active = false;
                     } else {
                         self.scroll += (mouse.cur.pos(UI.cam).y - mouse.prev.pos(UI.cam).y) * self.top_left.scale;
                     }
-                } else if (self.scrollBarRect(samples_len).contains(mouse.cur.pos(UI.cam)) and mouse.wasPressed(.left)) {
+                } else if (self.scrollBarRect(n_rows).contains(mouse.cur.pos(UI.cam)) and mouse.wasPressed(.left)) {
                     self.scroll_bar_active = true;
                 }
                 if (self.rect.contains(mouse.cur.pos(UI.cam))) {
                     self.scroll -= delta_seconds * 10 * mouse.cur.scrolled.toNumber();
                     mouse.cur.scrolled = .none;
                 }
-                self.updateScroll(samples_len, delta_seconds);
+                self.updateScroll(n_rows, delta_seconds);
             }
 
-            fn getMaxScroll(samples_len: usize) f32 {
-                return @max(0, tof32(samples_len) - N_VISIBLE_SAMPLES);
+            pub fn getMaxScroll(self: Reel, n_rows: usize) f32 {
+                return @max(0, tof32(n_rows - self.n_visible_rows));
             }
 
-            pub fn updateScroll(self: *TestsReel, samples_len: usize, delta_seconds: f32) void {
-                math.lerp_towards_range(&self.scroll, 0, getMaxScroll(samples_len), 0.1, delta_seconds);
+            pub fn updateScroll(self: *Reel, n_rows: usize, delta_seconds: f32) void {
+                math.lerp_towards_range(&self.scroll, 0, self.getMaxScroll(n_rows), 0.1, delta_seconds);
             }
 
-            /// in UI coords
-            pub fn getUIPoint(self: TestsReel, k: usize, which: TestCase.Part) Point {
+            // pub fn getRowPos(self: Reel, k: usize) struct { top_left: Vec2, scale: f32 } {
+            pub fn getTestsReelUIPos(self: Reel, k: usize, which: TestCase.Part) Point {
                 const index: f32 = tof32(k) - self.scroll;
                 const y = 1.25 + index * 2.5;
                 const scale = @min(
                     math.smoothstep(index, -0.5, 0),
-                    math.smoothstep(index, tof32(N_VISIBLE_SAMPLES) - 0.5, tof32(N_VISIBLE_SAMPLES) - 1),
+                    math.smoothstep(index, tof32(self.n_visible_rows) - 0.5, tof32(self.n_visible_rows) - 1),
                 );
                 return self.top_left.applyToLocalPoint(.{ .pos = .new(switch (which) {
                     .input => 0.75,
                     .expected => 3.75,
                     .actual => 6.75,
                 }, y) }).applyToLocalPoint(.{ .scale = scale, .pos = .lerp(.new(0.5, math.maybeMirror(0.5, y > self.rect.size.y / 2.0)), .zero, scale) });
+            }
+
+            pub fn getSamplesReelUIPos(self: Reel, k: usize, which: Sample.Part) Point {
+                const index: f32 = tof32(k) - self.scroll;
+                const y = 1.25 + index * 2.5;
+                const scale = @min(
+                    math.smoothstep(index, -0.5, 0),
+                    math.smoothstep(index, tof32(self.n_visible_rows) - 0.5, tof32(self.n_visible_rows) - 1),
+                );
+                return self.top_left.applyToLocalPoint(.{ .pos = .new(switch (which) {
+                    .input => 0.75,
+                    .output => 4.5,
+                }, y) }).applyToLocalPoint(.{ .scale = scale, .pos = .lerp(.new(0.5, math.maybeMirror(0.5, y > self.rect.size.y / 2.0)), .zero, scale) });
+            }
+
+            fn scrollBarRect(self: Reel, n_rows: usize) Rect {
+                const scroll_perc = self.scroll / self.getMaxScroll(n_rows);
+                const bar_height = tof32(self.n_visible_rows) / tof32(self.getMaxScroll(n_rows));
+                return .{
+                    .top_left = self.rect.get(.top_right).addY((self.rect.size.y - bar_height) * scroll_perc),
+                    .size = .new(0.2, bar_height),
+                };
+            }
+
+            fn drawScrollBar(self: Reel, n_rows: usize) void {
+                drawer.drawRect(UI.cam, self.scrollBarRect(n_rows), null, .black);
+            }
+        };
+
+        const TestsReel = struct {
+            reel: Reel,
+
+            pub fn init(top_left: Point) TestsReel {
+                return .{ .reel = .{
+                    .top_left = top_left,
+                    .rect = .{
+                        .top_left = top_left.pos,
+                        .size = Vec2.new(9.25, 10).scale(top_left.scale),
+                    },
+                    .n_visible_rows = 4,
+                } };
+            }
+
+            pub fn update(self: *TestsReel, samples_len: usize, mouse: *Mouse, delta_seconds: f32) void {
+                self.reel.update(samples_len, mouse, delta_seconds);
+            }
+
+            /// in UI coords
+            pub fn getUIPoint(self: TestsReel, k: usize, which: TestCase.Part) Point {
+                return self.reel.getTestsReelUIPos(k, which);
             }
 
             /// in world coords
@@ -2879,8 +2916,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             pub fn draw(self: TestsReel, samples: []const TestCase) !void {
                 const camera = UI.cam;
-                drawer.drawRect(camera, self.rect, .black, null);
-                const p = self.rect.get(.top_center).addY(-0.3);
+                drawer.drawRect(camera, self.reel.rect, .black, null);
+                const p = self.reel.rect.get(.top_center).addY(-0.3);
                 drawer.drawDebugText(UI.cam, .{
                     .pos = p.addX(-2.25),
                     .scale = 0.75,
@@ -2933,88 +2970,38 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         );
                     }
                 }
-                self.drawScrollBar(samples.len);
+                self.reel.drawScrollBar(samples.len);
                 // drawer.drawDebugText(camera, .{ .pos = rect.get(.top_center).addY(-0.35) }, "tests", .black);
-            }
-
-            fn scrollBarRect(self: TestsReel, samples_len: usize) Rect {
-                const scroll_perc = self.scroll / getMaxScroll(samples_len);
-                const bar_height = N_VISIBLE_SAMPLES / getMaxScroll(samples_len);
-                return .{
-                    .top_left = self.rect.get(.top_right).addY((self.rect.size.y - bar_height) * scroll_perc),
-                    .size = .new(0.2, bar_height),
-                };
-            }
-
-            fn drawScrollBar(self: TestsReel, samples_len: usize) void {
-                drawer.drawRect(UI.cam, self.scrollBarRect(samples_len), null, .black);
             }
 
             pub fn rectHighlightingRow(self: TestsReel, samples_len: usize, row: usize) Rect {
                 std.debug.assert(row < samples_len);
                 return .fromCenterAndSize(
                     self.getUIPoint(row, .expected).applyToLocalPosition(.new(0.9, 0)),
-                    .new(self.rect.size.x - 0.05, 1.75),
+                    .new(self.reel.rect.size.x - 0.05, 1.75),
                 );
             }
         };
 
         const SamplesReel = struct {
-            scroll: f32,
-            /// in UI coords
-            top_left: Point,
-            /// in UI coords
-            rect: Rect,
-            scroll_bar_active: bool = false,
-
-            const N_VISIBLE_SAMPLES = 3;
+            reel: Reel,
 
             pub fn init(top_left: Point) SamplesReel {
-                return .{
-                    .scroll = 0,
+                return .{ .reel = .{
                     .top_left = top_left,
+                    .n_visible_rows = 3,
                     .rect = .{ .top_left = top_left.pos, .size = Vec2.new(7, 7.5).scale(top_left.scale) },
-                };
+                } };
             }
 
             // TODO: don't take a pointer to Mouse
             pub fn update(self: *SamplesReel, samples_len: usize, mouse: *Mouse, delta_seconds: f32) void {
-                if (self.scroll_bar_active) {
-                    if (!mouse.cur.isDown(.left)) {
-                        self.scroll_bar_active = false;
-                    } else {
-                        self.scroll += (mouse.cur.pos(UI.cam).y - mouse.prev.pos(UI.cam).y) * self.top_left.scale;
-                    }
-                } else if (self.scrollBarRect(samples_len).contains(mouse.cur.pos(UI.cam)) and mouse.wasPressed(.left)) {
-                    self.scroll_bar_active = true;
-                }
-                if (self.rect.contains(mouse.cur.pos(UI.cam))) {
-                    self.scroll -= delta_seconds * 10 * mouse.cur.scrolled.toNumber();
-                    mouse.cur.scrolled = .none;
-                }
-                self.updateScroll(samples_len, delta_seconds);
-            }
-
-            fn getMaxScroll(samples_len: usize) f32 {
-                return @max(0, tof32(samples_len) - N_VISIBLE_SAMPLES);
-            }
-
-            pub fn updateScroll(self: *SamplesReel, samples_len: usize, delta_seconds: f32) void {
-                math.lerp_towards_range(&self.scroll, 0, getMaxScroll(samples_len), 0.1, delta_seconds);
+                self.reel.update(samples_len, mouse, delta_seconds);
             }
 
             /// in UI coords
             pub fn getUIPoint(self: SamplesReel, k: usize, which: Sample.Part) Point {
-                const index: f32 = tof32(k) - self.scroll;
-                const y = 1.25 + index * 2.5;
-                const scale = @min(
-                    math.smoothstep(index, -0.5, 0),
-                    math.smoothstep(index, 2.5, 2),
-                );
-                return self.top_left.applyToLocalPoint(.{ .pos = .new(switch (which) {
-                    .input => 0.75,
-                    .output => 4.5,
-                }, y), .scale = scale });
+                return self.reel.getSamplesReelUIPos(k, which);
             }
 
             /// in world coords
@@ -3049,7 +3036,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             pub fn draw(self: SamplesReel, samples: []const Sample, solved_status: []const bool, n_revealed_cases: usize) !void {
                 const camera = UI.cam;
                 std.debug.assert(samples.len == solved_status.len);
-                drawer.drawRect(camera, self.rect, .black, null);
+                drawer.drawRect(camera, self.reel.rect, .black, null);
                 for (samples, solved_status, 0..) |sample, solved, k| {
                     drawer.drawArrowForSample(camera, self.getUIPoint(k, .output).applyToLocalPoint(.{
                         .pos = .new(-1.25, 0),
@@ -3070,21 +3057,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         return error.TODO;
                     }
                 }
-                self.drawScrollBar(samples.len);
+                self.reel.drawScrollBar(samples.len);
                 // drawer.drawDebugText(camera, .{ .pos = rect.get(.top_center).addY(-0.35) }, "tests", .black);
-            }
-
-            fn scrollBarRect(self: SamplesReel, samples_len: usize) Rect {
-                const scroll_perc = self.scroll / getMaxScroll(samples_len);
-                const bar_height = N_VISIBLE_SAMPLES / getMaxScroll(samples_len);
-                return .{
-                    .top_left = self.rect.get(.top_right).addY((self.rect.size.y - bar_height) * scroll_perc),
-                    .size = .new(0.2, bar_height),
-                };
-            }
-
-            fn drawScrollBar(self: SamplesReel, samples_len: usize) void {
-                drawer.drawRect(UI.cam, self.scrollBarRect(samples_len), null, .black);
             }
 
             pub fn sampleCenter(self: SamplesReel, index: usize) Vec2 {
@@ -3354,8 +3328,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{
                         // .pos = .fromCenterAndSize(samples_reel.rect.top_left, .new(3, 1)),
                         .pos = .from(.{
-                            .{ .top_center = tests_reel.rect.get(.bottom_center) },
-                            .{ .size = .new(tests_reel.rect.size.x, 0.8) },
+                            .{ .top_center = tests_reel.reel.rect.get(.bottom_center) },
+                            .{ .size = .new(tests_reel.reel.rect.size.x, 0.8) },
                         }),
                         .text = "Check all",
                     },
@@ -3366,8 +3340,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{
                         // .pos = .fromCenterAndSize(samples_reel.rect.top_left, .new(3, 1)),
                         .pos = .from(.{
-                            .{ .top_center = tests_reel.rect.get(.bottom_center) },
-                            .{ .size = .new(tests_reel.rect.size.x, 0.8) },
+                            .{ .top_center = tests_reel.reel.rect.get(.bottom_center) },
+                            .{ .size = .new(tests_reel.reel.rect.size.x, 0.8) },
                         }),
                         .text = "Back to menu",
                     },
@@ -3921,7 +3895,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             try self.tests_reel.draw(self.samples);
             if (TestCase.allSolved(self.samples)) {
-                drawer.drawDebugText(UI.cam, .{ .pos = self.tests_reel.rect.get(.bottom_center).add(.new(0, 1.3)), .scale = 0.75 }, "All Tests passed!", .black);
+                drawer.drawDebugText(UI.cam, .{ .pos = self.tests_reel.reel.rect.get(.bottom_center).add(.new(0, 1.3)), .scale = 0.75 }, "All Tests passed!", .black);
                 self.result_ui_state.draw(drawer);
             } else {
                 self.check_all_ui_state.draw(drawer);
@@ -4051,7 +4025,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     drawer.drawDebugText(camera, .{ .pos = .new(-3, 7), .scale = 0.75 }, "Left click to\npick/drop Data", .black);
                     // drawer.drawDebugText(camera, .{ .pos = .new(10, 1), .scale = 0.75 }, "↓ These are the Cases that make up the Vau.", .black);
                     if (!(TestCase.allSolved(self.samples))) {
-                        drawer.drawDebugText(UI.cam, .{ .pos = self.tests_reel.rect.get(.bottom_center).add(.new(0, 2)), .scale = 1.25 }, "Click to check ↑\nif your Vau works", .black);
+                        drawer.drawDebugText(UI.cam, .{ .pos = self.tests_reel.reel.rect.get(.bottom_center).add(.new(0, 2)), .scale = 1.25 }, "Click to check ↑\nif your Vau works", .black);
                         // drawer.drawDebugText(UI.cam, .{ .pos = self.samples_reel.top_left.pos.add(.new(2.75, 6.75)), .scale = 0.75 }, "↑\nThese Tests are the Data\ntransformations your Vau\nmust achieve.", .black);
                     }
                 },
