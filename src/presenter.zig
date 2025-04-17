@@ -400,54 +400,6 @@ fn moveCamera(camera: *Camera, delta_seconds: f32, keyboard: Keyboard, mouse: Mo
     }
 }
 
-fn defaultFnkBody1(mem: *VeryPermamentGameStuff) FnkBody {
-    const default_fnk =
-        \\default1 {
-        \\  (nil . true) -> false;
-        \\  @true -> default1: (nil . true) {
-        \\      false -> true;
-        \\      @foo -> default2: false {
-        \\          false -> true;
-        \\          @thing -> true;
-        \\      }
-        \\  }
-        \\  @asdf -> default1: (@asdf . nil) {
-        \\      @hola -> @asdf;
-        \\  }
-        \\  @asdf -> nil {
-        \\      nil -> nil;
-        \\  }
-        \\  true -> default1: (nil . true) {
-        \\      false -> true;
-        \\      @foo -> default2: false {
-        \\          false -> true;
-        \\          @thing -> true;
-        \\      }
-        \\  }
-        \\  @true -> ( @true . false );
-        \\  (true . nil) -> true;
-        \\  (true . (true . nil)) -> true;
-        \\}
-    ;
-    var parser = parsing.Parser{ .remaining_text = default_fnk };
-    const fnk = parser.parseFnkNew(&mem.pool_for_sexprs, mem.arena_for_cases.allocator()) catch unreachable;
-    return fnk.body;
-}
-
-fn defaultFnkBody2(mem: *VeryPermamentGameStuff) FnkBody {
-    const default_fnk =
-        \\default2 {
-        \\  true -> false;
-        \\  @xxx -> default2: true {
-        \\      @result -> (final . @result);
-        \\  }
-        \\}
-    ;
-    var parser = parsing.Parser{ .remaining_text = default_fnk };
-    const fnk = parser.parseFnkNew(&mem.pool_for_sexprs, mem.arena_for_cases.allocator()) catch unreachable;
-    return fnk.body;
-}
-
 fn defaultFnkBody(mem: *VeryPermamentGameStuff) FnkBody {
     const default_fnk =
         \\default {
@@ -502,26 +454,30 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             try Artist(platform, drawer).init();
         }
 
-        fn initEditingAndMaybeLoadSamples(self: *Self, fnk_name: *const Sexpr) !void {
-            try self.initEditing(fnk_name, if (findBuiltinLevel(fnk_name)) |level|
-                level.manual_samples
-            else
-                null);
+        fn initEditingAndMaybeFindLevel(self: *Self, fnk_name: *const Sexpr) !void {
+            const level = findBuiltinLevel(fnk_name);
+            try self.initEditing(
+                fnk_name,
+                if (level) |l| l.manual_samples else null,
+                if (level) |l| l.premade_solution else null,
+                if (level) |l| l.tutorial_state else null,
+            );
         }
 
-        fn initEditing(self: *Self, fnk_name: *const Sexpr, builtin_samples: ?[]const Sample) !void {
+        fn initEditing(
+            self: *Self,
+            fnk_name: *const Sexpr,
+            builtin_samples: ?[]const Sample,
+            premade_solution: ?[]const u8,
+            tutorial_state: ?TutorialState,
+        ) !void {
             const res = try self.persistence.fnks.getOrPut(fnk_name);
             if (!res.found_existing) {
-                // TODO: change the loop into hashmap?
-                for (builtin_levels) |level| {
-                    if (!level.fnk_name.equals(fnk_name)) continue;
-                    if (level.premade_solution) |raw_fnk| {
-                        var parser = parsing.Parser{ .remaining_text = raw_fnk };
-                        const fnk = try parser.parseFnkNew(&self.mem.pool_for_sexprs, self.mem.arena_for_cases.allocator());
-                        std.debug.assert(fnk.name.equals(level.fnk_name));
-                        res.value_ptr.* = fnk.body;
-                        break;
-                    }
+                if (premade_solution) |raw_fnk| {
+                    var parser = parsing.Parser{ .remaining_text = raw_fnk };
+                    const fnk = try parser.parseFnkNew(&self.mem.pool_for_sexprs, self.mem.arena_for_cases.allocator());
+                    std.debug.assert(fnk.name.equals(fnk_name));
+                    res.value_ptr.* = fnk.body;
                 } else {
                     res.value_ptr.* = defaultFnkBody(&self.mem);
                 }
@@ -539,6 +495,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                     fnk_body,
                     &self.mem,
                     &self.persistence,
+                    tutorial_state orelse .none,
                 ),
             };
             self.scoring_run = undefined;
@@ -555,7 +512,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                     };
                 },
                 .level_select_to_editing_fnk => |*anim| if (anim.update(delta_seconds)) {
-                    try self.initEditingAndMaybeLoadSamples(anim.fnk_name);
+                    try self.initEditingAndMaybeFindLevel(anim.fnk_name);
                 },
                 // TODO: remove?
                 .editing_fnk_to_testing => |*anim| if (try anim.update(delta_seconds, &self.mem)) {
@@ -744,6 +701,44 @@ const TestCase = struct {
     }
 };
 
+const TutorialState = union(enum) {
+    none,
+    /// hardcoded map
+    first_level,
+    /// wildcard
+    second_level,
+    /// apply hardcoded map to unwrapped
+    third_level,
+    /// nested case
+    fourth_level,
+    /// free level
+    fifth_level,
+    not_yet_creating_vaus,
+    intro_to_create_vaus,
+
+    pub fn allowPickingVaus(self: TutorialState) bool {
+        return switch (self) {
+            .first_level, .second_level => false,
+            else => true,
+        };
+    }
+
+    pub fn allowCreatingVaus(self: TutorialState) bool {
+        return switch (self) {
+            .none, .intro_to_create_vaus => true,
+            else => false,
+        };
+    }
+
+    pub fn allowGrabbingCases(self: TutorialState) bool {
+        return self != .first_level;
+    }
+
+    pub fn allowPickingIdentity(self: TutorialState) bool {
+        return self == .none;
+    }
+};
+
 const BuiltinLevel = struct {
     // TODO: remove fnk_name, making it a key in a hashmap?
     fnk_name: *const Sexpr,
@@ -758,6 +753,7 @@ const BuiltinLevel = struct {
     manual_samples: []const Sample,
     description: [:0]const u8,
     premade_solution: ?[]const u8,
+    tutorial_state: TutorialState,
 
     // TODO: have a comptime pool of Sexprs so this works for solutions that actually use mem
     pub fn init(
@@ -834,7 +830,7 @@ const builtin_levels: []const BuiltinLevel = &.{
     \\  Ares -> Mars;
     \\  Zeus -> Jupiter;
     \\}
-    },
+    , .tutorial_state = .first_level },
     .{ .fnk_name = &Sexpr.doLit("wrapOlympian"), .manual_samples = &.{
         .{ .input = &Sexpr.doLit("Hermes"), .output = &Sexpr.doPair(&Sexpr.doPair(&Sexpr.doLit("top"), &Sexpr.doLit("Hermes")), &Sexpr.doLit("bottom")) },
         .{ .input = &Sexpr.doLit("Aphrodite"), .output = &Sexpr.doPair(&Sexpr.doPair(&Sexpr.doLit("top"), &Sexpr.doLit("Aphrodite")), &Sexpr.doLit("bottom")) },
@@ -847,7 +843,7 @@ const builtin_levels: []const BuiltinLevel = &.{
     \\  // Ares -> ((top . Ares) . bottom);
     \\  // Zeus -> ((top . Zeus) . bottom);
     \\}
-    },
+    , .tutorial_state = .second_level },
     .{ .fnk_name = &Sexpr.doLit("planetFromWrappedOlympian"), .manual_samples = &.{
         .{ .input = Vals.wrapped(Vals.Hermes), .output = Vals.Mercury },
         .{ .input = Vals.wrapped(Vals.Aphrodite), .output = Vals.Venus },
@@ -860,7 +856,7 @@ const builtin_levels: []const BuiltinLevel = &.{
     \\ // ((top . Ares) . bottom) -> Mars;
     \\ // ((top . Zeus) . bottom) -> Jupiter;
     \\}
-    },
+    , .tutorial_state = .third_level },
     .{ .fnk_name = &Sexpr.doLit("wrappedPlanetFromOlympian"), .manual_samples = &.{
         .{ .input = Vals.Hermes, .output = Vals.wrapped(Vals.Mercury) },
         .{ .input = Vals.Aphrodite, .output = Vals.wrapped(Vals.Venus) },
@@ -878,7 +874,7 @@ const builtin_levels: []const BuiltinLevel = &.{
     \\ // Ares -> ((top . Mars) . bottom);
     \\ // Zeus -> ((top . Jupiter) . bottom);
     \\}
-    },
+    , .tutorial_state = .fourth_level },
     .{ .fnk_name = &Sexpr.doLit("olympianToBoth"), .manual_samples = &funk.map(struct {
         pub fn anon(comptime v: *const Sexpr) Sample {
             return .{ .input = v, .output = &Sexpr.doPair(
@@ -891,22 +887,28 @@ const builtin_levels: []const BuiltinLevel = &.{
         Vals.Aphrodite,
         Vals.Ares,
         Vals.Zeus,
-    }), .description = "Show both the input & the result", .premade_solution = null },
-    .{ .fnk_name = &Sexpr.doLit("planetPairFromOlympianPair"), .manual_samples = &funk.map(struct {
-        pub fn anon(comptime v: *const Sexpr) Sample {
-            return .{ .input = v, .output = &Sexpr.doPair(
-                Vals.planetFromOlympian(v.pair.left).?,
-                Vals.planetFromOlympian(v.pair.right).?,
-            ) };
-        }
-    }.anon, &.{
-        &Sexpr.doPair(Vals.Hermes, Vals.Aphrodite),
-        &Sexpr.doPair(Vals.Ares, Vals.Zeus),
-        &Sexpr.doPair(Vals.Ares, Vals.Ares),
-        &Sexpr.doPair(Vals.Zeus, Vals.Hermes),
-        &Sexpr.doPair(Vals.Aphrodite, Vals.Hermes),
-        &Sexpr.doPair(Vals.Zeus, Vals.Ares),
-    }), .description = "Translate two Datas at once", .premade_solution = null },
+    }), .description = "Show both the input & the result", .premade_solution = null, .tutorial_state = .fifth_level },
+    .{
+        .fnk_name = &Sexpr.doLit("planetPairFromOlympianPair"),
+        .manual_samples = &funk.map(struct {
+            pub fn anon(comptime v: *const Sexpr) Sample {
+                return .{ .input = v, .output = &Sexpr.doPair(
+                    Vals.planetFromOlympian(v.pair.left).?,
+                    Vals.planetFromOlympian(v.pair.right).?,
+                ) };
+            }
+        }.anon, &.{
+            &Sexpr.doPair(Vals.Hermes, Vals.Aphrodite),
+            &Sexpr.doPair(Vals.Ares, Vals.Zeus),
+            &Sexpr.doPair(Vals.Ares, Vals.Ares),
+            &Sexpr.doPair(Vals.Zeus, Vals.Hermes),
+            &Sexpr.doPair(Vals.Aphrodite, Vals.Hermes),
+            &Sexpr.doPair(Vals.Zeus, Vals.Ares),
+        }),
+        .description = "Translate two Datas at once",
+        .premade_solution = null,
+        .tutorial_state = .not_yet_creating_vaus,
+    },
     .{
         .fnk_name = &Sexpr.doLit("planetListFromOlympianList"),
         .manual_samples = &funk.map(struct {
@@ -934,6 +936,7 @@ const builtin_levels: []const BuiltinLevel = &.{
         }),
         .description = "Translate a list of Datas",
         .premade_solution = null,
+        .tutorial_state = .not_yet_creating_vaus,
     },
     .{
         .fnk_name = &Sexpr.doLit("peanoSum"),
@@ -959,6 +962,7 @@ const builtin_levels: []const BuiltinLevel = &.{
         }),
         .description = "Sum two numbers",
         .premade_solution = null,
+        .tutorial_state = .not_yet_creating_vaus,
     },
     .{
         .fnk_name = &Sexpr.doLit("peanoMul"),
@@ -985,6 +989,7 @@ const builtin_levels: []const BuiltinLevel = &.{
         }),
         .description = "Multiply two numbers",
         .premade_solution = null,
+        .tutorial_state = .not_yet_creating_vaus,
     },
     .{
         .fnk_name = &Sexpr.doLit("reverse"),
@@ -1006,11 +1011,13 @@ const builtin_levels: []const BuiltinLevel = &.{
         }),
         .description = "Reverse a list",
         .premade_solution = null,
+        .tutorial_state = .intro_to_create_vaus,
     },
 };
 
 // code smell
 fn findBuiltinLevel(fnk_name: *const Sexpr) ?BuiltinLevel {
+    // TODO: change the loop into hashmap?
     for (builtin_levels) |level| {
         if (fnk_name.equals(level.fnk_name)) return level;
     }
@@ -2547,62 +2554,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         };
 
-        const TutorialState = union(enum) {
-            none,
-            /// hardcoded map
-            first_level,
-            /// wildcard
-            second_level,
-            /// apply hardcoded map to unwrapped
-            third_level,
-            /// nested case
-            fourth_level,
-            /// free level
-            fifth_level,
-            not_yet_creating_vaus,
-            intro_to_create_vaus,
-
-            pub fn allowPickingVaus(self: TutorialState) bool {
-                return switch (self) {
-                    .first_level, .second_level => false,
-                    else => true,
-                };
-            }
-
-            pub fn allowCreatingVaus(self: TutorialState) bool {
-                return switch (self) {
-                    .none, .intro_to_create_vaus => true,
-                    else => false,
-                };
-            }
-
-            pub fn getToolbar(self: TutorialState) toolbar.Modifier {
-                return switch (self) {
-                    .first_level => .hidden,
-                    .second_level => .only_special_var,
-                    .third_level => .all_except_case,
-                    else => .normal,
-                };
-            }
-
-            pub fn getFnksReel(self: TutorialState) fnks_reel.Modifier {
-                _ = self;
-                return .normal;
-                // return switch (self) {
-                //     .none => .normal,
-                //     else => .only_first,
-                // };
-            }
-
-            pub fn allowGrabbingCases(self: TutorialState) bool {
-                return self != .first_level;
-            }
-
-            pub fn allowPickingIdentity(self: TutorialState) bool {
-                return self == .none;
-            }
-        };
-
         persistence: *PlayerData,
         mem: *VeryPermamentGameStuff,
         camera: Camera = DEFAULT_CAM,
@@ -2816,6 +2767,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 hidden,
                 only_special_var,
                 all_except_case,
+
+                pub fn from(tutorial_state: TutorialState) Modifier {
+                    return switch (tutorial_state) {
+                        .first_level => .hidden,
+                        .second_level => .only_special_var,
+                        .third_level => .all_except_case,
+                        else => .normal,
+                    };
+                }
 
                 pub fn specialVarEnabled(modifier: Modifier, wildcard_in_play: bool) bool {
                     _ = wildcard_in_play;
@@ -3229,7 +3189,19 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 return Camera.remap(UI.cam, getUIPoint(k), camera);
             }
 
-            pub const Modifier = enum { normal, only_first };
+            pub const Modifier = enum {
+                normal,
+                only_first,
+
+                pub fn from(tutorial_state: TutorialState) Modifier {
+                    _ = tutorial_state;
+                    return .normal;
+                    // return switch (self) {
+                    //     .none => .normal,
+                    //     else => .only_first,
+                    // };
+                }
+            };
 
             pub fn findOverlap(mouse_ui_pos: Vec2, available_fnks: []const *const Sexpr, modifier: Modifier) !?Address {
                 for (available_fnks, 0..) |fnk_name, k| {
@@ -3416,7 +3388,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             return result;
         }
 
-        pub fn init(fnk_name: *const Sexpr, builtin_samples: []const Sample, available_fnks: []const *const Sexpr, fnk_body: core.FnkBody, mem: *VeryPermamentGameStuff, persistence: *PlayerData) !Self {
+        pub fn init(
+            fnk_name: *const Sexpr,
+            builtin_samples: []const Sample,
+            available_fnks: []const *const Sexpr,
+            fnk_body: core.FnkBody,
+            mem: *VeryPermamentGameStuff,
+            persistence: *PlayerData,
+            tutorial_state: TutorialState,
+        ) !Self {
             var cases = try makeCasesPhysical(mem.gpa, fnk_body.cases);
             _ = try cases.updateWildcards(platform.gpa);
             const main_input: *const Sexpr = Sexpr.builtin.nil;
@@ -3478,20 +3458,21 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .available_fnks = available_fnks,
                 // TODO: figure out when to enable the meta features
                 .meta_enabled = false,
-                .tutorial_state = if (fnk_name.equals(builtin_levels[0].fnk_name))
-                    .first_level
-                else if (fnk_name.equals(builtin_levels[1].fnk_name))
-                    .second_level
-                else if (fnk_name.equals(builtin_levels[2].fnk_name))
-                    .third_level
-                else if (fnk_name.equals(builtin_levels[3].fnk_name))
-                    .fourth_level
-                else if (fnk_name.equals(builtin_levels[4].fnk_name))
-                    .fifth_level
-                else if (fnk_name.equals(&Sexpr.doLit("reverse")))
-                    .intro_to_create_vaus
-                else
-                    .not_yet_creating_vaus,
+                .tutorial_state = tutorial_state,
+                // .tutorial_state = if (fnk_name.equals(builtin_levels[0].fnk_name))
+                //     .first_level
+                // else if (fnk_name.equals(builtin_levels[1].fnk_name))
+                //     .second_level
+                // else if (fnk_name.equals(builtin_levels[2].fnk_name))
+                //     .third_level
+                // else if (fnk_name.equals(builtin_levels[3].fnk_name))
+                //     .fourth_level
+                // else if (fnk_name.equals(builtin_levels[4].fnk_name))
+                //     .fifth_level
+                // else if (fnk_name.equals(&Sexpr.doLit("reverse")))
+                //     .intro_to_create_vaus
+                // else
+                //     .not_yet_creating_vaus,
                 .particles = .init(platform.gpa),
                 .particles_cases = .init(platform.gpa),
             };
@@ -3685,18 +3666,18 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         break :blk null;
                 }) |overlap|
                     overlap
-                else if (toolbar.findOverlap(mouse_ui_pos, self.tutorial_state.getToolbar())) |overlap|
+                else if (toolbar.findOverlap(mouse_ui_pos, .from(self.tutorial_state))) |overlap|
                     .{ .sexpr = .{ .toolbar = overlap.index } }
                 else if (try self.tests_reel.findOverlap(mouse_ui_pos, self.samples)) |overlap|
                     .{ .sexpr = .{ .sample = overlap } }
-                else if (if (self.tutorial_state.allowPickingVaus()) try fnks_reel.findOverlap(mouse_ui_pos, self.available_fnks, self.tutorial_state.getFnksReel()) else null) |overlap|
+                else if (if (self.tutorial_state.allowPickingVaus()) try fnks_reel.findOverlap(mouse_ui_pos, self.available_fnks, .from(self.tutorial_state)) else null) |overlap|
                     .{ .sexpr = .{ .external_fnk = overlap } }
                 else if (self.tutorial_state.allowCreatingVaus() and fnk_manager.findOverlap(mouse_ui_pos))
                     .{ .sexpr = .fnk_manager }
                 else if (if (self.meta_enabled) try meta_converter.findOverlap(mouse_pos) else null) |overlap| switch (overlap) {
                     .sexpr => |local| .{ .sexpr = .{ .meta_converter = local } },
                     .case => .{ .case = .meta_converter },
-                } else if (toolbar.overlapsWithSpecialVar(mouse_ui_pos, self.tutorial_state.getToolbar(), self.cases.anyWildcardInPlay()))
+                } else if (toolbar.overlapsWithSpecialVar(mouse_ui_pos, .from(self.tutorial_state), self.cases.anyWildcardInPlay()))
                     .{ .sexpr = .toolbar_special_var }
                 else if (DESIGN.no_current_data and SexprView.overlapsAtom(MAIN_INPUT_POS, mouse_pos, .atom))
                     .{ .sexpr = .main_input }
@@ -3704,7 +3685,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .{ .main_input = overlap } }
                 else if (try SexprView.overlapsSexpr(self.mem.gpa, self.fnk_name, MAIN_FNK_POS, mouse_pos)) |overlap|
                     .{ .sexpr = .{ .main_fnk_name = overlap } }
-                else if (toolbar.overlapsWithSpecialCase(mouse_ui_pos, self.tutorial_state.getToolbar()))
+                else if (toolbar.overlapsWithSpecialCase(mouse_ui_pos, .from(self.tutorial_state)))
                     .{ .case = .toolbar_special_case }
                 else
                     null;
@@ -3989,7 +3970,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             };
             defer if (wildcard_names_in_grabbing_sexpr) |x| x.deinit();
             try drawCases(camera, true, .{}, self.cases, if (wildcard_names_in_grabbing_sexpr) |x| x.items else null);
-            try toolbar.draw(self.tutorial_state.getToolbar(), self.cases.anyWildcardInPlay());
+            try toolbar.draw(.from(self.tutorial_state), self.cases.anyWildcardInPlay());
             // switch (self.tutorial_state.getToolbar()) {
             //     .normal =>
             //     .hidden => {},
@@ -4002,7 +3983,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             } else {
                 self.check_all_ui_state.draw(drawer);
             }
-            if (self.tutorial_state.allowPickingVaus()) try fnks_reel.draw(self.available_fnks, self.tutorial_state.getFnksReel());
+            if (self.tutorial_state.allowPickingVaus()) try fnks_reel.draw(self.available_fnks, .from(self.tutorial_state));
             if (self.tutorial_state.allowCreatingVaus()) try fnk_manager.draw();
             if (self.meta_enabled) try meta_converter.draw(camera);
 
