@@ -476,7 +476,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             /// not used for now
             intro: IntroSequence(platform, drawer),
             level_select: LevelSelect(platform, drawer),
-            level_select_to_editing_fnk: LevelSelectToEditingFnk(platform, drawer),
+            level_select_to_editing_fnk: LoadingAnEditingFnk(platform, drawer),
             editing_fnk: EditingFnk(platform, drawer),
             editing_fnk_to_testing: EditingFnkToTesting(platform, drawer),
             executing_fnk: ExecutingFnk(platform, drawer),
@@ -500,6 +500,13 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             };
 
             try Artist(platform, drawer).init();
+        }
+
+        fn initEditingAndMaybeLoadSamples(self: *Self, fnk_name: *const Sexpr) !void {
+            try self.initEditing(fnk_name, if (findBuiltinLevel(fnk_name)) |level|
+                level.manual_samples
+            else
+                null);
         }
 
         fn initEditing(self: *Self, fnk_name: *const Sexpr, builtin_samples: ?[]const Sample) !void {
@@ -548,7 +555,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                     };
                 },
                 .level_select_to_editing_fnk => |*anim| if (anim.update(delta_seconds)) {
-                    try self.initEditing(anim.level.fnk_name, anim.level.manual_samples);
+                    try self.initEditingAndMaybeLoadSamples(anim.fnk_name);
                 },
                 // TODO: remove?
                 .editing_fnk_to_testing => |*anim| if (try anim.update(delta_seconds, &self.mem)) {
@@ -618,10 +625,13 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         const fnk = try editing.getFnk();
                         try self.persistence.fnks.put(fnk.name, fnk.body);
                         try platform.setPlayerData(self.persistence, &self.mem);
-                        try self.initEditing(fnk_name, if (findBuiltinLevel(fnk_name)) |level|
-                            level.manual_samples
-                        else
-                            null);
+                        self.state = .{
+                            .level_select_to_editing_fnk = .initFromPoint(fnk_name, Camera.remap(
+                                UI.cam,
+                                EditingFnk(platform, drawer).fnk_manager.sexpr_point,
+                                editing.camera,
+                            )),
+                        };
                     },
                 },
                 // TODO
@@ -797,6 +807,12 @@ const Vals = struct {
         return null;
     }
 
+    pub fn toList(comptime values: []const *const Sexpr) *const Sexpr {
+        @setEvalBranchQuota(10_000 + values.len * 2);
+        if (values.len == 0) return Sexpr.builtin.nil;
+        return &Sexpr.doPair(values[0], toList(values[1..]));
+    }
+
     pub fn toPeano(comptime n: usize) *const Sexpr {
         @setEvalBranchQuota(1100 + n * 2);
         if (n == 0) return Sexpr.builtin.nil;
@@ -895,11 +911,7 @@ const builtin_levels: []const BuiltinLevel = &.{
         .fnk_name = &Sexpr.doLit("planetListFromOlympianList"),
         .manual_samples = &funk.map(struct {
             pub fn anon(comptime values: []const *const Sexpr) Sample {
-                return .{ .input = toList(values), .output = toMappedList(values) };
-            }
-            fn toList(comptime values: []const *const Sexpr) *const Sexpr {
-                if (values.len == 0) return Sexpr.builtin.nil;
-                return &Sexpr.doPair(values[0], toList(values[1..]));
+                return .{ .input = Vals.toList(values), .output = toMappedList(values) };
             }
             fn toMappedList(comptime values: []const *const Sexpr) *const Sexpr {
                 if (values.len == 0) return Sexpr.builtin.nil;
@@ -972,6 +984,27 @@ const builtin_levels: []const BuiltinLevel = &.{
             .{ 3, 6 },
         }),
         .description = "Multiply two numbers",
+        .premade_solution = null,
+    },
+    .{
+        .fnk_name = &Sexpr.doLit("reverse"),
+        .manual_samples = &funk.map(struct {
+            pub fn anon(comptime values: []const *const Sexpr) Sample {
+                return .{ .input = Vals.toList(values), .output = toReversedList(values) };
+            }
+            fn toReversedList(comptime values: []const *const Sexpr) *const Sexpr {
+                if (values.len == 0) return Sexpr.builtin.nil;
+                return &Sexpr.doPair(values[values.len - 1], toReversedList(values[0 .. values.len - 1]));
+            }
+        }.anon, &.{
+            &.{ Vals.Hermes, Vals.Aphrodite },
+            &.{ Vals.Ares, Vals.Zeus },
+            &.{ Vals.Zeus, Vals.Aphrodite, Vals.Ares },
+            &.{ Vals.Hermes, Vals.Zeus, Vals.Zeus },
+            &.{ Vals.Zeus, Vals.Zeus, Vals.Zeus, Vals.Aphrodite, Vals.Zeus },
+            &.{ Vals.Hermes, Vals.Aphrodite, Vals.Ares, Vals.Zeus },
+        }),
+        .description = "Reverse a list",
         .premade_solution = null,
     },
 };
@@ -2303,19 +2336,27 @@ fn EditingFnkToTesting(platform: Platform, drawer: Drawer) type {
     };
 }
 
-fn LevelSelectToEditingFnk(platform: Platform, drawer: Drawer) type {
+fn LoadingAnEditingFnk(platform: Platform, drawer: Drawer) type {
     return struct {
         const Self = @This();
         const artist = Artist(platform, drawer);
         const camera: Camera = DEFAULT_CAM;
 
         starting_point: Point,
-        level: BuiltinLevel,
+        fnk_name: *const Sexpr,
         t: f32,
+
+        pub fn initFromPoint(fnk_name: *const Sexpr, point: Point) Self {
+            return .{
+                .fnk_name = fnk_name,
+                .starting_point = point,
+                .t = 0,
+            };
+        }
 
         pub fn init(prev: LevelSelect(platform, drawer), level_index: usize) Self {
             return .{
-                .level = builtin_levels[level_index],
+                .fnk_name = builtin_levels[level_index].fnk_name,
                 .starting_point = Camera.remap(
                     UI.cam,
                     prev.getLevelButtonPoint(level_index),
@@ -2331,7 +2372,7 @@ fn LevelSelectToEditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn draw(self: Self) !void {
-            try artist.drawHoldedFnk(camera, Point.lerp(self.starting_point, MAIN_FNK_POS, self.t), 1, self.level.fnk_name);
+            try artist.drawHoldedFnk(camera, Point.lerp(self.starting_point, MAIN_FNK_POS, self.t), 1, self.fnk_name);
         }
     };
 }
@@ -2519,6 +2560,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             /// free level
             fifth_level,
             not_yet_creating_vaus,
+            intro_to_create_vaus,
 
             pub fn allowPickingVaus(self: TutorialState) bool {
                 return switch (self) {
@@ -2528,7 +2570,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             pub fn allowCreatingVaus(self: TutorialState) bool {
-                return self == .none;
+                return switch (self) {
+                    .none, .intro_to_create_vaus => true,
+                    else => false,
+                };
             }
 
             pub fn getToolbar(self: TutorialState) toolbar.Modifier {
@@ -3443,6 +3488,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .fourth_level
                 else if (fnk_name.equals(builtin_levels[4].fnk_name))
                     .fifth_level
+                else if (fnk_name.equals(&Sexpr.doLit("reverse")))
+                    .intro_to_create_vaus
                 else
                     .not_yet_creating_vaus,
                 .particles = .init(platform.gpa),
@@ -4099,6 +4146,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .fifth_level => {
                     drawer.drawDebugText(camera, .{ .pos = .new(5, 9.5), .scale = 0.75 }, "You're now on your own. Good luck!", .black);
+                },
+                .intro_to_create_vaus => {
+                    drawer.drawDebugText(UI.cam, fnk_manager.sexpr_point.applyToLocalPoint(.{ .pos = .new(-3, 0) }), "↑\nPlace any Data here\nto create a Vau\nwith that name", .black);
                 },
             }
         }
