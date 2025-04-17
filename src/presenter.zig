@@ -430,15 +430,11 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             level_select: LevelSelect(platform, drawer),
             level_select_to_editing_fnk: LoadingAnEditingFnk(platform, drawer),
             editing_fnk: EditingFnk(platform, drawer),
-            executing_fnk: ExecutingFnk(platform, drawer),
-            testing_fnk: TestingFnk(platform, drawer),
+            executing_fnk: struct { main: ExecutingFnk(platform, drawer), prev_editing: EditingFnk(platform, drawer) },
+            testing_fnk: struct { main: TestingFnk(platform, drawer), prev_editing: EditingFnk(platform, drawer) },
         },
-        // kinda hacky, could maybe be a stack
-        prev_editing_state: ?EditingFnk(platform, drawer),
 
         pub fn init(result: *Self) !void {
-            result.prev_editing_state = null;
-
             const platform_alloc = platform.gpa;
             result.mem = VeryPermamentGameStuff.init(platform_alloc);
             const player_data = (try platform.getPlayerData(&result.mem)) orelse (try PlayerData.empty(&result.mem));
@@ -527,33 +523,31 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         try self.persistence.fnks.put(fnk.name, fnk.body);
                         try self.persistence.updateSolvedStatusOfAll(&self.mem);
                         try platform.setPlayerData(self.persistence, &self.mem);
-                        self.prev_editing_state = editing.*;
-                        self.state = .{ .testing_fnk = try .init(
+                        self.state = .{ .testing_fnk = .{ .main = try .init(
                             editing.camera,
                             editing.samples,
                             editing.fnk_name,
                             editing.cases,
                             try .initFromFnks(self.persistence.fnks, &self.mem),
                             editing.tests_reel,
-                        ) };
+                        ), .prev_editing = editing.* } };
                     },
                     .launch_execution => |input| {
                         // todo
                         const fnk = try editing.getFnk();
                         try self.persistence.fnks.put(fnk.name, fnk.body);
                         try platform.setPlayerData(self.persistence, &self.mem);
-                        self.prev_editing_state = editing.*;
                         self.scoring_run = try core.ScoringRun.initFromFnks(
                             self.persistence.fnks,
                             &self.mem,
                         );
-                        self.state = .{ .executing_fnk = try .init(
+                        self.state = .{ .executing_fnk = .{ .main = try .init(
                             if (DESIGN.no_current_data) input else editing.main_input,
                             fnk.name,
                             &self.scoring_run,
                             editing.camera,
                             null,
-                        ) };
+                        ), .prev_editing = editing.* } };
                     },
                     .change_to => |fnk_name| {
                         const fnk = try editing.getFnk();
@@ -569,16 +563,16 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                     },
                 },
                 // TODO
-                .executing_fnk => |*executing| switch (try executing.update(delta_seconds)) {
+                .executing_fnk => |*executing| switch (try executing.main.update(delta_seconds)) {
                     .nothing => {},
-                    .back_to_editing => self.state = .{ .editing_fnk = self.prev_editing_state.? },
+                    .back_to_editing => self.state = .{ .editing_fnk = executing.prev_editing },
                 },
-                .testing_fnk => |*testing| switch (try testing.update(delta_seconds, &self.mem)) {
+                .testing_fnk => |*testing| switch (try testing.main.update(delta_seconds, &self.mem)) {
                     .nothing => {},
                     .back_to_editing => {
-                        self.prev_editing_state.?.tests_reel = testing.tests_reel;
-                        try self.prev_editing_state.?.updateSolvedSamplesHelper();
-                        self.state = .{ .editing_fnk = self.prev_editing_state.? };
+                        testing.prev_editing.tests_reel = testing.main.tests_reel;
+                        try testing.prev_editing.updateSolvedSamplesHelper();
+                        self.state = .{ .editing_fnk = testing.prev_editing };
                     },
                 },
                 inline else => |*x| x.update(delta_seconds),
@@ -588,6 +582,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
         pub fn draw(self: Self) OoM!void {
             drawer.clear(Color.gray(128));
             try switch (self.state) {
+                inline .testing_fnk, .executing_fnk => |x| x.main.draw(),
                 inline else => |x| x.draw(),
             };
         }
