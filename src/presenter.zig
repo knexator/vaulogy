@@ -529,6 +529,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         try self.persistence.fnks.put(fnk.name, fnk.body);
                         try self.persistence.updateSolvedStatusOfAll(&self.mem);
                         try platform.setPlayerData(self.persistence, &self.mem);
+                        const prev_editing = editing.*;
                         self.state = .{ .testing_fnk = .{ .main = try .init(
                             editing.camera,
                             editing.samples,
@@ -536,7 +537,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                             editing.cases,
                             try .initFromFnks(self.persistence.fnks, &self.mem),
                             editing.tests_reel,
-                        ), .prev_editing = editing.* } };
+                        ), .prev_editing = prev_editing } };
                     },
                     .launch_execution => |input| {
                         // todo
@@ -547,13 +548,14 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                             self.persistence.fnks,
                             &self.mem,
                         );
+                        const prev_editing = editing.*;
                         self.state = .{ .executing_fnk = .{ .main = try .init(
                             if (DESIGN.no_current_data) input else editing.main_input,
                             fnk.name,
                             &self.scoring_run,
                             editing.camera,
                             null,
-                        ), .prev_editing = editing.* } };
+                        ), .prev_editing = prev_editing } };
                     },
                     .change_to => |fnk_name| {
                         try self.prev_editing_names.append(platform.gpa, editing.fnk_name);
