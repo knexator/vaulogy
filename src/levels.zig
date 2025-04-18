@@ -166,6 +166,31 @@ pub const builtin_levels: []const BuiltinLevel = &.{
         .tutorial_state = .not_yet_creating_vaus,
     },
     .{
+        .fnk_name = &Sexpr.doLit("hasAres?"),
+        .manual_samples = &funk.map(struct {
+            pub fn anon(comptime values: []const *const Sexpr) Sample {
+                const has_ares: bool = for (values) |v| {
+                    if (v.equals(Vals.Ares)) break true;
+                } else false;
+                return .{ .input = Vals.toList(values), .output = Sexpr.fromBool(has_ares) };
+            }
+        }.anon, &.{
+            &.{ Vals.Ares, Vals.Zeus },
+            &.{ Vals.Hermes, Vals.Aphrodite, Vals.Zeus },
+            &.{ Vals.Hermes, Vals.Ares, Vals.Aphrodite, Vals.Zeus },
+            &.{ Vals.Zeus, Vals.Aphrodite, Vals.Aphrodite, Vals.Hermes },
+            &.{Vals.Ares},
+            &.{ Vals.Hermes, Vals.Zeus, Vals.Zeus },
+            &.{},
+            &.{ Vals.Hermes, Vals.Aphrodite, Vals.Zeus, Vals.Ares, Vals.Zeus },
+            &.{ Vals.Aphrodite, Vals.Zeus, Vals.Zeus, Vals.Hermes, Vals.Aphrodite },
+        }),
+        .description = "Check if there is a blue value",
+        .premade_solution = null,
+        // TODO
+        .tutorial_state = .none,
+    },
+    .{
         .fnk_name = &Sexpr.doLit("peanoSum"),
         .manual_samples = &funk.map(struct {
             pub fn anon(comptime vs: [2]usize) Sample {
