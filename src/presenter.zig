@@ -714,6 +714,12 @@ const TutorialState = union(enum) {
     pub fn allowPickingIdentity(self: TutorialState) bool {
         return self == .none;
     }
+
+    pub fn hasListViewer(self: TutorialState) bool {
+        // TODO NEXT
+        _ = self;
+        return false;
+    }
 };
 
 pub const BuiltinLevel = struct {
@@ -2121,6 +2127,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             external_fnk: fnks_reel.Address,
             fnk_manager,
             meta_converter: core.SexprAddress,
+            list_viewer: ListViewer.Address,
 
             pub fn equals(self: @This(), other: @This()) bool {
                 if (std.meta.activeTag(self) != std.meta.activeTag(other)) return false;
@@ -2137,6 +2144,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .toolbar_special_var => true,
                     .fnk_manager => true,
                     .meta_converter => |self_local| core.equalSexprAddress(self_local, other.meta_converter),
+                    .list_viewer => |self_list| core.equalSexprAddress(self_list.local, other.list_viewer.local) and self_list.which.equals(other.list_viewer.which),
                 };
             }
 
@@ -2154,6 +2162,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .external_fnk => |fnk| SexprView.sexprChildView(fnks_reel.getWorldPoint(self.camera, fnk.index), fnk.local),
                     .fnk_manager => Camera.remap(UI.cam, fnk_manager.sexpr_point, self.camera),
                     .meta_converter => |local| SexprView.sexprChildView(meta_converter.sexpr_point, local),
+                    .list_viewer => |list| SexprView.sexprChildView(self.list_viewer.getWorldPoint(self.camera, list.which), list.local),
                 };
             }
 
@@ -2167,6 +2176,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 };
             }
 
+            /// null for places that might be empty (like list_viewer.main when not viewing a list)
             pub fn getSexpr(address: @This(), self: Self) !?*const Sexpr {
                 return switch (address) {
                     .full_address => |full_address| try self.cases.getSexprAt(full_address),
@@ -2178,6 +2188,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .external_fnk => |fnk| self.available_fnks[fnk.index].getAt(fnk.local).?,
                     .fnk_manager => null,
                     .meta_converter => |local| if (meta_converter.sexpr) |v| v.getAt(local).? else null,
+                    .list_viewer => |addr| if (self.list_viewer.getSexpr(addr.which)) |v| v.getAt(addr.local).? else null,
                     // examples_reel.getPoint(sample.index, sample.which), sample.local),
                     // .main_input => |local| self.main_input.getAt(local).?,
                 };
@@ -2195,6 +2206,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .meta_converter => |local_address| {
                         try meta_converter.setSexpr(self.mem, value, local_address);
                     },
+                    .list_viewer => |addr| try self.list_viewer.setSexpr(self.mem, value, addr),
                     .toolbar, .main_fnk_name, .toolbar_special_var, .sample, .external_fnk => unreachable,
                 }
             }
@@ -2218,6 +2230,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .main_input => true,
                     .fnk_manager => true,
                     .meta_converter => true,
+                    .list_viewer => true,
                 };
             }
 
@@ -2274,6 +2287,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         } = .{ .nothing = {} },
 
         tests_reel: TestsReel,
+        list_viewer: ListViewer,
 
         // TODO: abstract
         particles: std.ArrayList(ParticleState),
@@ -2582,6 +2596,16 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }, y) }).applyToLocalPoint(.{ .scale = scale, .pos = .lerp(.new(0.5, math.maybeMirror(0.5, y > self.rect.size.y / 2.0)), .zero, scale) });
             }
 
+            pub fn getRowUIPos(self: Reel, k: usize) Point {
+                const index: f32 = tof32(k) - self.scroll;
+                const y = 1.25 + index * 2.5;
+                const scale = @min(
+                    math.smoothstep(index, -0.5, 0),
+                    math.smoothstep(index, tof32(self.n_visible_rows) - 0.5, tof32(self.n_visible_rows) - 1),
+                );
+                return self.top_left.applyToLocalPoint(.{ .pos = .new(0, y) }).applyToLocalPoint(.{ .scale = scale });
+            }
+
             fn scrollBarRect(self: Reel, n_rows: usize) Rect {
                 const scroll_perc = self.scroll / self.getMaxScroll(n_rows);
                 const bar_height = tof32(self.n_visible_rows) / tof32(self.getMaxScroll(n_rows));
@@ -2724,6 +2748,129 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     self.getUIPoint(row, .expected).applyToLocalPosition(.new(0.9, 0)),
                     .new(self.reel.rect.size.x - 0.05, 1.75),
                 );
+            }
+        };
+
+        const ListViewer = struct {
+            reel: Reel,
+            value: ?*const Sexpr,
+
+            const Address = struct {
+                const Which = union(enum) {
+                    main,
+                    // TODO
+                    // index: usize,
+
+                    pub fn equals(a: Which, b: Which) bool {
+                        if (std.meta.activeTag(a) != std.meta.activeTag(b)) return false;
+                        return switch (a) {
+                            .main => true,
+                        };
+                    }
+                };
+                which: Which,
+                local: core.SexprAddress,
+            };
+
+            pub fn getWorldPoint(self: ListViewer, camera: Camera, which: Address.Which) Point {
+                return Camera.remap(UI.cam, self.getUIPoint(which), camera);
+            }
+
+            pub fn getUIPoint(self: ListViewer, which: Address.Which) Point {
+                return switch (which) {
+                    .main => self.mainPoint(),
+                };
+            }
+
+            pub fn getSexpr(self: ListViewer, which: Address.Which) ?*const Sexpr {
+                return switch (which) {
+                    .main => self.value,
+                };
+            }
+
+            pub fn setSexpr(self: *ListViewer, mem: *VeryPermamentGameStuff, new_sexpr: *const Sexpr, address: Address) !void {
+                switch (address.which) {
+                    .main => if (self.value) |existing| {
+                        self.value = try existing.setAt(mem, address.local, new_sexpr);
+                    } else {
+                        std.debug.assert(address.local.len == 0);
+                        self.value = new_sexpr;
+                    },
+                }
+            }
+
+            pub fn findOverlap(self: ListViewer, mouse_ui_pos: Vec2) !?Address {
+                // TODO: improve
+                if (self.value) |v| {
+                    if (try SexprView.overlapsSexpr(platform.gpa, v, self.mainPoint(), mouse_ui_pos)) |local| {
+                        return .{ .which = .main, .local = local };
+                    }
+                } else if (SexprView.overlapsAtom(self.mainPoint(), mouse_ui_pos, .atom)) {
+                    return .{ .which = .main, .local = &.{} };
+                }
+                return null;
+            }
+
+            pub fn init() ListViewer {
+                const rect_size: Vec2 = .new(1.7, 5);
+                const top_left_pos: Vec2 = .new(23, 9.5);
+                return .{
+                    .value = null,
+                    .reel = .{
+                        .top_left = .{
+                            .pos = top_left_pos,
+                            .scale = 0.5,
+                        },
+                        .n_visible_rows = 4,
+                        .rect = .{
+                            .top_left = top_left_pos,
+                            .size = rect_size,
+                        },
+                    },
+                };
+            }
+
+            fn mainPoint(self: ListViewer) Point {
+                return self.reel.top_left.applyToLocalPoint(.{ .pos = .new(-7.5, 5), .scale = 3 });
+            }
+
+            pub fn update(self: *ListViewer, mouse: *Mouse, delta_seconds: f32) !void {
+                if (self.value) |v| {
+                    var buffer: std.ArrayList(*const Sexpr) = .init(platform.gpa);
+                    defer buffer.deinit();
+                    const sentinel = try core.asListPlusSentinel(v, &buffer);
+                    if (sentinel.equals(Sexpr.builtin.nil)) {
+                        self.reel.update(buffer.items.len, mouse, delta_seconds);
+                    }
+                }
+            }
+
+            pub fn draw(self: ListViewer) !void {
+                const camera = UI.cam;
+                drawer.drawRect(camera, self.reel.rect, .black, null);
+                drawer.drawRect(
+                    camera,
+                    Rect.fromCenterAndSize(self.mainPoint().pos, .both(self.mainPoint().scale)),
+                    .black,
+                    null,
+                );
+                if (self.value) |v| {
+                    try artist.drawSexpr(camera, self.mainPoint(), v);
+
+                    var buffer: std.ArrayList(*const Sexpr) = .init(platform.gpa);
+                    defer buffer.deinit();
+                    const sentinel = try core.asListPlusSentinel(v, &buffer);
+                    if (sentinel.equals(Sexpr.builtin.nil)) {
+                        for (buffer.items, 0..) |item, k| {
+                            try artist.drawSexpr(
+                                camera,
+                                self.reel.getRowUIPos(k).applyToLocalPoint(.{ .pos = .new(0.8, 0) }),
+                                item,
+                            );
+                        }
+                        self.reel.drawScrollBar(buffer.items.len);
+                    }
+                }
             }
         };
 
@@ -3155,6 +3302,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 //     .not_yet_creating_vaus,
                 .particles = .init(platform.gpa),
                 .particles_cases = .init(platform.gpa),
+                .list_viewer = .init(),
             };
         }
 
@@ -3255,6 +3403,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             inline for (.{&self.tests_reel}) |instance| {
                 instance.update(self.samples.len, &mouse, delta_seconds);
             }
+            try self.list_viewer.update(&mouse, delta_seconds);
             fnks_reel.reel.update(fnks_reel.nRows(self.available_fnks.len), &mouse, delta_seconds);
             moveCamera(&self.camera, delta_seconds, platform.getKeyboard(), mouse);
 
@@ -3278,9 +3427,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 .template => .{ .turns = -0.02, .pos = .new(0.5, 0) },
                                 .fnk_name => .{ .turns = 0.02, .pos = .new(0.5, 0) },
                             },
-                            .main_input => .{ .turns = -0.02, .pos = .new(0.5, 0) },
+                            .main_input, .meta_converter, .list_viewer => .{ .turns = -0.02, .pos = .new(0.5, 0) },
                             .fnk_manager => .{ .turns = 0.02, .pos = .new(0.5, 0) },
-                            .meta_converter => .{ .turns = -0.02, .pos = .new(0.5, 0) },
                             .toolbar, .main_fnk_name, .toolbar_special_var, .sample, .external_fnk => unreachable,
                         })
                     else
@@ -3367,6 +3515,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .{ .main_fnk_name = overlap } }
                 else if (toolbar.overlapsWithSpecialCase(mouse_ui_pos, .from(self.tutorial_state)))
                     .{ .case = .toolbar_special_case }
+                else if (if (self.tutorial_state.hasListViewer()) try self.list_viewer.findOverlap(mouse_ui_pos) else null) |overlap|
+                    .{ .sexpr = .{ .list_viewer = overlap } }
                 else
                     null;
 
@@ -3666,6 +3816,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             if (self.tutorial_state.allowPickingVaus()) try fnks_reel.draw(self.available_fnks, .from(self.tutorial_state));
             if (self.tutorial_state.allowCreatingVaus()) try fnk_manager.draw();
             if (self.meta_enabled) try meta_converter.draw(camera);
+            if (self.tutorial_state.hasListViewer()) try self.list_viewer.draw();
 
             if (self.tutorial_state == .third_level and self.cases.cases.items.len > 0) {
                 const address_to_place_vau_name: core.FullAddress = .{

@@ -1326,7 +1326,7 @@ fn undoLastBindings(bindings: *Bindings, original_count: usize) void {
     bindings.shrinkAndFree(original_count);
 }
 
-fn asListPlusSentinel(s: *const Sexpr, l: *std.ArrayList(*const Sexpr)) !*const Sexpr {
+pub fn asListPlusSentinel(s: *const Sexpr, l: *std.ArrayList(*const Sexpr)) !*const Sexpr {
     switch (s.*) {
         .atom_lit, .atom_var => return s,
         .pair => |p| {
@@ -1336,7 +1336,7 @@ fn asListPlusSentinel(s: *const Sexpr, l: *std.ArrayList(*const Sexpr)) !*const 
     }
 }
 
-fn toListPlusSentinel(values: []const *const Sexpr, sentinel: *const Sexpr, pool: *MemoryPool(Sexpr)) !*const Sexpr {
+pub fn toListPlusSentinel(values: []const *const Sexpr, sentinel: *const Sexpr, pool: *MemoryPool(Sexpr)) !*const Sexpr {
     if (values.len == 0) return sentinel;
     return try storeSexprInPool(pool, Sexpr.doPair(
         values[0],
