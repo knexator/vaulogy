@@ -134,7 +134,7 @@ pub const builtin_levels: []const BuiltinLevel = &.{
         }),
         .description = "Translate two Datas at once",
         .premade_solution = null,
-        .tutorial_state = .not_yet_creating_vaus,
+        .tutorial_state = .not_yet_creating_vaus_or_lists,
     },
     .{
         .fnk_name = &Sexpr.doLit("planetListFromOlympianList"),
@@ -163,7 +163,7 @@ pub const builtin_levels: []const BuiltinLevel = &.{
         }),
         .description = "Translate a list of Datas",
         .premade_solution = null,
-        .tutorial_state = .not_yet_creating_vaus,
+        .tutorial_state = .not_yet_creating_vaus_or_lists,
     },
     .{
         .fnk_name = &Sexpr.doLit("hasAres?"),

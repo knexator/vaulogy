@@ -690,9 +690,10 @@ const TutorialState = union(enum) {
     fourth_level,
     /// free level
     fifth_level,
+    not_yet_creating_vaus_or_lists,
+    intro_to_list_viewer,
     not_yet_creating_vaus,
     intro_to_create_vaus,
-    intro_to_list_viewer,
 
     pub fn allowPickingVaus(self: TutorialState) bool {
         return switch (self) {
@@ -718,7 +719,7 @@ const TutorialState = union(enum) {
 
     pub fn hasListViewer(self: TutorialState) bool {
         return switch (self) {
-            .none, .intro_to_list_viewer => true,
+            .none, .intro_to_list_viewer, .not_yet_creating_vaus => true,
             else => false,
         };
     }
@@ -2753,6 +2754,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         };
 
+        // TODO: user can add/remove elements from list
+        // TODO: display element index
         const ListViewer = struct {
             reel: Reel,
             value: ?*const Sexpr,
@@ -2760,13 +2763,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             const Address = struct {
                 const Which = union(enum) {
                     main,
+                    element: usize,
                     // TODO
-                    // index: usize,
+                    // between: ??,
 
                     pub fn equals(a: Which, b: Which) bool {
                         if (std.meta.activeTag(a) != std.meta.activeTag(b)) return false;
                         return switch (a) {
                             .main => true,
+                            .element => |i| i == b.element,
                         };
                     }
                 };
@@ -2781,12 +2786,18 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             pub fn getUIPoint(self: ListViewer, which: Address.Which) Point {
                 return switch (which) {
                     .main => self.mainPoint(),
+                    .element => |k| self.reel.getRowUIPos(k).applyToLocalPoint(.{ .pos = .new(0.8, 0) }),
                 };
             }
 
             pub fn getSexpr(self: ListViewer, which: Address.Which) ?*const Sexpr {
                 return switch (which) {
                     .main => self.value,
+                    .element => |k| blk: {
+                        var list = (self.curList() catch @panic("OoM")).?;
+                        defer list.deinit();
+                        break :blk list.items[k];
+                    },
                 };
             }
 
@@ -2798,6 +2809,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         std.debug.assert(address.local.len == 0);
                         self.value = new_sexpr;
                     },
+                    .element => |k| {
+                        var list = (self.curList() catch @panic("OoM")).?;
+                        defer list.deinit();
+                        list.items[k] = try list.items[k].setAt(mem, address.local, new_sexpr);
+                        self.value = try core.toListPlusSentinel(list.items, Sexpr.builtin.nil, &mem.pool_for_sexprs);
+                    },
                 }
             }
 
@@ -2806,6 +2823,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 if (self.value) |v| {
                     if (try SexprView.overlapsSexpr(platform.gpa, v, self.mainPoint(), mouse_ui_pos)) |local| {
                         return .{ .which = .main, .local = local };
+                    } else if (try self.curList()) |list| {
+                        defer list.deinit();
+                        for (list.items, 0..) |w, k| {
+                            if (try SexprView.overlapsSexpr(platform.gpa, w, self.getUIPoint(.{ .element = k }), mouse_ui_pos)) |local| {
+                                return .{ .which = .{ .element = k }, .local = local };
+                            }
+                        }
                     }
                 } else if (SexprView.overlapsAtom(self.mainPoint(), mouse_ui_pos, .atom)) {
                     return .{ .which = .main, .local = &.{} };
@@ -2815,7 +2839,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             pub fn init() ListViewer {
                 const rect_size: Vec2 = .new(1.7, 5);
-                const top_left_pos: Vec2 = .new(23, 9.5);
+                const top_left_pos: Vec2 = .new(24.5, 9.75);
                 return .{
                     .value = null,
                     .reel = .{
@@ -2836,14 +2860,24 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 return self.reel.top_left.applyToLocalPoint(.{ .pos = .new(-7.5, 5), .scale = 3 });
             }
 
-            pub fn update(self: *ListViewer, mouse: *Mouse, delta_seconds: f32) !void {
+            fn curList(self: ListViewer) !?std.ArrayList(*const Sexpr) {
                 if (self.value) |v| {
                     var buffer: std.ArrayList(*const Sexpr) = .init(platform.gpa);
-                    defer buffer.deinit();
+                    errdefer buffer.deinit();
                     const sentinel = try core.asListPlusSentinel(v, &buffer);
                     if (sentinel.equals(Sexpr.builtin.nil)) {
-                        self.reel.update(buffer.items.len, mouse, delta_seconds);
+                        return buffer;
+                    } else {
+                        buffer.deinit();
+                        return null;
                     }
+                } else return null;
+            }
+
+            pub fn update(self: *ListViewer, mouse: *Mouse, delta_seconds: f32) !void {
+                if (try self.curList()) |buffer| {
+                    defer buffer.deinit();
+                    self.reel.update(buffer.items.len, mouse, delta_seconds);
                 }
             }
 
@@ -2859,14 +2893,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 if (self.value) |v| {
                     try artist.drawSexpr(camera, self.mainPoint(), v);
 
-                    var buffer: std.ArrayList(*const Sexpr) = .init(platform.gpa);
-                    defer buffer.deinit();
-                    const sentinel = try core.asListPlusSentinel(v, &buffer);
-                    if (sentinel.equals(Sexpr.builtin.nil)) {
+                    if (try self.curList()) |buffer| {
+                        defer buffer.deinit();
                         for (buffer.items, 0..) |item, k| {
                             try artist.drawSexpr(
                                 camera,
-                                self.reel.getRowUIPos(k).applyToLocalPoint(.{ .pos = .new(0.8, 0) }),
+                                self.getUIPoint(.{ .element = k }),
                                 item,
                             );
                         }
@@ -3925,7 +3957,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             switch (self.tutorial_state) {
                 // ↑←
-                .none, .not_yet_creating_vaus => {},
+                .none, .not_yet_creating_vaus, .not_yet_creating_vaus_or_lists => {},
                 .first_level => {
                     // drawer.drawDebugText(camera, .{ .pos = .new(-3.55, -2), .scale = 0.75 }, "That's the name of →\nthe Vau you're editing.", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(4.5, -2), .scale = 0.75 }, "← That's the name of\nthe Vau you're editing.", .black);
