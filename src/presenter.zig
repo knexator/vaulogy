@@ -692,6 +692,7 @@ const TutorialState = union(enum) {
     fifth_level,
     not_yet_creating_vaus,
     intro_to_create_vaus,
+    intro_to_list_viewer,
 
     pub fn allowPickingVaus(self: TutorialState) bool {
         return switch (self) {
@@ -716,9 +717,10 @@ const TutorialState = union(enum) {
     }
 
     pub fn hasListViewer(self: TutorialState) bool {
-        // TODO NEXT
-        _ = self;
-        return false;
+        return switch (self) {
+            .none, .intro_to_list_viewer => true,
+            else => false,
+        };
     }
 };
 
@@ -3961,6 +3963,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .intro_to_create_vaus => {
                     drawer.drawDebugText(UI.cam, fnk_manager.sexpr_point.applyToLocalPoint(.{ .pos = .new(-3, 0) }), "↑\nPlace any Data here\nto create a Vau\nwith that name", .black);
+                },
+                .intro_to_list_viewer => {
+                    drawer.drawDebugText(UI.cam, self.list_viewer.mainPoint().applyToLocalPoint(.{ .pos = .new(0.5, -1.4) }).applyToLocalPoint(.{ .scale = 0.5 }), "Here's a helper tool\nto work with lists", .black);
                 },
             }
         }

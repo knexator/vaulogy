@@ -187,8 +187,7 @@ pub const builtin_levels: []const BuiltinLevel = &.{
         }),
         .description = "Check if there is a blue value",
         .premade_solution = null,
-        // TODO
-        .tutorial_state = .none,
+        .tutorial_state = .intro_to_list_viewer,
     },
     .{
         .fnk_name = &Sexpr.doLit("peanoSum"),
