@@ -719,7 +719,11 @@ const TutorialState = union(enum) {
 
     pub fn hasListViewer(self: TutorialState) bool {
         return switch (self) {
-            .none, .intro_to_list_viewer, .not_yet_creating_vaus => true,
+            .none,
+            .intro_to_list_viewer,
+            .not_yet_creating_vaus,
+            .intro_to_create_vaus,
+            => true,
             else => false,
         };
     }
