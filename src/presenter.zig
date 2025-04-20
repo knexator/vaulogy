@@ -2569,44 +2569,16 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 math.lerp_towards_range(&self.scroll, 0, self.getMaxScroll(n_rows), 0.1, delta_seconds);
             }
 
-            // pub fn getRowPos(self: Reel, k: usize) struct { top_left: Vec2, scale: f32 } {
-
-            // pub fn getRowPos(self: Reel, k: usize) struct { top_left: Vec2, scale: f32 } {
-            pub fn getTestsReelUIPos(self: Reel, k: usize, which: TestCase.Part) Point {
+            pub fn getRowUIPos(self: Reel, k: usize, x: f32) Point {
                 const index: f32 = tof32(k) - self.scroll;
                 const y = 1.25 + index * 2.5;
                 const scale = @min(
                     math.smoothstep(index, -0.5, 0),
                     math.smoothstep(index, tof32(self.n_visible_rows) - 0.5, tof32(self.n_visible_rows) - 1),
                 );
-                return self.top_left.applyToLocalPoint(.{ .pos = .new(switch (which) {
-                    .input => 0.75,
-                    .expected => 3.75,
-                    .actual => 6.75,
-                }, y) }).applyToLocalPoint(.{ .scale = scale, .pos = .lerp(.new(0.5, math.maybeMirror(0.5, y > self.rect.size.y / 2.0)), .zero, scale) });
-            }
-
-            pub fn getSamplesReelUIPos(self: Reel, k: usize, which: Sample.Part) Point {
-                const index: f32 = tof32(k) - self.scroll;
-                const y = 1.25 + index * 2.5;
-                const scale = @min(
-                    math.smoothstep(index, -0.5, 0),
-                    math.smoothstep(index, tof32(self.n_visible_rows) - 0.5, tof32(self.n_visible_rows) - 1),
-                );
-                return self.top_left.applyToLocalPoint(.{ .pos = .new(switch (which) {
-                    .input => 0.65,
-                    .output => 3.95,
-                }, y) }).applyToLocalPoint(.{ .scale = scale, .pos = .lerp(.new(0.5, math.maybeMirror(0.5, y > self.rect.size.y / 2.0)), .zero, scale) });
-            }
-
-            pub fn getRowUIPos(self: Reel, k: usize) Point {
-                const index: f32 = tof32(k) - self.scroll;
-                const y = 1.25 + index * 2.5;
-                const scale = @min(
-                    math.smoothstep(index, -0.5, 0),
-                    math.smoothstep(index, tof32(self.n_visible_rows) - 0.5, tof32(self.n_visible_rows) - 1),
-                );
-                return self.top_left.applyToLocalPoint(.{ .pos = .new(0, y) }).applyToLocalPoint(.{ .scale = scale });
+                return self.top_left
+                    .applyToLocalPoint(.{ .pos = .new(x, y) })
+                    .applyToLocalPoint(.{ .scale = scale, .pos = .lerp(.new(0.5, math.maybeMirror(0.5, y > self.rect.size.y / 2)), .zero, scale) });
             }
 
             fn scrollBarRect(self: Reel, n_rows: usize) Rect {
@@ -2643,7 +2615,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             /// in UI coords
             pub fn getUIPoint(self: TestsReel, k: usize, which: TestCase.Part) Point {
-                return self.reel.getTestsReelUIPos(k, which);
+                return self.reel.getRowUIPos(k, switch (which) {
+                    .input => 0.75,
+                    .expected => 3.75,
+                    .actual => 6.75,
+                });
             }
 
             /// in world coords
@@ -2786,7 +2762,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             pub fn getUIPoint(self: ListViewer, which: Address.Which) Point {
                 return switch (which) {
                     .main => self.mainPoint(),
-                    .element => |k| self.reel.getRowUIPos(k).applyToLocalPoint(.{ .pos = .new(0.8, 0) }),
+                    .element => |k| self.reel.getRowUIPos(k, 0.8),
                 };
             }
 
@@ -2936,7 +2912,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             /// in UI coords
             pub fn getUIPoint(self: SamplesReel, k: usize, which: Sample.Part) Point {
-                return self.reel.getSamplesReelUIPos(k, which);
+                return self.reel.getRowUIPos(k, switch (which) {
+                    .input => 0.65,
+                    .output => 3.95,
+                });
             }
 
             /// in world coords
