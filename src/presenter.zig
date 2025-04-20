@@ -2798,6 +2798,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
             }
 
+            pub fn removeElement(self: *ListViewer, k: usize, mem: *VeryPermamentGameStuff) !void {
+                var list = (try self.curList()).?;
+                defer list.deinit();
+                _ = list.orderedRemove(k);
+                self.value = try core.toListPlusSentinel(list.items, Sexpr.builtin.nil, &mem.pool_for_sexprs);
+            }
+
             pub fn findOverlap(self: ListViewer, mouse_ui_pos: Vec2) !?Address {
                 // TODO: improve
                 if (self.value) |v| {
@@ -3760,6 +3767,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     try self.onChangedSomething();
                                 },
                                 .toolbar_special_var => try toolbar.special_var_state.next(self.mem, self.cases),
+                                .list_viewer => |list| switch (list.which) {
+                                    else => {},
+                                    .element => |k| try self.list_viewer.removeElement(k, self.mem),
+                                },
                                 else => {},
                             }
                         }
