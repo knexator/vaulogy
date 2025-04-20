@@ -2585,6 +2585,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .applyToLocalPoint(.{ .scale = scale, .pos = .lerp(.new(0.5, math.maybeMirror(0.5, y > self.rect.size.y / 2)), .zero, scale) });
             }
 
+            pub fn getRawPos(self: Reel, k: f32, x: f32) Point {
+                const index: f32 = k - self.scroll;
+                const y = 1.25 + index * 2.5;
+                return self.top_left
+                    .applyToLocalPoint(.{ .pos = .new(x, y) });
+            }
+
             fn scrollBarRect(self: Reel, n_rows: usize) Rect {
                 const scroll_perc = self.scroll / self.getMaxScroll(n_rows);
                 const bar_height = tof32(self.n_visible_rows) / tof32(self.getMaxScroll(n_rows));
@@ -2744,14 +2751,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 const Which = union(enum) {
                     main,
                     element: usize,
-                    // TODO
-                    // between: ??,
+                    /// the index if placed
+                    between: usize,
 
                     pub fn equals(a: Which, b: Which) bool {
                         if (std.meta.activeTag(a) != std.meta.activeTag(b)) return false;
                         return switch (a) {
                             .main => true,
                             .element => |i| i == b.element,
+                            .between => |i| i == b.between,
                         };
                     }
                 };
@@ -2764,9 +2772,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             pub fn getUIPoint(self: ListViewer, which: Address.Which) Point {
+                // TODO: improve .between
                 return switch (which) {
                     .main => self.mainPoint(),
                     .element => |k| self.reel.getRowUIPos(k, 0.8),
+                    .between => |k| self.reel.getRawPos(tof32(k) - 0.5, 1).applyToLocalPoint(.{ .scale = 0.5 }),
                 };
             }
 
@@ -2778,6 +2788,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         defer list.deinit();
                         break :blk list.items[k];
                     },
+                    .between => null,
                 };
             }
 
@@ -2795,6 +2806,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         list.items[k] = try list.items[k].setAt(mem, address.local, new_sexpr);
                         self.value = try core.toListPlusSentinel(list.items, Sexpr.builtin.nil, &mem.pool_for_sexprs);
                     },
+                    .between => |k| {
+                        var list = (self.curList() catch @panic("OoM")).?;
+                        defer list.deinit();
+                        std.debug.assert(address.local.len == 0);
+                        try list.insert(k, new_sexpr);
+                        self.value = try core.toListPlusSentinel(list.items, Sexpr.builtin.nil, &mem.pool_for_sexprs);
+                    },
                 }
             }
 
@@ -2805,8 +2823,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 self.value = try core.toListPlusSentinel(list.items, Sexpr.builtin.nil, &mem.pool_for_sexprs);
             }
 
-            pub fn findOverlap(self: ListViewer, mouse_ui_pos: Vec2) !?Address {
-                // TODO: improve
+            pub fn findOverlap(self: ListViewer, mouse_ui_pos: Vec2, holding_some_sexpr: bool) !?Address {
                 if (self.value) |v| {
                     if (try SexprView.overlapsSexpr(platform.gpa, v, self.mainPoint(), mouse_ui_pos)) |local| {
                         return .{ .which = .main, .local = local };
@@ -2816,6 +2833,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             if (try SexprView.overlapsSexpr(platform.gpa, w, self.getUIPoint(.{ .element = k }), mouse_ui_pos)) |local| {
                                 return .{ .which = .{ .element = k }, .local = local };
                             }
+                        }
+                        if (holding_some_sexpr and self.reel.rect.contains(mouse_ui_pos)) {
+                            const y = self.reel.top_left.inverseApplyGetLocalPosition(mouse_ui_pos).y;
+                            const index: usize = @intFromFloat(math.clamp(@ceil((y - 1.25) / 2.5 + self.reel.scroll), 0, tof32(list.items.len)));
+                            return .{ .which = .{ .between = index }, .local = &.{} };
                         }
                     }
                 } else if (SexprView.overlapsAtom(self.mainPoint(), mouse_ui_pos, .atom)) {
@@ -3539,7 +3561,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .{ .main_fnk_name = overlap } }
                 else if (toolbar.overlapsWithSpecialCase(mouse_ui_pos, .from(self.tutorial_state)))
                     .{ .case = .toolbar_special_case }
-                else if (if (self.tutorial_state.hasListViewer()) try self.list_viewer.findOverlap(mouse_ui_pos) else null) |overlap|
+                else if (if (self.tutorial_state.hasListViewer()) try self.list_viewer.findOverlap(mouse_ui_pos, std.meta.activeTag(self.focus) == .grabbing_sexpr) else null) |overlap|
                     .{ .sexpr = .{ .list_viewer = overlap } }
                 else
                     null;
