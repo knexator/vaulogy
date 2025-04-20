@@ -91,6 +91,10 @@ pub fn ZVec2(T: type) type {
             .new(0, -1),
         };
 
+        pub fn tof32(v: Self) Vec2 {
+            return .new(@floatFromInt(v.x), @floatFromInt(v.y));
+        }
+
         pub fn cast(v: Self, S: type) ZVec2(S) {
             return .new(@intCast(v.x), @intCast(v.y));
         }
@@ -157,6 +161,10 @@ pub const Vec2 = extern struct {
 
     pub fn new(x: Scalar, y: Scalar) Self {
         return .{ .x = x, .y = y };
+    }
+
+    pub fn toInt(v: Self, S: type) ZVec2(S) {
+        return .new(@intFromFloat(v.x), @intFromFloat(v.y));
     }
 
     pub fn both(v: Scalar) Self {
