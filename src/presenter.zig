@@ -2866,7 +2866,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             fn mainPoint(self: ListViewer) Point {
-                return self.reel.top_left.applyToLocalPoint(.{ .pos = .new(-7.5, 5), .scale = 3 });
+                return self.reel.top_left.applyToLocalPoint(.{ .pos = .new(-7.5, 5), .scale = 4 });
             }
 
             fn curList(self: ListViewer) !?std.ArrayList(*const Sexpr) {
@@ -2893,12 +2893,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             pub fn draw(self: ListViewer) !void {
                 const camera = UI.cam;
                 drawer.drawRect(camera, self.reel.rect, .black, null);
-                drawer.drawRect(
-                    camera,
-                    Rect.fromCenterAndSize(self.mainPoint().pos, .both(self.mainPoint().scale)),
-                    .black,
-                    null,
-                );
+                drawer.drawLineV2(camera, .{ .pos = self.reel.top_left.pos, .scale = self.reel.rect.size.y }, &([1]Vec2{.zero} ++
+                    funk.fromCount(32, struct {
+                        pub fn anon(k: usize) Vec2 {
+                            // TODO: center the circle actually on the mainPoint
+                            return Vec2.fromTurns(math.lerp(0.75, 0.25, math.tof32(k) / 32)).scale(0.5).addY(0.5).addX(-0.55);
+                        }
+                    }.anon) ++
+                    [1]Vec2{.new(0, 1)}), .black);
                 if (self.value) |v| {
                     try artist.drawSexpr(camera, self.mainPoint(), v);
 
@@ -3791,6 +3793,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 .toolbar_special_var => try toolbar.special_var_state.next(self.mem, self.cases),
                                 .list_viewer => |list| switch (list.which) {
                                     else => {},
+                                    .main => if (list.local.len == 0) {
+                                        self.list_viewer.value = null;
+                                    },
                                     .element => |k| try self.list_viewer.removeElement(k, self.mem),
                                 },
                                 else => {},
@@ -4015,7 +4020,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     drawer.drawDebugText(UI.cam, fnk_manager.sexpr_point.applyToLocalPoint(.{ .pos = .new(-3, 0) }), "↑\nPlace any Data here\nto create a Vau\nwith that name", .black);
                 },
                 .intro_to_list_viewer => {
-                    drawer.drawDebugText(UI.cam, self.list_viewer.mainPoint().applyToLocalPoint(.{ .pos = .new(0.5, -1.4) }).applyToLocalPoint(.{ .scale = 0.5 }), "Here's a helper tool\nto work with lists", .black);
+                    // TODO AHORA
+                    // drawer.drawDebugText(UI.cam, self.list_viewer.mainPoint().applyToLocalPoint(.{ .pos = .new(0.5, -1.4) }).applyToLocalPoint(.{ .scale = 0.5 }), "Here's a helper tool\nto work with lists", .black);
                 },
             }
         }
