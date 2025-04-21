@@ -247,6 +247,14 @@ pub const Drawer = struct {
         self.drawLine(camera, buf[0..local_positions.len], color);
     }
 
+    pub fn drawCircle(self: Drawer, camera: Camera, center: Point, stroke: ?Color, fill: ?Color) void {
+        self.drawShapeV2(camera, center, &funk.fromCount(64, struct {
+            pub fn anon(k: usize) Vec2 {
+                return Vec2.fromTurns(math.tof32(k) / 64);
+            }
+        }.anon), stroke, fill);
+    }
+
     pub fn drawArrowForSample(self: Drawer, camera: Camera, center: Point, solved: ?bool) void {
         const color: Color = if (solved) |s|
             if (s) .from01(0.2, 1, 0.5) else .from01(1, 0.2, 0.3)
@@ -2291,6 +2299,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 is_pattern: f32,
                 limitation: enum { none, pattern, template },
             },
+            // TODO: hotness
+            hovering_list_viewer_handle,
+            grabbing_list_viewer_handle,
         } = .{ .nothing = {} },
 
         tests_reel: TestsReel,
@@ -2767,6 +2778,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 local: core.SexprAddress,
             };
 
+            pub fn move(self: *ListViewer, mouse: Mouse) void {
+                self.reel.top_left.pos.addInPlace(mouse.cur.pos(UI.cam)
+                    .sub(mouse.prev.pos(UI.cam)));
+                self.reel.rect.top_left = self.reel.top_left.pos;
+            }
+
             pub fn getWorldPoint(self: ListViewer, camera: Camera, which: Address.Which) Point {
                 return Camera.remap(UI.cam, self.getUIPoint(which), camera);
             }
@@ -2846,9 +2863,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 return null;
             }
 
-            pub fn init() ListViewer {
+            pub fn init(intro_level: bool) ListViewer {
                 const rect_size: Vec2 = .new(1.7, 5);
-                const top_left_pos: Vec2 = .new(24.5, 9.75);
+                const top_left_pos: Vec2 = if (intro_level) .new(24.5, 9.75) else .new(30, 13);
                 return .{
                     .value = null,
                     .reel = .{
@@ -2867,6 +2884,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             fn mainPoint(self: ListViewer) Point {
                 return self.reel.top_left.applyToLocalPoint(.{ .pos = .new(-7.5, 5), .scale = 4 });
+            }
+
+            fn handlePoint(self: ListViewer) Point {
+                return self.reel.top_left.applyToLocalPoint(.{ .pos = .new(-10, 1), .scale = 1 });
             }
 
             fn curList(self: ListViewer) !?std.ArrayList(*const Sexpr) {
@@ -2901,6 +2922,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         }
                     }.anon) ++
                     [1]Vec2{.new(0, 1)}), .black);
+                drawer.drawCircle(
+                    camera,
+                    self.handlePoint(),
+                    .black,
+                    null,
+                );
                 if (self.value) |v| {
                     try artist.drawSexpr(camera, self.mainPoint(), v);
 
@@ -3350,7 +3377,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 //     .not_yet_creating_vaus,
                 .particles = .init(platform.gpa),
                 .particles_cases = .init(platform.gpa),
-                .list_viewer = .init(),
+                .list_viewer = .init(tutorial_state == .intro_to_list_viewer),
             };
         }
 
@@ -3459,6 +3486,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             // focus-specific updates
             switch (self.focus) {
+                .hovering_list_viewer_handle => {},
+                .grabbing_list_viewer_handle => {
+                    self.list_viewer.move(platform.getMouse());
+                },
                 .grabbing_case => |*grabbing| {
                     // grabbing case parent is the nothing!
                     grabbing.case.pattern_point_relative_to_parent.lerp_towards((Point{
@@ -3521,6 +3552,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 const Overlapped = union(enum) {
                     case: CasePlace,
                     sexpr: SexprPlace,
+                    list_viewer_handle,
                 };
                 const maybe_overlapped: ?Overlapped = if (blk: {
                     if (try asdfUpdateAndReturnOverlap(
@@ -3565,16 +3597,19 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .case = .toolbar_special_case }
                 else if (if (self.tutorial_state.hasListViewer()) try self.list_viewer.findOverlap(mouse_ui_pos, std.meta.activeTag(self.focus) == .grabbing_sexpr) else null) |overlap|
                     .{ .sexpr = .{ .list_viewer = overlap } }
+                else if (self.tutorial_state.hasListViewer() and self.list_viewer.handlePoint().inverseApplyGetLocalPosition(mouse_ui_pos).magSq() < 1)
+                    .list_viewer_handle
                 else
                     null;
 
                 switch (self.focus) {
+                    .grabbing_list_viewer_handle => {},
                     .grabbing_case => |*grabbing| if (maybe_overlapped) |overlapped|
                         switch (overlapped) {
                             .case => |place| {
                                 grabbing.address_if_released = if (place.acceptsDrop()) place else null;
                             },
-                            .sexpr => {
+                            .sexpr, .list_viewer_handle => {
                                 grabbing.address_if_released = null;
                             },
                         }
@@ -3587,6 +3622,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 if (std.meta.activeTag(place) == .main_fnk) {
                                     try self.cases.setUnfolded(place.main_fnk.existing);
                                 }
+                                grabbing.address_if_released = null;
+                            },
+                            .list_viewer_handle => {
                                 grabbing.address_if_released = null;
                             },
                             .sexpr => |place| {
@@ -3603,7 +3641,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     else {
                         grabbing.address_if_released = null;
                     },
-                    .nothing, .hovering_sexpr, .hovering_case => if (maybe_overlapped) |overlapped| {
+                    .nothing, .hovering_sexpr, .hovering_case, .hovering_list_viewer_handle => if (maybe_overlapped) |overlapped| {
                         switch (overlapped) {
                             // .special_case => if (!(std.meta.activeTag(self.focus) == .hovering_special_case)) {
                             //     self.focus = .{ .hovering_special_case = 0 };
@@ -3624,6 +3662,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                             .global_point = try place.getGlobalPoint(self.*),
                                         },
                                     };
+                                }
+                            },
+                            .list_viewer_handle => |_| {
+                                if (!(std.meta.activeTag(self.focus) == .hovering_list_viewer_handle)) {
+                                    self.focus = .hovering_list_viewer_handle;
                                 }
                             },
                         }
@@ -3802,6 +3845,17 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             }
                         }
                     },
+                    .hovering_list_viewer_handle => {
+                        self.focus = .grabbing_list_viewer_handle;
+                    },
+                    .grabbing_list_viewer_handle => unreachable,
+                }
+            } else if (platform.getMouse().wasReleased(.left)) {
+                switch (self.focus) {
+                    .grabbing_list_viewer_handle => {
+                        self.focus = .hovering_list_viewer_handle;
+                    },
+                    else => {},
                 }
             }
 
@@ -3887,6 +3941,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             switch (self.focus) {
                 .nothing => {},
+                .hovering_list_viewer_handle => {
+                    drawer.drawCircle(UI.cam, self.list_viewer.handlePoint(), null, .white);
+                },
+                .grabbing_list_viewer_handle => {
+                    drawer.drawCircle(UI.cam, self.list_viewer.handlePoint(), null, .black);
+                },
                 .hovering_case => |hovering| switch (hovering.address) {
                     .main_fnk => |unfolded| {
                         const pattern_point = try self.cases.getPatternGlobalPoint(.{}, unfolded.existing);
@@ -3979,7 +4039,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             self.ui_state.draw(drawer);
 
             switch (self.tutorial_state) {
-                // ↑←
+                // ↑←→
                 .none, .not_yet_creating_vaus, .not_yet_creating_vaus_or_lists => {},
                 .first_level => {
                     // drawer.drawDebugText(camera, .{ .pos = .new(-3.55, -2), .scale = 0.75 }, "That's the name of →\nthe Vau you're editing.", .black);
@@ -4020,8 +4080,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     drawer.drawDebugText(UI.cam, fnk_manager.sexpr_point.applyToLocalPoint(.{ .pos = .new(-3, 0) }), "↑\nPlace any Data here\nto create a Vau\nwith that name", .black);
                 },
                 .intro_to_list_viewer => {
-                    // TODO AHORA
-                    // drawer.drawDebugText(UI.cam, self.list_viewer.mainPoint().applyToLocalPoint(.{ .pos = .new(0.5, -1.4) }).applyToLocalPoint(.{ .scale = 0.5 }), "Here's a helper tool\nto work with lists", .black);
+                    drawer.drawDebugText(
+                        UI.cam,
+                        self.list_viewer.mainPoint().applyToLocalPoint(.{ .pos = .new(-2.5, 0.2) }).applyToLocalPoint(.{ .scale = 0.5 }),
+                        "Here's a helper tool\nto work with lists →",
+                        .black,
+                    );
                 },
             }
         }
