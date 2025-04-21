@@ -121,6 +121,11 @@ async function getWasm() {
         const value = getString(value_ptr, value_len);
         localStorage.setItem(key, value);
       },
+      
+      setCursor: (k) => {
+        const cursors = ["default", "grab", "grabbing"];
+        document.body.style.cursor = cursors[k];
+      },
     },
   });
 

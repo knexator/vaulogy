@@ -67,6 +67,9 @@ pub const Platform = struct {
     setPlayerData: fn (player_data: PlayerData, mem: *VeryPermamentGameStuff) OoM!void,
     getMouse: fn () Mouse,
     getKeyboard: fn () Keyboard,
+    setCursor: fn (cursor: Cursor) void,
+
+    pub const Cursor = enum(u8) { default, could_grab, grabbing };
 };
 
 // TODO NOW: allow non-ascii sexpr names
@@ -3449,6 +3452,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             change_to: *const Sexpr,
         } {
             var mouse = platform.getMouse();
+
+            // TODO: cursor for UI elements
+
+            // assumes that changing cursor is free
+            defer platform.setCursor(switch (self.focus) {
+                .grabbing_case, .grabbing_sexpr, .grabbing_list_viewer_handle => .grabbing,
+                .hovering_case, .hovering_sexpr, .hovering_list_viewer_handle => .could_grab,
+                .nothing => .default,
+            });
 
             if (self.ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button| {
                 switch (pressed_button) {
