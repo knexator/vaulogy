@@ -562,7 +562,7 @@ pub const Camera = struct {
     }
 
     /// relative_screen_point.pos is in ([0..aspect_ratio], [0..1])
-    fn worldFromScreen(camera: Camera, relative_screen_point: Point) Point {
+    pub fn worldFromScreen(camera: Camera, relative_screen_point: Point) Point {
         return .{
             .pos = camera.worldFromScreenPosition(relative_screen_point.pos),
             .scale = relative_screen_point.scale * camera.height,
@@ -571,7 +571,7 @@ pub const Camera = struct {
     }
 
     /// assumes the screen as a height of 1
-    fn screenFromWorld(camera: Camera, world_point: Point) Point {
+    pub fn screenFromWorld(camera: Camera, world_point: Point) Point {
         const window_height = 1;
         const rect = camera.toRect();
         const local = Point.inverseApplyGetLocal(Point{
@@ -582,7 +582,7 @@ pub const Camera = struct {
         return screen.applyToLocalPoint(local);
     }
 
-    fn screenFromWorldPosition(camera: Camera, world_position: Vec2) Vec2 {
+    pub fn screenFromWorldPosition(camera: Camera, world_position: Vec2) Vec2 {
         return screenFromWorld(camera, .{ .pos = world_position }).pos;
     }
 
@@ -618,6 +618,14 @@ pub const Camera = struct {
         return Camera.fromMapping(
             .{ .pos = fixed_world_pos, .scale = 1.0 },
             .{ .pos = fixed_screen_pos, .scale = 1.0 / new_height },
+        );
+    }
+
+    /// Transform the camera such that the changed screen pos corresponds to the same world pos
+    pub fn drag(original: Camera, old_screen_pos: Vec2, new_screen_pos: Vec2) Camera {
+        return Camera.fromMapping(
+            original.worldFromScreen(.{ .pos = old_screen_pos }),
+            .{ .pos = new_screen_pos, .scale = 1 },
         );
     }
 

@@ -87,7 +87,6 @@ done:
 - level 1: se lia entre cases y tests
 - level 1: cree que los casos son secuenciales
 - sfx
-- move camera with middle click
 - Explain "execute" at the start? ??????????????????????
 - trouble for putting template wildcard on a nested data
 - have some feedback when trying to interact with locked elements
@@ -107,3 +106,4 @@ done:
 - Show 'got/expected' on tests
 - level 1: enfasis check
 - allow infinite loops
+- move camera with middle click

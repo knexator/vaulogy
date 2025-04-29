@@ -409,6 +409,13 @@ fn moveCamera(camera: *Camera, delta_seconds: f32, keyboard: Keyboard, mouse: Mo
             camera.center = camera.center.add(key_dir[1].scale(delta_seconds * camera.height));
         }
     }
+
+    if (mouse.cur.isDown(.middle) and mouse.prev.isDown(.middle)) {
+        camera.* = camera.*.drag(
+            mouse.prev.client_pos,
+            mouse.cur.client_pos,
+        );
+    }
 }
 
 fn defaultFnkBody(mem: *VeryPermamentGameStuff) FnkBody {
