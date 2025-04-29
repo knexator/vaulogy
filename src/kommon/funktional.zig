@@ -100,6 +100,21 @@ pub fn mapWithCtx(comptime map_fn: anytype, comptime in: []const SecondInputOf(m
     return result;
 }
 
+pub fn mapOOP(
+    ctx: anytype,
+    comptime map_fn_name: std.meta.DeclEnum(@TypeOf(ctx)),
+    comptime in: []const SecondInputOf(@field(@TypeOf(ctx), @tagName(map_fn_name))),
+) [in.len]ReturnOf(@field(@TypeOf(ctx), @tagName(map_fn_name))) {
+    const map_fn = @field(@TypeOf(ctx), @tagName(map_fn_name));
+    std.debug.assert(@typeInfo(@TypeOf(map_fn)).@"fn".params.len == 2);
+    std.debug.assert(FirstInputOf(map_fn) == @TypeOf(ctx));
+    var result: [in.len]ReturnOf(map_fn) = undefined;
+    for (in, &result) |v, *target| {
+        target.* = map_fn(ctx, v);
+    }
+    return result;
+}
+
 pub fn sum(comptime T: type, values: []const T) T {
     var result: T = 0;
     for (values) |v| {
@@ -121,4 +136,49 @@ pub fn concatComptime(comptime strs: []const []const u8) []const u8 {
         result = result ++ s;
     }
     return result;
+}
+
+pub fn Fn(params: []const std.builtin.Type.Fn.Param, return_type: type) type {
+    return @Type(.{
+        .@"fn" = .{
+            .params = params,
+            .return_type = return_type,
+            // not confident in these values
+            .calling_convention = .auto,
+            .is_generic = false,
+            .is_var_args = false,
+        },
+    });
+}
+
+pub fn chain(comptime functions: anytype) Fn(
+    @typeInfo(@TypeOf(functions[0])).@"fn".params,
+    ReturnOf(functions[functions.len - 1]),
+) {
+    var intermediate_types: [functions.len]type = undefined;
+    inline for (functions, 0..) |f, k| {
+        intermediate_types[k] = ReturnOf(f);
+    }
+    const intermediate_values_type = std.meta.Tuple(&intermediate_types);
+
+    if (ParamsLen(functions[0]) == 0) {
+        const S = struct {
+            pub fn anon() ReturnOf(functions[functions.len - 1]) {
+                var values: intermediate_values_type = undefined;
+                inline for (functions, 0..) |f, k| {
+                    if (k == 0) {
+                        values[0] = f();
+                    } else {
+                        values[k] = f(values[k - 1]);
+                    }
+                }
+                return values[functions.len - 1];
+            }
+        };
+        return S.anon;
+    } else if (ParamsLen(functions[1]) == 1) {
+        @compileError("TODO");
+    } else {
+        @compileError("nope");
+    }
 }

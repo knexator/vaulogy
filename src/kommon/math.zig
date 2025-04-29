@@ -1,4 +1,5 @@
 const std = @import("std");
+const assert = std.debug.assert;
 
 pub fn inRange(value: anytype, min_inclusive: anytype, max_exclusive: anytype) bool {
     return min_inclusive <= value and value < max_exclusive;
@@ -34,7 +35,7 @@ pub fn lerp_towards(v: *f32, goal: f32, ratio: f32, delta_seconds: f32) void {
 }
 
 pub fn lerp_towards_range(v: *f32, min: f32, max: f32, ratio: f32, delta_seconds: f32) void {
-    std.debug.assert(min <= max);
+    assert(min <= max);
     if (v.* < min) {
         lerp_towards(v, min, ratio, delta_seconds);
     } else if (v.* > max) {
@@ -141,6 +142,12 @@ pub fn ZVec2(T: type) type {
 
         pub fn dot(a: Self, b: Self) Scalar {
             return a.x * b.x + a.y * b.y;
+        }
+
+        pub fn aspectRatio(v: Self) f32 {
+            assert(T == usize);
+            const f = v.tof32();
+            return f.x / f.y;
         }
     };
 }
@@ -266,8 +273,8 @@ pub const URect = struct {
     }
 
     pub fn fromCorners(top_left: UVec2, bottom_right: UVec2) URect {
-        std.debug.assert(top_left.x <= bottom_right.x);
-        std.debug.assert(top_left.y <= bottom_right.y);
+        assert(top_left.x <= bottom_right.x);
+        assert(top_left.y <= bottom_right.y);
         return .{
             .top_left = top_left,
             .inner_size = .sub(bottom_right, top_left),
@@ -342,6 +349,14 @@ pub const Rect = struct {
             },
         }
     }
+
+    pub fn applyToLocalPosition(self: Rect, p: Vec2) Vec2 {
+        return self.top_left.add(p.mul(self.size));
+    }
+
+    pub fn localFromWorldPosition(self: Rect, p: Vec2) Vec2 {
+        return p.sub(self.top_left).div(self.size);
+    }
 };
 
 pub const FColor = extern struct {
@@ -370,7 +385,7 @@ pub const Color = extern struct {
     }
 
     pub fn from01(r: f32, g: f32, b: f32) Color {
-        std.debug.assert(in01(r) and in01(g) and in01(b));
+        assert(in01(r) and in01(g) and in01(b));
         return Color.new(
             @intFromFloat(r * 255),
             @intFromFloat(g * 255),
@@ -500,6 +515,7 @@ pub const Point = struct {
     }
 };
 
+// TODO: delete this and move the stuff into Rect
 pub const Camera = struct {
     const aspect_ratio: f32 = 16.0 / 9.0;
 
@@ -520,7 +536,7 @@ pub const Camera = struct {
     }
 
     pub fn fromRect(rect: Rect) Camera {
-        std.debug.assert(std.math.approxEqRel(f32, rect.size.y, rect.size.x * aspect_ratio, 0.001));
+        assert(std.math.approxEqRel(f32, rect.size.y, rect.size.x * aspect_ratio, 0.001));
         return fromTopleftAndHeight(rect.top_left, rect.size.y);
     }
 
