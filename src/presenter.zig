@@ -3356,6 +3356,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             try toolbar.special_var_state.next(mem, cases);
             try toolbar.special_case_state.next(mem, cases);
 
+            if (DESIGN.instant_feedback) {
+                try updateSolvedSamples(.{ .name = fnk_name, .body = fnk_body }, tests, persistence, mem);
+            }
+
             return .{
                 .tests_reel = tests_reel,
                 .fnk_name = fnk_name,
