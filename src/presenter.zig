@@ -3458,7 +3458,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             // assumes that changing cursor is free
             defer platform.setCursor(switch (self.focus) {
                 .grabbing_case, .grabbing_sexpr, .grabbing_list_viewer_handle => .grabbing,
-                .hovering_case, .hovering_sexpr, .hovering_list_viewer_handle => .could_grab,
+                .hovering_case, .hovering_list_viewer_handle => .could_grab,
+                .hovering_sexpr => |x| if ((x.address.getSexpr(self.*) catch @panic("TODO")) != null) .could_grab else .default,
                 .nothing => .default,
             });
 
