@@ -273,14 +273,14 @@ const WebDrawer = struct {
 
         js_better.canvas.pathLoop(screen_positions);
 
+        if (fill) |col| {
+            js_better.canvas.setFillColor(col);
+            js.canvas.fill();
+        }
         if (stroke) |col| {
             js.canvas.setLineWidth(1);
             js_better.canvas.setStrokeColor(col);
             js.canvas.stroke();
-        }
-        if (fill) |col| {
-            js_better.canvas.setFillColor(col);
-            js.canvas.fill();
         }
     }
 

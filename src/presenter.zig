@@ -3966,10 +3966,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             switch (self.focus) {
                 .nothing => {},
                 .hovering_list_viewer_handle => {
-                    drawer.drawCircle(UI.cam, self.list_viewer.handlePoint(), null, .white);
+                    drawer.drawCircle(UI.cam, self.list_viewer.handlePoint(), .black, .gray(160));
                 },
                 .grabbing_list_viewer_handle => {
-                    drawer.drawCircle(UI.cam, self.list_viewer.handlePoint(), null, .black);
+                    drawer.drawCircle(UI.cam, self.list_viewer.handlePoint(), .black, .gray(192));
                 },
                 .hovering_case => |hovering| switch (hovering.address) {
                     .main_fnk => |unfolded| {
