@@ -54,4 +54,8 @@ pub const Mouse = struct {
     pub fn wasPressed(self: Mouse, button: MouseButton) bool {
         return self.cur.isDown(button) and !self.prev.isDown(button);
     }
+
+    pub fn wasReleased(self: Mouse, button: MouseButton) bool {
+        return !self.cur.isDown(button) and self.prev.isDown(button);
+    }
 };

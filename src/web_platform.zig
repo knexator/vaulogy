@@ -60,6 +60,8 @@ const js = struct {
         extern fn getItem(key_ptr: [*]const u8, key_len: usize, dst_ptr: [*]u8) usize;
         extern fn setItem(key_ptr: [*]const u8, key_len: usize, value_ptr: [*]const u8, value_len: usize) void;
     };
+
+    extern fn setCursor(cursor: presenter.Platform.Cursor) void;
 };
 
 const js_better = struct {
@@ -175,6 +177,10 @@ const WebPlatform = struct {
 
     pub fn getKeyboard() presenter.Keyboard {
         return keyboard;
+    }
+
+    pub fn setCursor(cursor: presenter.Platform.Cursor) void {
+        js.setCursor(cursor);
     }
 };
 
@@ -733,6 +739,7 @@ const web_platform = presenter.Platform{
     .setPlayerData = WebPlatform.setPlayerData,
     .getMouse = WebPlatform.getMouse,
     .getKeyboard = WebPlatform.getKeyboard,
+    .setCursor = WebPlatform.setCursor,
 };
 const web_drawer = presenter.Drawer{
     .clear = js_better.canvas.clear,

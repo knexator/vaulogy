@@ -21,6 +21,11 @@ const SdlPlatform = struct {
     pub fn getKeyboard() presenter.Keyboard {
         return keyboard;
     }
+
+    pub fn setCursor(cursor: presenter.Platform.Cursor) void {
+        _ = cursor;
+        // TODO
+    }
 };
 
 var sdl_renderer: *c.SDL_Renderer = undefined;
@@ -504,6 +509,7 @@ const sdl_platform = presenter.Platform{
     .setPlayerData = SdlPlatform.setPlayerData,
     .getMouse = SdlPlatform.getMouse,
     .getKeyboard = SdlPlatform.getKeyboard,
+    .setCursor = SdlPlatform.setCursor,
 };
 const sdl_drawer = presenter.Drawer{
     .clear = SdlDrawer.clear,

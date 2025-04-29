@@ -182,6 +182,10 @@ pub const Vec2 = extern struct {
         return new(a.x + b.x, a.y + b.y);
     }
 
+    pub fn addInPlace(a: *Self, b: Self) void {
+        a.* = a.add(b);
+    }
+
     pub fn sub(a: Self, b: Self) Self {
         return new(a.x - b.x, a.y - b.y);
     }
