@@ -65,7 +65,8 @@ pub const builtin_levels: []const BuiltinLevel = &.{
         .{ .input = &Sexpr.doLit("Zeus"), .output = &Sexpr.doPair(&Sexpr.doPair(&Sexpr.doLit("top"), &Sexpr.doLit("Zeus")), &Sexpr.doLit("bottom")) },
     }, .description = "This Vau takes unstable Data and wraps it safely", .premade_solution = 
     \\wrapOlympian {
-    \\  Hermes -> ((top . Hermes) . bottom);
+    \\  @x -> (@x . @x);
+    \\  // Hermes -> ((top . Hermes) . bottom);
     \\  // Aphrodite -> ((top . Aphrodite) . bottom);
     \\  // Ares -> ((top . Ares) . bottom);
     \\  // Zeus -> ((top . Zeus) . bottom);

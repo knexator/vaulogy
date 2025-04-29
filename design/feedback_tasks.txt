@@ -37,7 +37,6 @@ done:
 ###
 
 - too much toolbar on level 2
-- idea: start level two with @x -> (@x . @x)
 - idea: change wrapping to multiple copies and/or reordering
 - forgot about what yellow vau does; show a preview of the tests when hovering it?
 - tell player about right click
@@ -53,6 +52,7 @@ done:
 done:
 - don't show sample status
 - doesn't get that wildcards are connected
+- idea: start level two with @x -> (@x . @x)
 
 ###
 
