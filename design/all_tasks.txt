@@ -1,3 +1,4 @@
 - feedback_tasks.txt
 - allow skipping known vaus during execution
 - dropped data particle: use mouse velocity
+- enter level by moving the vau name somewhere

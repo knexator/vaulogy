@@ -5549,6 +5549,15 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
                     return selected;
                 }
             }
+
+            // assumes that changing cursor is free
+            platform.setCursor(if (self.level_select_buttons.active != null)
+                .grabbing
+            else if (self.level_select_buttons.hot != null)
+                .could_grab
+            else
+                .default);
+
             return null;
         }
 
