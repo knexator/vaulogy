@@ -5404,6 +5404,11 @@ test {
         }.anon,
         .getPlayerData = undefined,
         .setPlayerData = undefined,
+        .setCursor = struct {
+            pub fn anon(_: Platform.Cursor) void {
+                unreachable;
+            }
+        }.anon,
     };
     std.testing.refAllDecls(EditingFnk(dummy_platform, Drawer.dummy));
     std.testing.refAllDecls(ExecutingFnk(dummy_platform, Drawer.dummy));
