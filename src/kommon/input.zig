@@ -4,6 +4,7 @@ const Camera = kommon.math.Camera;
 
 pub const MouseButton = enum { left, right, middle };
 pub const MouseState = struct {
+    /// client_pos is in ([0..aspect_ratio], [0..1])
     client_pos: Vec2,
     scrolled: enum {
         up,
