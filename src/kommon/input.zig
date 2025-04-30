@@ -1,11 +1,14 @@
 const kommon = @import("kommon.zig");
 const Vec2 = kommon.math.Vec2;
 const Camera = kommon.math.Camera;
+const Rect = kommon.math.Rect;
 
 pub const MouseButton = enum { left, right, middle };
 pub const MouseState = struct {
     /// client_pos is in ([0..aspect_ratio], [0..1])
     client_pos: Vec2,
+    /// the new thing
+    position: Vec2,
     scrolled: enum {
         up,
         down,
@@ -19,14 +22,12 @@ pub const MouseState = struct {
             };
         }
     },
-    buttons: struct {
-        left: bool,
-        middle: bool,
-        right: bool,
-    },
+    buttons: kommon.meta.BoolFlags(MouseButton, false),
+    // buttons: std.enums.EnumSet(MouseButton),
 
     pub const init: MouseState = .{
         .client_pos = .zero,
+        .position = .zero,
         .scrolled = .none,
         .buttons = .{
             .left = false,
@@ -37,6 +38,10 @@ pub const MouseState = struct {
 
     pub fn pos(self: MouseState, camera: Camera) Vec2 {
         return camera.worldFromScreenPosition(self.client_pos);
+    }
+
+    pub fn posV2(self: MouseState, camera: Rect) Vec2 {
+        return camera.top_left.add(self.client_pos.scale(camera.size.y));
     }
 
     pub fn isDown(self: MouseState, button: MouseButton) bool {

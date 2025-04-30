@@ -7,6 +7,7 @@ pub const Grid2D = @import("grid_2D.zig").Grid2D;
 pub const itertools = @import("itertools.zig");
 pub const input = @import("input.zig");
 pub const BFS = @import("bfs.zig").BFS;
+pub const meta = @import("meta.zig");
 
 comptime {
     std.testing.refAllDeclsRecursive(@This());
