@@ -60,3 +60,30 @@ pub const Mouse = struct {
         return !self.cur.isDown(button) and self.prev.isDown(button);
     }
 };
+
+pub const KeyboardButton = std.meta.FieldEnum(KeyboardState);
+pub const KeyboardState = struct {
+    left: bool,
+    right: bool,
+    up: bool,
+    down: bool,
+
+    pub const init: KeyboardState = std.mem.zeroes(KeyboardState);
+
+    pub fn isDown(self: KeyboardState, button: KeyboardButton) bool {
+        return switch (button) {
+            inline else => |x| @field(self, @tagName(x)),
+        };
+    }
+};
+
+pub const Keyboard = struct {
+    cur: KeyboardState,
+    prev: KeyboardState,
+
+    pub fn wasPressed(self: Keyboard, button: KeyboardButton) bool {
+        return self.cur.isDown(button) and !self.prev.isDown(button);
+    }
+};
+
+const std = @import("std");

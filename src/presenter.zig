@@ -6,6 +6,8 @@ const std = @import("std");
 
 pub const safeAt = @import("kommon/kommon.zig").safeAt;
 pub const Mouse = @import("kommon/input.zig").Mouse;
+pub const Keyboard = @import("kommon/input.zig").Keyboard;
+pub const KeyboardButton = @import("kommon/input.zig").KeyboardButton;
 const math = @import("kommon/math.zig");
 pub const Vec2 = math.Vec2;
 pub const Rect = math.Rect;
@@ -35,31 +37,6 @@ const parsing = @import("parsing.zig");
 const OoM = error{ OutOfMemory, TODO, BAD_INPUT };
 
 pub const DESIGN = @import("DESIGN");
-
-pub const KeyboardButton = std.meta.FieldEnum(KeyboardState);
-pub const KeyboardState = struct {
-    left: bool,
-    right: bool,
-    up: bool,
-    down: bool,
-
-    pub const init: KeyboardState = std.mem.zeroes(KeyboardState);
-};
-
-pub const Keyboard = struct {
-    cur: KeyboardState,
-    prev: KeyboardState,
-
-    pub fn isDown(self: Keyboard, button: KeyboardButton) bool {
-        return switch (button) {
-            inline else => |x| @field(self.cur, @tagName(x)),
-        };
-    }
-
-    pub fn wasPressed(self: Keyboard, button: KeyboardButton) bool {
-        return self.cur.isDown(button) and !self.prev.isDown(button);
-    }
-};
 
 pub const Platform = struct {
     gpa: std.mem.Allocator,
@@ -405,7 +382,7 @@ fn moveCamera(camera: *Camera, delta_seconds: f32, keyboard: Keyboard, mouse: Mo
         .{ KeyboardButton.up, Vec2.new(0, -1) },
         .{ KeyboardButton.down, Vec2.new(0, 1) },
     }) |key_dir| {
-        if (keyboard.isDown(key_dir[0])) {
+        if (keyboard.cur.isDown(key_dir[0])) {
             camera.center = camera.center.add(key_dir[1].scale(delta_seconds * camera.height));
         }
     }
