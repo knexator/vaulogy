@@ -66,28 +66,30 @@ pub const Mouse = struct {
     }
 };
 
-pub const KeyboardButton = enum { left, right, up, down };
-pub const KeyboardState = struct {
+pub fn CustomKeyboardState(CustomKeyboardButton: type) type {
+    return struct {
+        // TODO: try setting it to packed
+        keys: kommon.meta.BoolFlags(CustomKeyboardButton, false),
 
-    // TODO: try setting it to packed
-    keys: kommon.meta.BoolFlags(KeyboardButton, false),
+        pub const init: @This() = std.mem.zeroes(@This());
 
-    pub const init: KeyboardState = std.mem.zeroes(KeyboardState);
+        pub fn isDown(self: @This(), button: CustomKeyboardButton) bool {
+            return switch (button) {
+                inline else => |x| @field(self.keys, @tagName(x)),
+            };
+        }
+    };
+}
 
-    pub fn isDown(self: KeyboardState, button: KeyboardButton) bool {
-        return switch (button) {
-            inline else => |x| @field(self.keys, @tagName(x)),
-        };
-    }
-};
+pub fn CustomKeyboard(CustomKeyboardButton: type) type {
+    return struct {
+        cur: CustomKeyboardState(CustomKeyboardButton),
+        prev: CustomKeyboardState(CustomKeyboardButton),
 
-pub const Keyboard = struct {
-    cur: KeyboardState,
-    prev: KeyboardState,
-
-    pub fn wasPressed(self: Keyboard, button: KeyboardButton) bool {
-        return self.cur.isDown(button) and !self.prev.isDown(button);
-    }
-};
+        pub fn wasPressed(self: @This(), button: CustomKeyboardButton) bool {
+            return self.cur.isDown(button) and !self.prev.isDown(button);
+        }
+    };
+}
 
 const std = @import("std");

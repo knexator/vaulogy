@@ -6,8 +6,8 @@ const std = @import("std");
 
 pub const safeAt = @import("kommon/kommon.zig").safeAt;
 pub const Mouse = @import("kommon/input.zig").Mouse;
-pub const Keyboard = @import("kommon/input.zig").Keyboard;
-pub const KeyboardButton = @import("kommon/input.zig").KeyboardButton;
+pub const KeyboardButton = enum { left, right, up, down };
+pub const Keyboard = @import("kommon/input.zig").CustomKeyboard(KeyboardButton);
 const math = @import("kommon/math.zig");
 pub const Vec2 = math.Vec2;
 pub const Rect = math.Rect;
