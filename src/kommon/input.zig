@@ -66,18 +66,17 @@ pub const Mouse = struct {
     }
 };
 
-pub const KeyboardButton = std.meta.FieldEnum(KeyboardState);
+pub const KeyboardButton = enum { left, right, up, down };
 pub const KeyboardState = struct {
-    left: bool,
-    right: bool,
-    up: bool,
-    down: bool,
+
+    // TODO: try setting it to packed
+    keys: kommon.meta.BoolFlags(KeyboardButton, false),
 
     pub const init: KeyboardState = std.mem.zeroes(KeyboardState);
 
     pub fn isDown(self: KeyboardState, button: KeyboardButton) bool {
         return switch (button) {
-            inline else => |x| @field(self, @tagName(x)),
+            inline else => |x| @field(self.keys, @tagName(x)),
         };
     }
 };

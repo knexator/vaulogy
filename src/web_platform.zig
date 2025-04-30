@@ -807,10 +807,10 @@ export fn keyup(code: KeyCode) void {
 
 fn keychanged(key: KeyCode, is_pressed: bool) void {
     switch (key) {
-        .KeyD, .ArrowRight => keyboard.cur.right = is_pressed,
-        .KeyA, .ArrowLeft => keyboard.cur.left = is_pressed,
-        .KeyW, .ArrowUp => keyboard.cur.up = is_pressed,
-        .KeyS, .ArrowDown => keyboard.cur.down = is_pressed,
+        .KeyD, .ArrowRight => keyboard.cur.keys.right = is_pressed,
+        .KeyA, .ArrowLeft => keyboard.cur.keys.left = is_pressed,
+        .KeyW, .ArrowUp => keyboard.cur.keys.up = is_pressed,
+        .KeyS, .ArrowDown => keyboard.cur.keys.down = is_pressed,
     }
 }
 

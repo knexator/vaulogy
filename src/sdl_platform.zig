@@ -643,10 +643,10 @@ pub fn main() !void {
                     c.SDL_EVENT_KEY_DOWN, c.SDL_EVENT_KEY_UP => {
                         const is_pressed = event.type == c.SDL_EVENT_KEY_DOWN;
                         switch (event.key.key) {
-                            c.SDLK_D, c.SDLK_RIGHT => keyboard.cur.right = is_pressed,
-                            c.SDLK_A, c.SDLK_LEFT => keyboard.cur.left = is_pressed,
-                            c.SDLK_W, c.SDLK_UP => keyboard.cur.up = is_pressed,
-                            c.SDLK_S, c.SDLK_DOWN => keyboard.cur.down = is_pressed,
+                            c.SDLK_D, c.SDLK_RIGHT => keyboard.cur.keys.right = is_pressed,
+                            c.SDLK_A, c.SDLK_LEFT => keyboard.cur.keys.left = is_pressed,
+                            c.SDLK_W, c.SDLK_UP => keyboard.cur.keys.up = is_pressed,
+                            c.SDLK_S, c.SDLK_DOWN => keyboard.cur.keys.down = is_pressed,
                             else => {},
                         }
                     },
