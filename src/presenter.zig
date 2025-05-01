@@ -552,15 +552,16 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                             null,
                         ), .prev_editing = prev_editing } };
                     },
-                    .change_to => |fnk_name| {
+                    .change_to => |foo| {
                         try self.prev_editing_names.append(platform.gpa, editing.fnk_name);
                         const fnk = try editing.getFnk();
                         try self.persistence.fnks.put(fnk.name, fnk.body);
                         try platform.setPlayerData(self.persistence, &self.mem);
                         self.state = .{
-                            .loading_editing_fnk = .initFromPoint(fnk_name, Camera.remap(
+                            .loading_editing_fnk = .initFromPoint(foo.fnk_name, Camera.remap(
                                 UI.cam,
-                                EditingFnk(platform, drawer).fnk_manager.sexpr_point,
+                                foo.ui_point,
+                                // EditingFnk(platform, drawer).FnkManager.sexpr_point,
                                 editing.camera,
                             )),
                         };
@@ -2166,7 +2167,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .toolbar_special_var => Camera.remap(UI.cam, toolbar.special_var_point, self.camera),
                     .sample => |sample| SexprView.sexprChildView(self.tests_reel.getWorldPoint(self.camera, sample.index, sample.which), sample.local),
                     .external_fnk => |fnk| SexprView.sexprChildView(fnks_reel.getWorldPoint(self.camera, fnk.index), fnk.local),
-                    .fnk_manager => Camera.remap(UI.cam, fnk_manager.sexpr_point, self.camera),
+                    .fnk_manager => Camera.remap(UI.cam, self.fnk_manager.sexpr_point, self.camera),
                     .meta_converter => |local| SexprView.sexprChildView(meta_converter.sexpr_point, local),
                     .list_viewer => |list| SexprView.sexprChildView(self.list_viewer.getWorldPoint(self.camera, list.which), list.local),
                 };
@@ -2293,10 +2294,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             // TODO: hotness
             hovering_list_viewer_handle,
             grabbing_list_viewer_handle,
+            // TODO: hotness
+            hovering_fnk_manager_handle,
+            grabbing_fnk_manager_handle,
+            // TODO: remove duplication
         } = .{ .nothing = {} },
 
         tests_reel: TestsReel,
         list_viewer: ListViewer,
+        fnk_manager: FnkManager,
 
         // TODO: abstract
         particles: std.ArrayList(ParticleState),
@@ -3129,16 +3135,35 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         };
 
         /// create/edit/delete fnks
-        const fnk_manager = struct {
-            const sexpr_point: Point = .{ .pos = .new(2, 3), .scale = 0.5, .turns = -0.25 };
+        const FnkManager = struct {
+            sexpr_point: Point = .{ .pos = .new(2, 3), .scale = 0.5, .turns = -0.25 },
 
-            pub fn findOverlap(mouse_ui_pos: Vec2) bool {
-                return SexprView.overlapsAtom(sexpr_point, mouse_ui_pos, .atom);
+            pub fn init() FnkManager {
+                return .{};
             }
 
-            pub fn draw() !void {
+            fn handlePoint(self: FnkManager) Point {
+                return self.sexpr_point.applyToLocalPoint(.{ .pos = .new(-1, -2), .scale = 0.5 });
+            }
+
+            pub fn move(self: *FnkManager, mouse: Mouse) void {
+                self.sexpr_point.pos.addInPlace(mouse.cur.pos(UI.cam)
+                    .sub(mouse.prev.pos(UI.cam)));
+            }
+
+            pub fn findOverlap(self: FnkManager, mouse_ui_pos: Vec2) bool {
+                return SexprView.overlapsAtom(self.sexpr_point, mouse_ui_pos, .atom);
+            }
+
+            pub fn draw(self: FnkManager) !void {
                 const camera = UI.cam;
-                artist.drawFnkHolderForFnkAt(camera, sexpr_point, 1);
+                drawer.drawCircle(
+                    camera,
+                    self.handlePoint(),
+                    .black,
+                    null,
+                );
+                artist.drawFnkHolderForFnkAt(camera, self.sexpr_point, 1);
                 // drawer.drawDebugText(camera, sexpr_point.applyToLocalPoint(.{ .pos = .new(-1, 0) }), "change vau", .black);
             }
         };
@@ -3368,6 +3393,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .particles = .init(platform.gpa),
                 .particles_cases = .init(platform.gpa),
                 .list_viewer = .init(tutorial_state == .intro_to_list_viewer),
+                .fnk_manager = .init(),
             };
         }
 
@@ -3436,7 +3462,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             back_to_level_select,
             launch_test,
             launch_execution: if (DESIGN.no_current_data) PhysicalSexpr else void,
-            change_to: *const Sexpr,
+            change_to: struct {
+                fnk_name: *const Sexpr,
+                ui_point: Point,
+            },
         } {
             var mouse = platform.getMouse();
 
@@ -3444,8 +3473,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             // assumes that changing cursor is free
             defer platform.setCursor(switch (self.focus) {
-                .grabbing_case, .grabbing_sexpr, .grabbing_list_viewer_handle => .grabbing,
-                .hovering_case, .hovering_list_viewer_handle => .could_grab,
+                .grabbing_case, .grabbing_sexpr, .grabbing_list_viewer_handle, .grabbing_fnk_manager_handle => .grabbing,
+                .hovering_case, .hovering_list_viewer_handle, .hovering_fnk_manager_handle => .could_grab,
                 .hovering_sexpr => |x| if ((x.address.getSexpr(self.*) catch @panic("TODO")) != null) .could_grab else .default,
                 .nothing => .default,
             });
@@ -3486,9 +3515,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             // focus-specific updates
             switch (self.focus) {
-                .hovering_list_viewer_handle => {},
+                .hovering_list_viewer_handle, .hovering_fnk_manager_handle => {},
                 .grabbing_list_viewer_handle => {
                     self.list_viewer.move(platform.getMouse());
+                },
+                .grabbing_fnk_manager_handle => {
+                    self.fnk_manager.move(platform.getMouse());
                 },
                 .grabbing_case => |*grabbing| {
                     // grabbing case parent is the nothing!
@@ -3553,6 +3585,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     case: CasePlace,
                     sexpr: SexprPlace,
                     list_viewer_handle,
+                    fnk_manager_handle,
                 };
                 const maybe_overlapped: ?Overlapped = if (blk: {
                     if (try asdfUpdateAndReturnOverlap(
@@ -3580,8 +3613,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .{ .sample = overlap } }
                 else if (if (self.tutorial_state.allowPickingVaus()) try fnks_reel.findOverlap(mouse_ui_pos, self.available_fnks, .from(self.tutorial_state)) else null) |overlap|
                     .{ .sexpr = .{ .external_fnk = overlap } }
-                else if (self.tutorial_state.allowCreatingVaus() and fnk_manager.findOverlap(mouse_ui_pos))
+                else if (self.tutorial_state.allowCreatingVaus() and self.fnk_manager.findOverlap(mouse_ui_pos))
                     .{ .sexpr = .fnk_manager }
+                else if (self.tutorial_state.allowCreatingVaus() and self.fnk_manager.handlePoint().inverseApplyGetLocalPosition(mouse_ui_pos).magSq() < 1)
+                    .fnk_manager_handle
                 else if (if (self.meta_enabled) try meta_converter.findOverlap(mouse_pos) else null) |overlap| switch (overlap) {
                     .sexpr => |local| .{ .sexpr = .{ .meta_converter = local } },
                     .case => .{ .case = .meta_converter },
@@ -3604,12 +3639,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
                 switch (self.focus) {
                     .grabbing_list_viewer_handle => {},
+                    .grabbing_fnk_manager_handle => {},
                     .grabbing_case => |*grabbing| if (maybe_overlapped) |overlapped|
                         switch (overlapped) {
                             .case => |place| {
                                 grabbing.address_if_released = if (place.acceptsDrop()) place else null;
                             },
-                            .sexpr, .list_viewer_handle => {
+                            .sexpr, .list_viewer_handle, .fnk_manager_handle => {
                                 grabbing.address_if_released = null;
                             },
                         }
@@ -3624,7 +3660,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 }
                                 grabbing.address_if_released = null;
                             },
-                            .list_viewer_handle => {
+                            .list_viewer_handle, .fnk_manager_handle => {
                                 grabbing.address_if_released = null;
                             },
                             .sexpr => |place| {
@@ -3641,7 +3677,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     else {
                         grabbing.address_if_released = null;
                     },
-                    .nothing, .hovering_sexpr, .hovering_case, .hovering_list_viewer_handle => if (maybe_overlapped) |overlapped| {
+                    .nothing, .hovering_sexpr, .hovering_case, .hovering_list_viewer_handle, .hovering_fnk_manager_handle => if (maybe_overlapped) |overlapped| {
                         switch (overlapped) {
                             // .special_case => if (!(std.meta.activeTag(self.focus) == .hovering_special_case)) {
                             //     self.focus = .{ .hovering_special_case = 0 };
@@ -3667,6 +3703,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             .list_viewer_handle => |_| {
                                 if (!(std.meta.activeTag(self.focus) == .hovering_list_viewer_handle)) {
                                     self.focus = .hovering_list_viewer_handle;
+                                }
+                            },
+                            .fnk_manager_handle => |_| {
+                                if (!(std.meta.activeTag(self.focus) == .hovering_fnk_manager_handle)) {
+                                    self.focus = .hovering_fnk_manager_handle;
                                 }
                             },
                         }
@@ -3732,7 +3773,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .grabbing_sexpr => |grabbing| {
                         if (grabbing.address_if_released) |address| {
                             if (address == .fnk_manager) {
-                                return .{ .change_to = try grabbing.sexpr.changeAllVariablesToNil(self.mem) };
+                                return .{ .change_to = .{
+                                    .fnk_name = try grabbing.sexpr.changeAllVariablesToNil(self.mem),
+                                    .ui_point = self.fnk_manager.sexpr_point,
+                                } };
                             } else if (DESIGN.no_current_data and address == .main_input) {
                                 self.focus = .nothing;
                                 return .{ .launch_execution = .{ .value = try grabbing.sexpr.changeAllVariablesToNil(self.mem), .pos = grabbing.point, .is_pattern = grabbing.is_pattern } };
@@ -3849,11 +3893,18 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         self.focus = .grabbing_list_viewer_handle;
                     },
                     .grabbing_list_viewer_handle => unreachable,
+                    .hovering_fnk_manager_handle => {
+                        self.focus = .grabbing_fnk_manager_handle;
+                    },
+                    .grabbing_fnk_manager_handle => unreachable,
                 }
             } else if (platform.getMouse().wasReleased(.left)) {
                 switch (self.focus) {
                     .grabbing_list_viewer_handle => {
                         self.focus = .hovering_list_viewer_handle;
+                    },
+                    .grabbing_fnk_manager_handle => {
+                        self.focus = .hovering_fnk_manager_handle;
                     },
                     else => {},
                 }
@@ -3925,7 +3976,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 self.check_all_ui_state.draw(drawer);
             }
             if (self.tutorial_state.allowPickingVaus()) try fnks_reel.draw(self.available_fnks, .from(self.tutorial_state));
-            if (self.tutorial_state.allowCreatingVaus()) try fnk_manager.draw();
+            if (self.tutorial_state.allowCreatingVaus()) try self.fnk_manager.draw();
             if (self.meta_enabled) try meta_converter.draw(camera);
             if (self.tutorial_state.hasListViewer()) try self.list_viewer.draw();
 
@@ -3946,6 +3997,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .grabbing_list_viewer_handle => {
                     drawer.drawCircle(UI.cam, self.list_viewer.handlePoint(), .black, .gray(192));
+                },
+                .hovering_fnk_manager_handle => {
+                    drawer.drawCircle(UI.cam, self.fnk_manager.handlePoint(), .black, .gray(160));
+                },
+                .grabbing_fnk_manager_handle => {
+                    drawer.drawCircle(UI.cam, self.fnk_manager.handlePoint(), .black, .gray(192));
                 },
                 .hovering_case => |hovering| switch (hovering.address) {
                     .main_fnk => |unfolded| {
@@ -4077,7 +4134,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     drawer.drawDebugText(camera, .{ .pos = .new(5, 9.5), .scale = 0.75 }, "You're now on your own. Good luck!", .black);
                 },
                 .intro_to_create_vaus => {
-                    drawer.drawDebugText(UI.cam, fnk_manager.sexpr_point.applyToLocalPoint(.{ .pos = .new(-3, 0) }), "↑\nPlace any Data here\nto create a Vau\nwith that name", .black);
+                    drawer.drawDebugText(UI.cam, self.fnk_manager.sexpr_point.applyToLocalPoint(.{ .pos = .new(-3, 0) }), "↑\nPlace any Data here\nto create a Vau\nwith that name", .black);
                 },
                 .intro_to_list_viewer => {
                     drawer.drawDebugText(
