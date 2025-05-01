@@ -1248,10 +1248,14 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             }
         }
 
-        pub fn drawHoldedFnk(camera: Camera, fnk_point: Point, is_main: f32, value: *const Sexpr) !void {
+        pub fn drawFnkHolderForFnkAt(camera: Camera, fnk_point: Point, is_main: f32) void {
             drawer.drawFnkHolder(camera, fnk_point
                 .applyToLocalPoint(.{ .scale = lerp(1, 0.5, is_main) })
                 .applyToLocalPoint(.{ .pos = .new(lerp(-1.5, -2.5, is_main), 0), .turns = 0.25 }));
+        }
+
+        pub fn drawHoldedFnk(camera: Camera, fnk_point: Point, is_main: f32, value: *const Sexpr) !void {
+            drawFnkHolderForFnkAt(camera, fnk_point, is_main);
             if (!value.equals(Sexpr.builtin.identity)) {
                 try drawSexpr(
                     camera,
@@ -3134,13 +3138,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             pub fn draw() !void {
                 const camera = UI.cam;
-                drawer.drawRect(
-                    camera,
-                    Rect.fromCenterAndSize(sexpr_point.pos, .both(sexpr_point.scale)),
-                    .black,
-                    null,
-                );
-                drawer.drawDebugText(camera, sexpr_point.applyToLocalPoint(.{ .pos = .new(-1, 0) }), "change vau", .black);
+                artist.drawFnkHolderForFnkAt(camera, sexpr_point, 1);
+                // drawer.drawDebugText(camera, sexpr_point.applyToLocalPoint(.{ .pos = .new(-1, 0) }), "change vau", .black);
             }
         };
 
