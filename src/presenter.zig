@@ -2333,16 +2333,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
             }
 
-            pub fn updateAndGetOverlap(self: *@This(), mouse_ui_pos: Vec2, delta_seconds: f32, active: ?Label, hot: ?Label) ?Label {
-                var result: ?Label = null;
-
+            pub fn update(self: *@This(), delta_seconds: f32, active: ?Label, hot: ?Label) void {
                 var it = self.buttons.iterator();
                 while (it.next()) |entry| {
                     const button = entry.value;
                     const label = entry.key;
-                    if (button.enabled and button.visible and button.pos.contains(mouse_ui_pos)) {
-                        result = label;
-                    }
                     math.lerp_towards(
                         &button.hot_t,
                         if (label == hot) 1 else 0,
@@ -2356,7 +2351,18 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         delta_seconds,
                     );
                 }
-                return result;
+            }
+
+            pub fn getOverlap(self: *@This(), mouse_ui_pos: Vec2) ?Label {
+                var it = self.buttons.iterator();
+                while (it.next()) |entry| {
+                    const button = entry.value;
+                    const label = entry.key;
+                    if (button.enabled and button.visible and button.pos.contains(mouse_ui_pos)) {
+                        return label;
+                    }
+                }
+                return null;
             }
         };
 
@@ -3626,6 +3632,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             fnks_reel.reel.update(fnks_reel.nRows(self.available_fnks.len), &mouse, delta_seconds);
             moveCamera(&self.camera, delta_seconds, platform.getKeyboard(), mouse);
             self.fnk_manager.update(&self.ui_state, self.tutorial_state.allowCreatingVaus());
+            self.ui_state.update(delta_seconds, self.focus.getActiveUiLabel(), self.focus.getHotUiLabel());
 
             const camera = self.camera;
 
@@ -3753,8 +3760,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .{ .list_viewer = overlap } }
                 else if (self.tutorial_state.hasListViewer() and self.list_viewer.handlePoint().inverseApplyGetLocalPosition(mouse_ui_pos).magSq() < 1)
                     .list_viewer_handle
-                    // TODO: always call this
-                else if (self.ui_state.updateAndGetOverlap(mouse_ui_pos, delta_seconds, self.focus.getActiveUiLabel(), self.focus.getHotUiLabel())) |label|
+                else if (self.ui_state.getOverlap(mouse_ui_pos)) |label|
                     .{ .ui = label }
                 else
                     null;
