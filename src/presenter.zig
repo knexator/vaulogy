@@ -46,7 +46,7 @@ pub const Platform = struct {
     getKeyboard: fn () Keyboard,
     setCursor: fn (cursor: Cursor) void,
 
-    pub const Cursor = enum(u8) { default, could_grab, grabbing };
+    pub const Cursor = enum(u8) { default, could_grab, grabbing, pointer };
 };
 
 // TODO NOW: allow non-ascii sexpr names
@@ -2254,12 +2254,86 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         };
 
+        const UI_State_V2 = struct {
+            comptime {
+                std.debug.assert(DESIGN.no_current_data);
+            }
+
+            const Label = enum {
+                back,
+                reset_view,
+                // TODO LATER
+                // check_all,
+                // back_to_menu,
+            };
+            const ButtonState = struct {
+                pos: Rect,
+                hot_t: f32 = 0,
+                active_t: f32 = 0,
+                text: ?[:0]const u8 = null,
+                enabled: bool = true,
+                visible: bool = true,
+            };
+
+            buttons: std.EnumArray(Label, ButtonState) = .init(.{
+                .back = .{
+                    .pos = .{ .top_left = .zero, .size = .one },
+                    .text = "Back",
+                },
+                .reset_view = .{
+                    .pos = .{ .top_left = .new(1, 0), .size = .one },
+                    .text = "Reset\nView",
+                },
+            }),
+
+            pub fn draw(self: @This()) void {
+                for (self.buttons.values) |button| {
+                    if (!button.visible) continue;
+                    if (!button.enabled) drawer.setTransparency(0.5);
+                    defer if (!button.enabled) drawer.setTransparency(1);
+
+                    drawer.drawRect(UI.cam, button.pos.plusMargin(
+                        clamp01(button.hot_t - button.active_t) * 0.1,
+                    ), .black, .white);
+                    if (button.text) |text| {
+                        drawer.drawDebugText(UI.cam, .{
+                            .pos = button.pos.getCenter(),
+                            .scale = button.pos.size.y / (1.5 + tof32(std.mem.count(u8, text, "\n"))),
+                        }, text, Color.black);
+                    }
+                }
+            }
+
+            pub fn updateAndGetOverlap(self: *@This(), mouse_ui_pos: Vec2, delta_seconds: f32, active: ?Label, hot: ?Label) ?Label {
+                var result: ?Label = null;
+
+                var it = self.buttons.iterator();
+                while (it.next()) |entry| {
+                    const button = entry.value;
+                    const label = entry.key;
+                    if (button.enabled and button.pos.contains(mouse_ui_pos)) {
+                        result = label;
+                    }
+                    math.lerp_towards(
+                        &button.hot_t,
+                        if (label == hot) 1 else 0,
+                        0.6,
+                        delta_seconds,
+                    );
+                    math.lerp_towards(
+                        &button.active_t,
+                        if (label == active) 1 else 0,
+                        0.6,
+                        delta_seconds,
+                    );
+                }
+                return result;
+            }
+        };
+
         persistence: *PlayerData,
         mem: *VeryPermamentGameStuff,
         camera: Camera = DEFAULT_CAM,
-        ui_state: UI.State,
-        check_all_ui_state: UI.State,
-        result_ui_state: UI.State,
         meta_enabled: bool,
         // TODO: allow user-created TestCases
         samples: []TestCase,
@@ -2270,7 +2344,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         tutorial_state: TutorialState,
 
-        // TODO NEXT
+        ui_state_v2: UI_State_V2,
+        check_all_ui_state: UI.State,
+        result_ui_state: UI.State,
+
+        // TODO, maybe
         // focusV2: struct {
         //     thing: enum { case, sexpr, list_viewer_handle, fnk_manager_handle },
         //     action: enum()
@@ -2290,6 +2368,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 list_viewer_handle,
                 // TODO: hotness
                 fnk_manager_handle,
+                ui: UI_State_V2.Label,
             },
             grabbing: union(enum) {
                 case: struct {
@@ -2305,6 +2384,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 list_viewer_handle,
                 fnk_manager_handle,
+                ui: UI_State_V2.Label,
             },
             // TODO: remove duplication
 
@@ -2316,6 +2396,27 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         .sexpr => |sexpr| std.meta.activeTag(cur_hover) == .sexpr and cur_hover.sexpr.address.equals(sexpr.address),
                         .list_viewer_handle => std.meta.activeTag(cur_hover) == .list_viewer_handle,
                         .fnk_manager_handle => std.meta.activeTag(cur_hover) == .fnk_manager_handle,
+                        .ui => |button| std.meta.activeTag(cur_hover) == .ui and cur_hover.ui == button,
+                    },
+                };
+            }
+
+            // these two are a bit hacky
+            pub fn getActiveUiLabel(self: @This()) ?UI_State_V2.Label {
+                return switch (self) {
+                    .nothing, .hovering => null,
+                    .grabbing => |x| switch (x) {
+                        else => null,
+                        .ui => |button| button,
+                    },
+                };
+            }
+            pub fn getHotUiLabel(self: @This()) ?UI_State_V2.Label {
+                return switch (self) {
+                    .nothing, .grabbing => null,
+                    .hovering => |x| switch (x) {
+                        else => null,
+                        .ui => |button| button,
                     },
                 };
             }
@@ -3337,14 +3438,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             const tests_reel: TestsReel = .init(.{ .pos = .new(19.5, 0.75), .scale = 0.75 });
 
-            const ui_state = UI.State{
-                .buttons = try UI.Button.rowWithExtra(platform.gpa, .zero, .one, &(.{
-                    "Back",
-                    "Reset\nView",
-                } ++ if (DESIGN.no_current_data) .{} else .{
-                    "⏵",
-                }), &.{}),
-            };
             const check_all_ui_state = UI.State{
                 .buttons = try UI.Button.rowWithExtra(platform.gpa, .zero, .one, &.{}, &[1]UI.Button{
                     .{
@@ -3390,7 +3483,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .persistence = persistence,
                 .cases = cases,
                 .main_input = if (DESIGN.no_current_data) .invalid_field else main_input,
-                .ui_state = ui_state,
+                .ui_state_v2 = .{},
+                // .ui_state = ui_state,
                 .check_all_ui_state = check_all_ui_state,
                 .result_ui_state = result_ui_state,
                 .available_fnks = available_fnks,
@@ -3490,26 +3584,19 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         } {
             var mouse = platform.getMouse();
 
-            // TODO: cursor for UI elements
-
             // assumes that changing cursor is free
             defer platform.setCursor(switch (self.focus) {
-                .grabbing => .grabbing,
+                .grabbing => |x| switch (x) {
+                    .ui => .pointer,
+                    else => .grabbing,
+                },
                 .hovering => |y| switch (y) {
                     .sexpr => |x| if ((x.address.getSexpr(self.*) catch @panic("TODO")) != null) .could_grab else .default,
+                    .ui => .pointer,
                     else => .could_grab,
                 },
                 .nothing => .default,
             });
-
-            if (self.ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button| {
-                switch (pressed_button) {
-                    0 => return .back_to_level_select,
-                    1 => self.camera = DEFAULT_CAM,
-                    2 => if (DESIGN.no_current_data) unreachable else return .launch_execution,
-                    else => @panic("oops"),
-                }
-            }
 
             if (TestCase.allSolved(self.samples)) {
                 if (self.result_ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button| {
@@ -3539,6 +3626,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             // focus-specific updates
             switch (self.focus) {
                 .grabbing => |*x| switch (x.*) {
+                    .ui => {},
                     .list_viewer_handle => self.list_viewer.move(platform.getMouse()),
                     .fnk_manager_handle => self.fnk_manager.move(platform.getMouse()),
                     .case => |*grabbing| {
@@ -3579,6 +3667,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .nothing => {},
                 .hovering => |*x| switch (x.*) {
+                    .ui => {},
                     .sexpr => |*hovering| {
                         if (std.meta.activeTag(hovering.address) == .full_address) {
                             const unfolded = hovering.address.full_address.case_address;
@@ -3609,6 +3698,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     sexpr: SexprPlace,
                     list_viewer_handle,
                     fnk_manager_handle,
+                    ui: UI_State_V2.Label,
                 };
                 const maybe_overlapped: ?Overlapped = if (blk: {
                     if (try asdfUpdateAndReturnOverlap(
@@ -3657,18 +3747,21 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .{ .list_viewer = overlap } }
                 else if (self.tutorial_state.hasListViewer() and self.list_viewer.handlePoint().inverseApplyGetLocalPosition(mouse_ui_pos).magSq() < 1)
                     .list_viewer_handle
+                    // TODO: always call this
+                else if (self.ui_state_v2.updateAndGetOverlap(mouse_ui_pos, delta_seconds, self.focus.getActiveUiLabel(), self.focus.getHotUiLabel())) |label|
+                    .{ .ui = label }
                 else
                     null;
 
                 switch (self.focus) {
                     .grabbing => |*x| switch (x.*) {
-                        .list_viewer_handle, .fnk_manager_handle => {},
+                        .list_viewer_handle, .fnk_manager_handle, .ui => {},
                         .case => |*grabbing| if (maybe_overlapped) |overlapped|
                             switch (overlapped) {
                                 .case => |place| {
                                     grabbing.address_if_released = if (place.acceptsDrop()) place else null;
                                 },
-                                .sexpr, .list_viewer_handle, .fnk_manager_handle => {
+                                .sexpr, .list_viewer_handle, .fnk_manager_handle, .ui => {
                                     grabbing.address_if_released = null;
                                 },
                             }
@@ -3683,7 +3776,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     }
                                     grabbing.address_if_released = null;
                                 },
-                                .list_viewer_handle, .fnk_manager_handle => {
+                                .list_viewer_handle, .fnk_manager_handle, .ui => {
                                     grabbing.address_if_released = null;
                                 },
                                 .sexpr => |place| {
@@ -3710,6 +3803,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             } },
                             .list_viewer_handle => .list_viewer_handle,
                             .fnk_manager_handle => .fnk_manager_handle,
+                            .ui => |label| .{ .ui = label },
                         };
 
                         if (!self.focus.isAlreadyHovering(new_hovering_focus)) {
@@ -3825,7 +3919,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 self.focus = .{ .nothing = {} };
                             }
                         },
-                        .list_viewer_handle, .fnk_manager_handle => unreachable,
+                        .list_viewer_handle, .fnk_manager_handle, .ui => unreachable,
                     },
                     .hovering => |*x| switch (x.*) {
                         .case => |hovering| if (self.tutorial_state.allowGrabbingCases()) {
@@ -3903,6 +3997,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         .fnk_manager_handle => {
                             self.focus = .{ .grabbing = .fnk_manager_handle };
                         },
+                        .ui => |button| {
+                            self.focus = .{ .grabbing = .{ .ui = button } };
+                        },
                     },
                 }
             } else if (platform.getMouse().wasReleased(.left)) {
@@ -3914,6 +4011,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         },
                         .fnk_manager_handle => {
                             self.focus = .{ .hovering = .fnk_manager_handle };
+                        },
+                        .ui => |button| {
+                            switch (button) {
+                                .back => return .back_to_level_select,
+                                .reset_view => self.camera = DEFAULT_CAM,
+                                // .play => if (DESIGN.no_current_data) unreachable else return .launch_execution,
+                            }
+                            self.focus = .{ .hovering = .{ .ui = button } };
                         },
                     },
                     else => {},
@@ -4009,6 +4114,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             switch (self.focus) {
                 .nothing => {},
                 .hovering => |x| switch (x) {
+                    .ui => {},
                     .list_viewer_handle => drawer.drawCircle(UI.cam, self.list_viewer.handlePoint(), .black, .gray(160)),
                     .fnk_manager_handle => drawer.drawCircle(UI.cam, self.fnk_manager.handlePoint(), .black, .gray(160)),
                     .sexpr => |hovering| {
@@ -4055,6 +4161,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     },
                 },
                 .grabbing => |x| switch (x) {
+                    .ui => {},
                     .list_viewer_handle => drawer.drawCircle(UI.cam, self.list_viewer.handlePoint(), .black, .gray(192)),
                     .fnk_manager_handle => drawer.drawCircle(UI.cam, self.fnk_manager.handlePoint(), .black, .gray(192)),
                     .sexpr => |grabbing| {
@@ -4105,7 +4212,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 },
             }
 
-            self.ui_state.draw(drawer);
+            self.ui_state_v2.draw();
 
             switch (self.tutorial_state) {
                 // ↑←→

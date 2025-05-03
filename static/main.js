@@ -123,7 +123,7 @@ async function getWasm() {
       },
       
       setCursor: (k) => {
-        const cursors = ["default", "grab", "grabbing"];
+        const cursors = ["default", "grab", "grabbing", "pointer"];
         document.body.style.cursor = cursors[k];
       },
     },
