@@ -2270,35 +2270,56 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         tutorial_state: TutorialState,
 
+        // TODO NEXT
+        // focusV2: struct {
+        //     thing: enum { case, sexpr, list_viewer_handle, fnk_manager_handle },
+        //     action: enum()
+        // },
         focus: union(enum) {
             nothing,
-            hovering_case: struct {
-                address: CasePlace,
-                hot: f32,
+            hovering: union(enum) {
+                case: struct {
+                    address: CasePlace,
+                    hot: f32,
+                },
+                sexpr: struct {
+                    address: SexprPlace,
+                    global_point: Point,
+                },
+                // TODO: hotness
+                list_viewer_handle,
+                // TODO: hotness
+                fnk_manager_handle,
             },
-            grabbing_case: struct {
-                case: CaseState,
-                address_if_released: ?CasePlace,
+            grabbing: union(enum) {
+                case: struct {
+                    case: CaseState,
+                    address_if_released: ?CasePlace,
+                },
+                sexpr: struct {
+                    sexpr: *const Sexpr,
+                    address_if_released: ?SexprPlace,
+                    point: Point,
+                    is_pattern: f32,
+                    limitation: enum { none, pattern, template },
+                },
+                list_viewer_handle,
+                fnk_manager_handle,
             },
-            hovering_sexpr: struct {
-                address: SexprPlace,
-                global_point: Point,
-            },
-            grabbing_sexpr: struct {
-                sexpr: *const Sexpr,
-                address_if_released: ?SexprPlace,
-                point: Point,
-                is_pattern: f32,
-                limitation: enum { none, pattern, template },
-            },
-            // TODO: hotness
-            hovering_list_viewer_handle,
-            grabbing_list_viewer_handle,
-            // TODO: hotness
-            hovering_fnk_manager_handle,
-            grabbing_fnk_manager_handle,
             // TODO: remove duplication
-        } = .{ .nothing = {} },
+
+            pub fn isAlreadyHovering(self: @This(), hovering: @FieldType(@This(), "hovering")) bool {
+                return switch (self) {
+                    .nothing, .grabbing => false,
+                    .hovering => |cur_hover| switch (hovering) {
+                        .case => |case| std.meta.activeTag(cur_hover) == .case and cur_hover.case.address.equals(case.address),
+                        .sexpr => |sexpr| std.meta.activeTag(cur_hover) == .sexpr and cur_hover.sexpr.address.equals(sexpr.address),
+                        .list_viewer_handle => std.meta.activeTag(cur_hover) == .list_viewer_handle,
+                        .fnk_manager_handle => std.meta.activeTag(cur_hover) == .fnk_manager_handle,
+                    },
+                };
+            }
+        } = .nothing,
 
         tests_reel: TestsReel,
         list_viewer: ListViewer,
@@ -3473,9 +3494,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             // assumes that changing cursor is free
             defer platform.setCursor(switch (self.focus) {
-                .grabbing_case, .grabbing_sexpr, .grabbing_list_viewer_handle, .grabbing_fnk_manager_handle => .grabbing,
-                .hovering_case, .hovering_list_viewer_handle, .hovering_fnk_manager_handle => .could_grab,
-                .hovering_sexpr => |x| if ((x.address.getSexpr(self.*) catch @panic("TODO")) != null) .could_grab else .default,
+                .grabbing => .grabbing,
+                .hovering => |y| switch (y) {
+                    .sexpr => |x| if ((x.address.getSexpr(self.*) catch @panic("TODO")) != null) .could_grab else .default,
+                    else => .could_grab,
+                },
                 .nothing => .default,
             });
 
@@ -3515,65 +3538,65 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             // focus-specific updates
             switch (self.focus) {
-                .hovering_list_viewer_handle, .hovering_fnk_manager_handle => {},
-                .grabbing_list_viewer_handle => {
-                    self.list_viewer.move(platform.getMouse());
-                },
-                .grabbing_fnk_manager_handle => {
-                    self.fnk_manager.move(platform.getMouse());
-                },
-                .grabbing_case => |*grabbing| {
-                    // grabbing case parent is the nothing!
-                    grabbing.case.pattern_point_relative_to_parent.lerp_towards((Point{
-                        .pos = platform.getMouse().cur.pos(camera),
-                        .scale = if (grabbing.address_if_released == null) 0.5 else 1,
-                    }).applyToLocalPoint(.{ .pos = .new(3, 0) }), 0.6, delta_seconds);
-                },
-                .grabbing_sexpr => |*grabbing| {
-                    grabbing.point.lerp_towards(if (grabbing.address_if_released) |goal|
-                        (try goal.getGlobalPoint(self.*))
-                            .applyToLocalPoint(switch (goal) {
-                            .full_address => |full| switch (full.which) {
-                                .pattern => .{ .turns = 0.02, .pos = .new(-0.5, 0) },
-                                .template => .{ .turns = -0.02, .pos = .new(0.5, 0) },
-                                .fnk_name => .{ .turns = 0.02, .pos = .new(0.5, 0) },
-                            },
-                            .main_input, .meta_converter, .list_viewer => .{ .turns = -0.02, .pos = .new(0.5, 0) },
-                            .fnk_manager => .{ .turns = 0.02, .pos = .new(0.5, 0) },
-                            .toolbar, .main_fnk_name, .toolbar_special_var, .sample, .external_fnk => unreachable,
-                        })
-                    else
-                        // TODO: it would be nice to have the scale instantly correct when the camera zooms
-                        Point{
+                .grabbing => |*x| switch (x.*) {
+                    .list_viewer_handle => self.list_viewer.move(platform.getMouse()),
+                    .fnk_manager_handle => self.fnk_manager.move(platform.getMouse()),
+                    .case => |*grabbing| {
+                        // grabbing case parent is the nothing!
+                        grabbing.case.pattern_point_relative_to_parent.lerp_towards((Point{
                             .pos = platform.getMouse().cur.pos(camera),
-                            .scale = camera.height / DEFAULT_CAM.height,
-                        }, 0.6, delta_seconds);
-                    math.lerp_towards(&grabbing.is_pattern, switch (grabbing.limitation) {
-                        .pattern => 1,
-                        .template => 0,
-                        .none => if (grabbing.address_if_released) |goal|
-                            if (goal.isPattern()) 1 else 0
+                            .scale = if (grabbing.address_if_released == null) 0.5 else 1,
+                        }).applyToLocalPoint(.{ .pos = .new(3, 0) }), 0.6, delta_seconds);
+                    },
+                    .sexpr => |*grabbing| {
+                        grabbing.point.lerp_towards(if (grabbing.address_if_released) |goal|
+                            (try goal.getGlobalPoint(self.*))
+                                .applyToLocalPoint(switch (goal) {
+                                .full_address => |full| switch (full.which) {
+                                    .pattern => .{ .turns = 0.02, .pos = .new(-0.5, 0) },
+                                    .template => .{ .turns = -0.02, .pos = .new(0.5, 0) },
+                                    .fnk_name => .{ .turns = 0.02, .pos = .new(0.5, 0) },
+                                },
+                                .main_input, .meta_converter, .list_viewer => .{ .turns = -0.02, .pos = .new(0.5, 0) },
+                                .fnk_manager => .{ .turns = 0.02, .pos = .new(0.5, 0) },
+                                .toolbar, .main_fnk_name, .toolbar_special_var, .sample, .external_fnk => unreachable,
+                            })
                         else
-                            @round(grabbing.is_pattern),
-                    }, 0.6, delta_seconds);
+                            // TODO: it would be nice to have the scale instantly correct when the camera zooms
+                            Point{
+                                .pos = platform.getMouse().cur.pos(camera),
+                                .scale = camera.height / DEFAULT_CAM.height,
+                            }, 0.6, delta_seconds);
+                        math.lerp_towards(&grabbing.is_pattern, switch (grabbing.limitation) {
+                            .pattern => 1,
+                            .template => 0,
+                            .none => if (grabbing.address_if_released) |goal|
+                                if (goal.isPattern()) 1 else 0
+                            else
+                                @round(grabbing.is_pattern),
+                        }, 0.6, delta_seconds);
+                    },
                 },
                 .nothing => {},
-                .hovering_sexpr => |*hovering| {
-                    if (std.meta.activeTag(hovering.address) == .full_address) {
-                        const unfolded = hovering.address.full_address.case_address;
-                        try self.cases.setUnfolded(unfolded);
-                    }
-                    hovering.global_point.lerp_towards(
-                        (try hovering.address.getGlobalPoint(self.*)).applyToLocalPoint(.{ .scale = 1.1 }),
-                        0.6,
-                        delta_seconds,
-                    );
-                },
-                .hovering_case => |*hovering| {
-                    if (std.meta.activeTag(hovering.address) == .main_fnk) {
-                        try self.cases.setUnfolded(hovering.address.main_fnk.existing);
-                    }
-                    math.lerp_towards(&hovering.hot, 1, 0.6, delta_seconds);
+                .hovering => |*x| switch (x.*) {
+                    .sexpr => |*hovering| {
+                        if (std.meta.activeTag(hovering.address) == .full_address) {
+                            const unfolded = hovering.address.full_address.case_address;
+                            try self.cases.setUnfolded(unfolded);
+                        }
+                        hovering.global_point.lerp_towards(
+                            (try hovering.address.getGlobalPoint(self.*)).applyToLocalPoint(.{ .scale = 1.1 }),
+                            0.6,
+                            delta_seconds,
+                        );
+                    },
+                    .case => |*hovering| {
+                        if (std.meta.activeTag(hovering.address) == .main_fnk) {
+                            try self.cases.setUnfolded(hovering.address.main_fnk.existing);
+                        }
+                        math.lerp_towards(&hovering.hot, 1, 0.6, delta_seconds);
+                    },
+                    .list_viewer_handle, .fnk_manager_handle => {},
                 },
             }
 
@@ -3630,7 +3653,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .{ .main_fnk_name = overlap } }
                 else if (toolbar.overlapsWithSpecialCase(mouse_ui_pos, .from(self.tutorial_state)))
                     .{ .case = .toolbar_special_case }
-                else if (if (self.tutorial_state.hasListViewer()) try self.list_viewer.findOverlap(mouse_ui_pos, std.meta.activeTag(self.focus) == .grabbing_sexpr) else null) |overlap|
+                else if (if (self.tutorial_state.hasListViewer()) try self.list_viewer.findOverlap(mouse_ui_pos, std.meta.activeTag(self.focus) == .grabbing and std.meta.activeTag(self.focus.grabbing) == .sexpr) else null) |overlap|
                     .{ .sexpr = .{ .list_viewer = overlap } }
                 else if (self.tutorial_state.hasListViewer() and self.list_viewer.handlePoint().inverseApplyGetLocalPosition(mouse_ui_pos).magSq() < 1)
                     .list_viewer_handle
@@ -3638,78 +3661,59 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     null;
 
                 switch (self.focus) {
-                    .grabbing_list_viewer_handle => {},
-                    .grabbing_fnk_manager_handle => {},
-                    .grabbing_case => |*grabbing| if (maybe_overlapped) |overlapped|
-                        switch (overlapped) {
-                            .case => |place| {
-                                grabbing.address_if_released = if (place.acceptsDrop()) place else null;
-                            },
-                            .sexpr, .list_viewer_handle, .fnk_manager_handle => {
-                                grabbing.address_if_released = null;
-                            },
-                        }
-                    else {
-                        grabbing.address_if_released = null;
-                    },
-                    .grabbing_sexpr => |*grabbing| if (maybe_overlapped) |overlapped|
-                        switch (overlapped) {
-                            .case => |place| {
-                                if (std.meta.activeTag(place) == .main_fnk) {
-                                    try self.cases.setUnfolded(place.main_fnk.existing);
-                                }
-                                grabbing.address_if_released = null;
-                            },
-                            .list_viewer_handle, .fnk_manager_handle => {
-                                grabbing.address_if_released = null;
-                            },
-                            .sexpr => |place| {
-                                if (std.meta.activeTag(place) == .full_address) {
-                                    try self.cases.setUnfolded(place.full_address.case_address);
-                                }
-                                grabbing.address_if_released = if (!place.acceptsDrop()) null else switch (grabbing.limitation) {
-                                    .none => place,
-                                    .pattern => if (!place.acceptsWildcards()) null else if (place.isPattern()) place else null,
-                                    .template => if (!place.acceptsWildcards()) null else if (place.isPattern()) null else place,
-                                };
-                            },
-                        }
-                    else {
-                        grabbing.address_if_released = null;
-                    },
-                    .nothing, .hovering_sexpr, .hovering_case, .hovering_list_viewer_handle, .hovering_fnk_manager_handle => if (maybe_overlapped) |overlapped| {
-                        switch (overlapped) {
-                            // .special_case => if (!(std.meta.activeTag(self.focus) == .hovering_special_case)) {
-                            //     self.focus = .{ .hovering_special_case = 0 };
-                            // },
-                            .case => |place| {
-                                if (!(std.meta.activeTag(self.focus) == .hovering_case and self.focus.hovering_case.address.equals(place))) {
-                                    self.focus = .{ .hovering_case = .{
-                                        .address = place,
-                                        .hot = 0,
-                                    } };
-                                }
-                            },
-                            .sexpr => |place| {
-                                if (!(std.meta.activeTag(self.focus) == .hovering_sexpr and self.focus.hovering_sexpr.address.equals(place))) {
-                                    self.focus = .{
-                                        .hovering_sexpr = .{
-                                            .address = place,
-                                            .global_point = try place.getGlobalPoint(self.*),
-                                        },
+                    .grabbing => |*x| switch (x.*) {
+                        .list_viewer_handle, .fnk_manager_handle => {},
+                        .case => |*grabbing| if (maybe_overlapped) |overlapped|
+                            switch (overlapped) {
+                                .case => |place| {
+                                    grabbing.address_if_released = if (place.acceptsDrop()) place else null;
+                                },
+                                .sexpr, .list_viewer_handle, .fnk_manager_handle => {
+                                    grabbing.address_if_released = null;
+                                },
+                            }
+                        else {
+                            grabbing.address_if_released = null;
+                        },
+                        .sexpr => |*grabbing| if (maybe_overlapped) |overlapped|
+                            switch (overlapped) {
+                                .case => |place| {
+                                    if (std.meta.activeTag(place) == .main_fnk) {
+                                        try self.cases.setUnfolded(place.main_fnk.existing);
+                                    }
+                                    grabbing.address_if_released = null;
+                                },
+                                .list_viewer_handle, .fnk_manager_handle => {
+                                    grabbing.address_if_released = null;
+                                },
+                                .sexpr => |place| {
+                                    if (std.meta.activeTag(place) == .full_address) {
+                                        try self.cases.setUnfolded(place.full_address.case_address);
+                                    }
+                                    grabbing.address_if_released = if (!place.acceptsDrop()) null else switch (grabbing.limitation) {
+                                        .none => place,
+                                        .pattern => if (!place.acceptsWildcards()) null else if (place.isPattern()) place else null,
+                                        .template => if (!place.acceptsWildcards()) null else if (place.isPattern()) null else place,
                                     };
-                                }
-                            },
-                            .list_viewer_handle => |_| {
-                                if (!(std.meta.activeTag(self.focus) == .hovering_list_viewer_handle)) {
-                                    self.focus = .hovering_list_viewer_handle;
-                                }
-                            },
-                            .fnk_manager_handle => |_| {
-                                if (!(std.meta.activeTag(self.focus) == .hovering_fnk_manager_handle)) {
-                                    self.focus = .hovering_fnk_manager_handle;
-                                }
-                            },
+                                },
+                            }
+                        else {
+                            grabbing.address_if_released = null;
+                        },
+                    },
+                    .nothing, .hovering => if (maybe_overlapped) |overlapped| {
+                        const new_hovering_focus: @TypeOf(self.focus.hovering) = switch (overlapped) {
+                            .case => |place| .{ .case = .{ .address = place, .hot = 0 } },
+                            .sexpr => |place| .{ .sexpr = .{
+                                .address = place,
+                                .global_point = try place.getGlobalPoint(self.*),
+                            } },
+                            .list_viewer_handle => .list_viewer_handle,
+                            .fnk_manager_handle => .fnk_manager_handle,
+                        };
+
+                        if (!self.focus.isAlreadyHovering(new_hovering_focus)) {
+                            self.focus = .{ .hovering = new_hovering_focus };
                         }
                     } else {
                         self.focus = .nothing;
@@ -3746,165 +3750,171 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             if (platform.getMouse().wasPressed(.left)) {
                 switch (self.focus) {
                     .nothing => {},
-                    .grabbing_case => |*grabbing| {
-                        if (grabbing.address_if_released) |place| {
-                            switch (place) {
-                                .main_fnk => |case| {
-                                    const address = case.ghost.address;
-                                    const global_point = grabbing.case.pattern_point_relative_to_parent;
-                                    const parent_point = try self.cases.getPatternGlobalPoint(.{}, address[0 .. address.len - 1]);
-                                    grabbing.case.pattern_point_relative_to_parent = parent_point.inverseApplyGetLocal(global_point);
-                                    try self.cases.insertAt(self.mem, address, grabbing.case);
-                                    try self.onChangedSomething();
-                                    self.focus = .{ .hovering_case = .{ .address = .{ .main_fnk = .{ .existing = address } }, .hot = 1 } };
-                                },
-                                .meta_converter => {
-                                    try meta_converter.setCase(self.mem, try makeCaseVirtual(self.mem, grabbing.case));
-                                    self.focus = .{ .hovering_case = .{ .address = place, .hot = 1 } };
-                                },
-                                .toolbar_special_case => unreachable,
-                            }
-                        } else {
-                            try self.particles_cases.append(.initFloater(grabbing.case));
-                            // try addParticlesForCase(&self.particles, grabbing.case);
-                            self.focus = .{ .nothing = {} };
-                        }
-                    },
-                    .grabbing_sexpr => |grabbing| {
-                        if (grabbing.address_if_released) |address| {
-                            if (address == .fnk_manager) {
-                                return .{ .change_to = .{
-                                    .fnk_name = try grabbing.sexpr.changeAllVariablesToNil(self.mem),
-                                    .ui_point = self.fnk_manager.sexpr_point,
-                                } };
-                            } else if (DESIGN.no_current_data and address == .main_input) {
-                                self.focus = .nothing;
-                                return .{ .launch_execution = .{ .value = try grabbing.sexpr.changeAllVariablesToNil(self.mem), .pos = grabbing.point, .is_pattern = grabbing.is_pattern } };
+                    .grabbing => |*x| switch (x.*) {
+                        .case => |*grabbing| {
+                            if (grabbing.address_if_released) |place| {
+                                switch (place) {
+                                    .main_fnk => |case| {
+                                        const address = case.ghost.address;
+                                        const global_point = grabbing.case.pattern_point_relative_to_parent;
+                                        const parent_point = try self.cases.getPatternGlobalPoint(.{}, address[0 .. address.len - 1]);
+                                        grabbing.case.pattern_point_relative_to_parent = parent_point.inverseApplyGetLocal(global_point);
+                                        try self.cases.insertAt(self.mem, address, grabbing.case);
+                                        try self.onChangedSomething();
+                                        self.focus = .{ .hovering = .{ .case = .{ .address = .{ .main_fnk = .{ .existing = address } }, .hot = 1 } } };
+                                    },
+                                    .meta_converter => {
+                                        try meta_converter.setCase(self.mem, try makeCaseVirtual(self.mem, grabbing.case));
+                                        self.focus = .{ .hovering = .{ .case = .{ .address = place, .hot = 1 } } };
+                                    },
+                                    .toolbar_special_case => unreachable,
+                                }
                             } else {
-                                // particle stuff
-                                {
-                                    if (try address.getSexpr(self.*)) |old_value| {
-                                        if (!try address.isAnInvisibleIdentity(self.*)) {
-                                            try self.particles.append(.init(.{
-                                                .is_pattern = if (address.isPattern()) 1 else 0,
-                                                .value = old_value,
-                                                .pos = try address.getGlobalPoint(self.*),
-                                            }));
+                                try self.particles_cases.append(.initFloater(grabbing.case));
+                                // try addParticlesForCase(&self.particles, grabbing.case);
+                                self.focus = .{ .nothing = {} };
+                            }
+                        },
+                        .sexpr => |grabbing| {
+                            if (grabbing.address_if_released) |address| {
+                                if (address == .fnk_manager) {
+                                    return .{ .change_to = .{
+                                        .fnk_name = try grabbing.sexpr.changeAllVariablesToNil(self.mem),
+                                        .ui_point = self.fnk_manager.sexpr_point,
+                                    } };
+                                } else if (DESIGN.no_current_data and address == .main_input) {
+                                    self.focus = .nothing;
+                                    return .{ .launch_execution = .{ .value = try grabbing.sexpr.changeAllVariablesToNil(self.mem), .pos = grabbing.point, .is_pattern = grabbing.is_pattern } };
+                                } else {
+                                    // particle stuff
+                                    {
+                                        if (try address.getSexpr(self.*)) |old_value| {
+                                            if (!try address.isAnInvisibleIdentity(self.*)) {
+                                                try self.particles.append(.init(.{
+                                                    .is_pattern = if (address.isPattern()) 1 else 0,
+                                                    .value = old_value,
+                                                    .pos = try address.getGlobalPoint(self.*),
+                                                }));
+                                            }
                                         }
                                     }
-                                }
 
-                                try address.setSexpr(self, grabbing.sexpr);
-                                try self.onChangedSomething();
-                                if (DESIGN.autograb_wildcard_template_after_pattern and grabbing.limitation == .pattern) {
-                                    self.focus = .{ .grabbing_sexpr = .{
-                                        .sexpr = grabbing.sexpr,
-                                        .address_if_released = null,
-                                        .limitation = .template,
-                                        .is_pattern = 1,
-                                        .point = grabbing.point,
-                                    } };
-                                } else {
-                                    self.focus = .{ .hovering_sexpr = .{
-                                        .address = address,
-                                        .global_point = grabbing.point,
-                                    } };
-                                }
-                            }
-                        } else {
-                            try self.particles.append(.initFloater(.{
-                                .is_pattern = grabbing.is_pattern,
-                                .value = grabbing.sexpr,
-                                .pos = grabbing.point,
-                            }));
-                            self.focus = .{ .nothing = {} };
-                        }
-                    },
-                    .hovering_case => |hovering| if (self.tutorial_state.allowGrabbingCases()) {
-                        switch (hovering.address) {
-                            .main_fnk => |unfolded| {
-                                const global_point = try self.cases.getPatternGlobalPoint(.{}, unfolded.existing);
-                                var asdf = try self.cases.removeAt(unfolded.existing);
-                                try self.onChangedSomething();
-                                const old_point = asdf.pattern_point_relative_to_parent;
-                                asdf.pattern_point_relative_to_parent = global_point;
-                                self.focus = .{ .grabbing_case = .{
-                                    .case = asdf,
-                                    .address_if_released = .{ .main_fnk = .{ .ghost = .{
-                                        .address = unfolded.existing,
-                                        .pattern_point_relative_to_parent = old_point,
-                                    } } },
-                                } };
-                            },
-                            .meta_converter => {
-                                if (meta_converter.case) |case| {
-                                    self.focus = .{
-                                        .grabbing_case = .{
-                                            .case = try makeCasePhysical(self.mem.gpa, case, meta_converter.case_point),
-                                            .address_if_released = hovering.address,
-                                        },
-                                    };
-                                }
-                            },
-                            .toolbar_special_case => {
-                                self.focus = .{ .grabbing_case = .{
-                                    .case = toolbar.special_case_state.value(self.camera),
-                                    .address_if_released = null,
-                                } };
-                                try toolbar.special_case_state.next(self.mem, self.cases);
-                            },
-                        }
-                    },
-                    .hovering_sexpr => |hovering| {
-                        if (try hovering.address.getSexpr(self.*)) |v| {
-                            self.focus = .{
-                                .grabbing_sexpr = .{
-                                    .address_if_released = if (hovering.address.acceptsDrop()) hovering.address else null,
-                                    .is_pattern = if (hovering.address.isPattern()) 1 else 0,
-                                    .point = hovering.global_point,
-                                    .sexpr = v,
-                                    .limitation = if (v.isFullyResolved())
-                                        .none
-                                    else if (hovering.address == .toolbar_special_var)
-                                        .pattern
-                                    else
-                                        .template,
-                                },
-                            };
-
-                            switch (hovering.address) {
-                                .full_address => |full| if (full.which == .fnk_name) {
-                                    (try self.cases.caseRefAt(hovering.address.full_address.case_address)).fnk_name = Sexpr.builtin.identity;
+                                    try address.setSexpr(self, grabbing.sexpr);
                                     try self.onChangedSomething();
-                                },
-                                .toolbar_special_var => try toolbar.special_var_state.next(self.mem, self.cases),
-                                .list_viewer => |list| switch (list.which) {
-                                    else => {},
-                                    .main => if (list.local.len == 0) {
-                                        self.list_viewer.value = null;
-                                    },
-                                    .element => |k| try self.list_viewer.removeElement(k, self.mem),
-                                },
-                                else => {},
+                                    if (DESIGN.autograb_wildcard_template_after_pattern and grabbing.limitation == .pattern) {
+                                        self.focus = .{ .grabbing = .{ .sexpr = .{
+                                            .sexpr = grabbing.sexpr,
+                                            .address_if_released = null,
+                                            .limitation = .template,
+                                            .is_pattern = 1,
+                                            .point = grabbing.point,
+                                        } } };
+                                    } else {
+                                        self.focus = .{ .hovering = .{ .sexpr = .{
+                                            .address = address,
+                                            .global_point = grabbing.point,
+                                        } } };
+                                    }
+                                }
+                            } else {
+                                try self.particles.append(.initFloater(.{
+                                    .is_pattern = grabbing.is_pattern,
+                                    .value = grabbing.sexpr,
+                                    .pos = grabbing.point,
+                                }));
+                                self.focus = .{ .nothing = {} };
                             }
-                        }
+                        },
+                        .list_viewer_handle, .fnk_manager_handle => unreachable,
                     },
-                    .hovering_list_viewer_handle => {
-                        self.focus = .grabbing_list_viewer_handle;
+                    .hovering => |*x| switch (x.*) {
+                        .case => |hovering| if (self.tutorial_state.allowGrabbingCases()) {
+                            switch (hovering.address) {
+                                .main_fnk => |unfolded| {
+                                    const global_point = try self.cases.getPatternGlobalPoint(.{}, unfolded.existing);
+                                    var asdf = try self.cases.removeAt(unfolded.existing);
+                                    try self.onChangedSomething();
+                                    const old_point = asdf.pattern_point_relative_to_parent;
+                                    asdf.pattern_point_relative_to_parent = global_point;
+                                    self.focus = .{ .grabbing = .{ .case = .{
+                                        .case = asdf,
+                                        .address_if_released = .{ .main_fnk = .{ .ghost = .{
+                                            .address = unfolded.existing,
+                                            .pattern_point_relative_to_parent = old_point,
+                                        } } },
+                                    } } };
+                                },
+                                .meta_converter => {
+                                    if (meta_converter.case) |case| {
+                                        self.focus = .{ .grabbing = .{
+                                            .case = .{
+                                                .case = try makeCasePhysical(self.mem.gpa, case, meta_converter.case_point),
+                                                .address_if_released = hovering.address,
+                                            },
+                                        } };
+                                    }
+                                },
+                                .toolbar_special_case => {
+                                    self.focus = .{ .grabbing = .{ .case = .{
+                                        .case = toolbar.special_case_state.value(self.camera),
+                                        .address_if_released = null,
+                                    } } };
+                                    try toolbar.special_case_state.next(self.mem, self.cases);
+                                },
+                            }
+                        },
+                        .sexpr => |hovering| {
+                            if (try hovering.address.getSexpr(self.*)) |v| {
+                                self.focus = .{ .grabbing = .{
+                                    .sexpr = .{
+                                        .address_if_released = if (hovering.address.acceptsDrop()) hovering.address else null,
+                                        .is_pattern = if (hovering.address.isPattern()) 1 else 0,
+                                        .point = hovering.global_point,
+                                        .sexpr = v,
+                                        .limitation = if (v.isFullyResolved())
+                                            .none
+                                        else if (hovering.address == .toolbar_special_var)
+                                            .pattern
+                                        else
+                                            .template,
+                                    },
+                                } };
+
+                                switch (hovering.address) {
+                                    .full_address => |full| if (full.which == .fnk_name) {
+                                        (try self.cases.caseRefAt(hovering.address.full_address.case_address)).fnk_name = Sexpr.builtin.identity;
+                                        try self.onChangedSomething();
+                                    },
+                                    .toolbar_special_var => try toolbar.special_var_state.next(self.mem, self.cases),
+                                    .list_viewer => |list| switch (list.which) {
+                                        else => {},
+                                        .main => if (list.local.len == 0) {
+                                            self.list_viewer.value = null;
+                                        },
+                                        .element => |k| try self.list_viewer.removeElement(k, self.mem),
+                                    },
+                                    else => {},
+                                }
+                            }
+                        },
+                        .list_viewer_handle => {
+                            self.focus = .{ .grabbing = .list_viewer_handle };
+                        },
+                        .fnk_manager_handle => {
+                            self.focus = .{ .grabbing = .fnk_manager_handle };
+                        },
                     },
-                    .grabbing_list_viewer_handle => unreachable,
-                    .hovering_fnk_manager_handle => {
-                        self.focus = .grabbing_fnk_manager_handle;
-                    },
-                    .grabbing_fnk_manager_handle => unreachable,
                 }
             } else if (platform.getMouse().wasReleased(.left)) {
                 switch (self.focus) {
-                    .grabbing_list_viewer_handle => {
-                        self.focus = .hovering_list_viewer_handle;
-                    },
-                    .grabbing_fnk_manager_handle => {
-                        self.focus = .hovering_fnk_manager_handle;
+                    .grabbing => |x| switch (x) {
+                        else => {},
+                        .list_viewer_handle => {
+                            self.focus = .{ .hovering = .list_viewer_handle };
+                        },
+                        .fnk_manager_handle => {
+                            self.focus = .{ .hovering = .fnk_manager_handle };
+                        },
                     },
                     else => {},
                 }
@@ -3912,16 +3922,19 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             if (platform.getMouse().wasPressed(.right)) {
                 switch (self.focus) {
-                    .hovering_sexpr => |hovering| {
-                        if (hovering.address.acceptsDrop()) {
-                            if (try hovering.address.getSexpr(self.*)) |old_value| {
-                                const new_value = try self.mem.storeSexpr(Sexpr.doPair(old_value, Sexpr.builtin.nil));
-                                try hovering.address.setSexpr(self, new_value);
-                                try self.onChangedSomething();
-                            }
-                        }
-                    },
                     else => {},
+                    .hovering => |x| switch (x) {
+                        else => {},
+                        .sexpr => |hovering| {
+                            if (hovering.address.acceptsDrop()) {
+                                if (try hovering.address.getSexpr(self.*)) |old_value| {
+                                    const new_value = try self.mem.storeSexpr(Sexpr.doPair(old_value, Sexpr.builtin.nil));
+                                    try hovering.address.setSexpr(self, new_value);
+                                    try self.onChangedSomething();
+                                }
+                            }
+                        },
+                    },
                 }
             }
 
@@ -3953,11 +3966,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             const wildcard_names_in_grabbing_sexpr: ?std.ArrayList([]const u8) = blk: {
                 switch (self.focus) {
                     else => break :blk null,
-                    .grabbing_sexpr => |grabbing| if (grabbing.limitation == .template) {
-                        var r: std.ArrayList([]const u8) = .init(platform.gpa);
-                        try grabbing.sexpr.getAllVarNames(&r);
-                        break :blk r;
-                    } else break :blk null,
+                    .grabbing => |x| switch (x) {
+                        else => break :blk null,
+                        .sexpr => |grabbing| if (grabbing.limitation == .template) {
+                            var r: std.ArrayList([]const u8) = .init(platform.gpa);
+                            try grabbing.sexpr.getAllVarNames(&r);
+                            break :blk r;
+                        } else break :blk null,
+                    },
                 }
             };
             defer if (wildcard_names_in_grabbing_sexpr) |x| x.deinit();
@@ -3992,104 +4008,100 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             switch (self.focus) {
                 .nothing => {},
-                .hovering_list_viewer_handle => {
-                    drawer.drawCircle(UI.cam, self.list_viewer.handlePoint(), .black, .gray(160));
-                },
-                .grabbing_list_viewer_handle => {
-                    drawer.drawCircle(UI.cam, self.list_viewer.handlePoint(), .black, .gray(192));
-                },
-                .hovering_fnk_manager_handle => {
-                    drawer.drawCircle(UI.cam, self.fnk_manager.handlePoint(), .black, .gray(160));
-                },
-                .grabbing_fnk_manager_handle => {
-                    drawer.drawCircle(UI.cam, self.fnk_manager.handlePoint(), .black, .gray(192));
-                },
-                .hovering_case => |hovering| switch (hovering.address) {
-                    .main_fnk => |unfolded| {
-                        const pattern_point = try self.cases.getPatternGlobalPoint(.{}, unfolded.existing);
-                        drawer.drawCaseHolderExtended(camera, .{
-                            .pos = pattern_point.pos.sub(.new(3, 0)),
-                            .scale = hovering.hot,
-                        }, self.tutorial_state != .first_level);
-                    },
-                    .meta_converter => if (meta_converter.case != null) {
-                        drawTinyCaseHolder(meta_converter.case_point, hovering.hot);
-                    },
-                    .toolbar_special_case => {
-                        drawTinyCaseHolder(toolbar.special_case_point, hovering.hot);
-                    },
-                },
-                .grabbing_sexpr => |grabbing| {
-                    try artist.drawBothSexpr(
-                        camera,
-                        grabbing.point,
-                        grabbing.is_pattern,
-                        grabbing.sexpr,
-                    );
-                    if (grabbing.limitation == .template) {
-                        try artist.drawWildcardLinesToFloating(camera, .{}, self.cases, grabbing.point, wildcard_names_in_grabbing_sexpr.?.items);
-                    }
-                },
-                .grabbing_case => |grabbing| {
-                    if (grabbing.address_if_released) |place| {
-                        switch (place) {
-                            .main_fnk => |address| {
-                                drawer.setTransparency(0.5);
-                                const parent_pattern_point = (try self.cases
-                                    .getPatternGlobalPoint(.{}, address.ghost.address[0 .. address.ghost.address.len - 1]));
-                                const pattern_point = parent_pattern_point
-                                    .applyToLocalPoint(address.ghost.pattern_point_relative_to_parent);
-                                try artist.drawPatternSexpr(
-                                    camera,
-                                    pattern_point,
-                                    grabbing.case.pattern,
-                                );
-                                try drawCaseExtra(camera, pattern_point, grabbing.case, null);
-                                drawer.drawCaseHolderFromPatternPoint(camera, pattern_point);
-                                const pos = pattern_point.applyToLocalPosition(.new(0, 1));
-                                const esquina = pos.sub(.new(if (address.ghost.address.len == 1) 5 else 3, 0));
-                                drawer.drawCable(camera, esquina, pos, 1, 0);
-                                drawer.drawLine(camera, &.{ esquina, parent_pattern_point.applyToLocalPosition(.new(if (address.ghost.address.len == 1) 0 else 1, 0)) }, .black);
-                                drawer.setTransparency(1);
-                            },
-                            else => {}, // TODO
+                .hovering => |x| switch (x) {
+                    .list_viewer_handle => drawer.drawCircle(UI.cam, self.list_viewer.handlePoint(), .black, .gray(160)),
+                    .fnk_manager_handle => drawer.drawCircle(UI.cam, self.fnk_manager.handlePoint(), .black, .gray(160)),
+                    .sexpr => |hovering| {
+                        if (try hovering.address.getSexpr(self)) |value| {
+                            try artist.drawBothSexpr(
+                                camera,
+                                hovering.global_point,
+                                if (hovering.address.isPattern()) 1 else 0,
+                                value,
+                            );
+                            // try artist.drawPatternOutline(camera, artist.sexprPatternChildView(
+                            //     case.pattern_point,
+                            //     full_address.sexpr_address,
+                            // ));
+                            switch (hovering.address) {
+                                else => {},
+                                .external_fnk => |address| if (address.local.len == 0) {
+                                    if (findBuiltinLevel(value)) |level| {
+                                        const asdf: SamplesReel = .init();
+                                        const foo: []bool = try platform.gpa.alloc(bool, level.manual_samples.len);
+                                        defer platform.gpa.free(foo);
+                                        drawer.setTransparency(0.5);
+                                        defer drawer.setTransparency(1);
+                                        try asdf.draw(level.manual_samples, foo, 0);
+                                    }
+                                },
+                            }
                         }
-                    }
-                    // grabbing case parent is the nothing!
-                    const pattern_point = grabbing.case.pattern_point_relative_to_parent;
-                    try artist.drawPatternSexpr(
-                        camera,
-                        pattern_point,
-                        grabbing.case.pattern,
-                    );
-                    try drawCaseExtra(camera, pattern_point, grabbing.case, null);
+                    },
+                    .case => |hovering| switch (hovering.address) {
+                        .main_fnk => |unfolded| {
+                            const pattern_point = try self.cases.getPatternGlobalPoint(.{}, unfolded.existing);
+                            drawer.drawCaseHolderExtended(camera, .{
+                                .pos = pattern_point.pos.sub(.new(3, 0)),
+                                .scale = hovering.hot,
+                            }, self.tutorial_state != .first_level);
+                        },
+                        .meta_converter => if (meta_converter.case != null) {
+                            drawTinyCaseHolder(meta_converter.case_point, hovering.hot);
+                        },
+                        .toolbar_special_case => {
+                            drawTinyCaseHolder(toolbar.special_case_point, hovering.hot);
+                        },
+                    },
                 },
-                .hovering_sexpr => |hovering| {
-                    if (try hovering.address.getSexpr(self)) |value| {
+                .grabbing => |x| switch (x) {
+                    .list_viewer_handle => drawer.drawCircle(UI.cam, self.list_viewer.handlePoint(), .black, .gray(192)),
+                    .fnk_manager_handle => drawer.drawCircle(UI.cam, self.fnk_manager.handlePoint(), .black, .gray(192)),
+                    .sexpr => |grabbing| {
                         try artist.drawBothSexpr(
                             camera,
-                            hovering.global_point,
-                            if (hovering.address.isPattern()) 1 else 0,
-                            value,
+                            grabbing.point,
+                            grabbing.is_pattern,
+                            grabbing.sexpr,
                         );
-                        // try artist.drawPatternOutline(camera, artist.sexprPatternChildView(
-                        //     case.pattern_point,
-                        //     full_address.sexpr_address,
-                        // ));
-                        switch (hovering.address) {
-                            else => {},
-                            .external_fnk => |address| if (address.local.len == 0) {
-                                if (findBuiltinLevel(value)) |level| {
-                                    const asdf: SamplesReel = .init();
-                                    const foo: []bool = try platform.gpa.alloc(bool, level.manual_samples.len);
-                                    defer platform.gpa.free(foo);
-                                    drawer.setTransparency(0.5);
-                                    defer drawer.setTransparency(1);
-                                    try asdf.draw(level.manual_samples, foo, 0);
-                                }
-                            },
+                        if (grabbing.limitation == .template) {
+                            try artist.drawWildcardLinesToFloating(camera, .{}, self.cases, grabbing.point, wildcard_names_in_grabbing_sexpr.?.items);
                         }
-                    }
+                    },
+                    .case => |grabbing| {
+                        if (grabbing.address_if_released) |place| {
+                            switch (place) {
+                                .main_fnk => |address| {
+                                    drawer.setTransparency(0.5);
+                                    const parent_pattern_point = (try self.cases
+                                        .getPatternGlobalPoint(.{}, address.ghost.address[0 .. address.ghost.address.len - 1]));
+                                    const pattern_point = parent_pattern_point
+                                        .applyToLocalPoint(address.ghost.pattern_point_relative_to_parent);
+                                    try artist.drawPatternSexpr(
+                                        camera,
+                                        pattern_point,
+                                        grabbing.case.pattern,
+                                    );
+                                    try drawCaseExtra(camera, pattern_point, grabbing.case, null);
+                                    drawer.drawCaseHolderFromPatternPoint(camera, pattern_point);
+                                    const pos = pattern_point.applyToLocalPosition(.new(0, 1));
+                                    const esquina = pos.sub(.new(if (address.ghost.address.len == 1) 5 else 3, 0));
+                                    drawer.drawCable(camera, esquina, pos, 1, 0);
+                                    drawer.drawLine(camera, &.{ esquina, parent_pattern_point.applyToLocalPosition(.new(if (address.ghost.address.len == 1) 0 else 1, 0)) }, .black);
+                                    drawer.setTransparency(1);
+                                },
+                                else => {}, // TODO
+                            }
+                        }
+                        // grabbing case parent is the nothing!
+                        const pattern_point = grabbing.case.pattern_point_relative_to_parent;
+                        try artist.drawPatternSexpr(
+                            camera,
+                            pattern_point,
+                            grabbing.case.pattern,
+                        );
+                        try drawCaseExtra(camera, pattern_point, grabbing.case, null);
+                    },
                 },
             }
 
@@ -4224,8 +4236,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         fn asdfUpdateAndReturnOverlap(self: *Self, mouse_pos: Vec2, delta_seconds: f32) !?OverlapResult {
-            if (std.meta.activeTag(self.focus) == .grabbing_case) {
-                const main_fnk_address_if_released = if (self.focus.grabbing_case.address_if_released) |address_if_released|
+            if (std.meta.activeTag(self.focus) == .grabbing and std.meta.activeTag(self.focus.grabbing) == .case) {
+                const main_fnk_address_if_released = if (self.focus.grabbing.case.address_if_released) |address_if_released|
                     switch (address_if_released) {
                         .main_fnk => |x| x.ghost.address,
                         else => null,
