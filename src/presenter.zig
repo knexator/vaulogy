@@ -2254,7 +2254,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         };
 
-        const UI_State_V2 = struct {
+        const UI_State = struct {
             comptime {
                 std.debug.assert(DESIGN.no_current_data);
             }
@@ -2262,9 +2262,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             const Label = enum {
                 back,
                 reset_view,
-                // TODO LATER
-                // check_all,
-                // back_to_menu,
+                check_all,
+                back_to_menu,
             };
             const ButtonState = struct {
                 pos: Rect,
@@ -2275,16 +2274,37 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 visible: bool = true,
             };
 
-            buttons: std.EnumArray(Label, ButtonState) = .init(.{
-                .back = .{
-                    .pos = .{ .top_left = .zero, .size = .one },
-                    .text = "Back",
-                },
-                .reset_view = .{
-                    .pos = .{ .top_left = .new(1, 0), .size = .one },
-                    .text = "Reset\nView",
-                },
-            }),
+            buttons: std.EnumArray(Label, ButtonState),
+
+            pub fn init(tests_reel_rect: Rect) @This() {
+                return .{
+                    .buttons = .init(.{
+                        .back = .{
+                            .pos = .{ .top_left = .zero, .size = .one },
+                            .text = "Back",
+                        },
+                        .reset_view = .{
+                            .pos = .{ .top_left = .new(1, 0), .size = .one },
+                            .text = "Reset\nView",
+                        },
+                        .check_all = .{
+                            .pos = .from(.{
+                                .{ .top_center = tests_reel_rect.get(.bottom_center) },
+                                .{ .size = .new(tests_reel_rect.size.x, 0.8) },
+                            }),
+                            .text = "Check all",
+                        },
+                        .back_to_menu = .{
+                            .pos = .from(.{
+                                .{ .top_center = tests_reel_rect.get(.bottom_center) },
+                                .{ .size = .new(tests_reel_rect.size.x, 0.8) },
+                            }),
+                            .text = "Back to menu",
+                            .visible = false,
+                        },
+                    }),
+                };
+            }
 
             pub fn draw(self: @This()) void {
                 for (self.buttons.values) |button| {
@@ -2311,7 +2331,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 while (it.next()) |entry| {
                     const button = entry.value;
                     const label = entry.key;
-                    if (button.enabled and button.pos.contains(mouse_ui_pos)) {
+                    if (button.enabled and button.visible and button.pos.contains(mouse_ui_pos)) {
                         result = label;
                     }
                     math.lerp_towards(
@@ -2344,9 +2364,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         tutorial_state: TutorialState,
 
-        ui_state_v2: UI_State_V2,
-        check_all_ui_state: UI.State,
-        result_ui_state: UI.State,
+        ui_state: UI_State,
 
         // TODO, maybe
         // focusV2: struct {
@@ -2368,7 +2386,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 list_viewer_handle,
                 // TODO: hotness
                 fnk_manager_handle,
-                ui: UI_State_V2.Label,
+                ui: UI_State.Label,
             },
             grabbing: union(enum) {
                 case: struct {
@@ -2384,7 +2402,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 list_viewer_handle,
                 fnk_manager_handle,
-                ui: UI_State_V2.Label,
+                ui: UI_State.Label,
             },
             // TODO: remove duplication
 
@@ -2402,7 +2420,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             // these two are a bit hacky
-            pub fn getActiveUiLabel(self: @This()) ?UI_State_V2.Label {
+            pub fn getActiveUiLabel(self: @This()) ?UI_State.Label {
                 return switch (self) {
                     .nothing, .hovering => null,
                     .grabbing => |x| switch (x) {
@@ -2411,7 +2429,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     },
                 };
             }
-            pub fn getHotUiLabel(self: @This()) ?UI_State_V2.Label {
+            pub fn getHotUiLabel(self: @This()) ?UI_State.Label {
                 return switch (self) {
                     .nothing, .grabbing => null,
                     .hovering => |x| switch (x) {
@@ -3438,31 +3456,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             const tests_reel: TestsReel = .init(.{ .pos = .new(19.5, 0.75), .scale = 0.75 });
 
-            const check_all_ui_state = UI.State{
-                .buttons = try UI.Button.rowWithExtra(platform.gpa, .zero, .one, &.{}, &[1]UI.Button{
-                    .{
-                        // .pos = .fromCenterAndSize(samples_reel.rect.top_left, .new(3, 1)),
-                        .pos = .from(.{
-                            .{ .top_center = tests_reel.reel.rect.get(.bottom_center) },
-                            .{ .size = .new(tests_reel.reel.rect.size.x, 0.8) },
-                        }),
-                        .text = "Check all",
-                    },
-                }),
-            };
-            const result_ui_state = UI.State{
-                .buttons = try UI.Button.rowWithExtra(platform.gpa, .zero, .one, &.{}, &[1]UI.Button{
-                    .{
-                        // .pos = .fromCenterAndSize(samples_reel.rect.top_left, .new(3, 1)),
-                        .pos = .from(.{
-                            .{ .top_center = tests_reel.reel.rect.get(.bottom_center) },
-                            .{ .size = .new(tests_reel.reel.rect.size.x, 0.8) },
-                        }),
-                        .text = "Back to menu",
-                    },
-                }),
-            };
-
             const tests: []TestCase = try mem.gpa.alloc(TestCase, builtin_samples.len);
             for (tests, builtin_samples) |*dst, src| {
                 dst.* = .{ .actual = .unknown, .input = src.input, .expected = src.output };
@@ -3483,10 +3476,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .persistence = persistence,
                 .cases = cases,
                 .main_input = if (DESIGN.no_current_data) .invalid_field else main_input,
-                .ui_state_v2 = .{},
-                // .ui_state = ui_state,
-                .check_all_ui_state = check_all_ui_state,
-                .result_ui_state = result_ui_state,
+                .ui_state = .init(tests_reel.reel.rect),
                 .available_fnks = available_fnks,
                 // TODO: figure out when to enable the meta features
                 .meta_enabled = false,
@@ -3598,21 +3588,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .nothing => .default,
             });
 
-            if (TestCase.allSolved(self.samples)) {
-                if (self.result_ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button| {
-                    switch (pressed_button) {
-                        0 => return .back_to_level_select,
-                        else => @panic("oops"),
-                    }
-                }
-            } else {
-                if (self.check_all_ui_state.update(platform.getMouse(), delta_seconds)) |pressed_button| {
-                    switch (pressed_button) {
-                        0 => return .launch_test,
-                        else => @panic("oops"),
-                    }
-                }
-            }
+            self.ui_state.buttons.getPtr(.back_to_menu).visible = TestCase.allSolved(self.samples);
+            self.ui_state.buttons.getPtr(.check_all).visible = !TestCase.allSolved(self.samples);
 
             inline for (.{&self.tests_reel}) |instance| {
                 instance.update(self.samples.len, &mouse, delta_seconds);
@@ -3698,7 +3675,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     sexpr: SexprPlace,
                     list_viewer_handle,
                     fnk_manager_handle,
-                    ui: UI_State_V2.Label,
+                    ui: UI_State.Label,
                 };
                 const maybe_overlapped: ?Overlapped = if (blk: {
                     if (try asdfUpdateAndReturnOverlap(
@@ -3748,7 +3725,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 else if (self.tutorial_state.hasListViewer() and self.list_viewer.handlePoint().inverseApplyGetLocalPosition(mouse_ui_pos).magSq() < 1)
                     .list_viewer_handle
                     // TODO: always call this
-                else if (self.ui_state_v2.updateAndGetOverlap(mouse_ui_pos, delta_seconds, self.focus.getActiveUiLabel(), self.focus.getHotUiLabel())) |label|
+                else if (self.ui_state.updateAndGetOverlap(mouse_ui_pos, delta_seconds, self.focus.getActiveUiLabel(), self.focus.getHotUiLabel())) |label|
                     .{ .ui = label }
                 else
                     null;
@@ -4013,12 +3990,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             self.focus = .{ .hovering = .fnk_manager_handle };
                         },
                         .ui => |button| {
+                            self.focus = .{ .hovering = .{ .ui = button } };
                             switch (button) {
                                 .back => return .back_to_level_select,
                                 .reset_view => self.camera = DEFAULT_CAM,
                                 // .play => if (DESIGN.no_current_data) unreachable else return .launch_execution,
+                                .check_all => return .launch_test,
+                                .back_to_menu => return .back_to_level_select,
                             }
-                            self.focus = .{ .hovering = .{ .ui = button } };
                         },
                     },
                     else => {},
@@ -4092,9 +4071,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             try self.tests_reel.draw(self.samples);
             if (TestCase.allSolved(self.samples)) {
                 drawer.drawDebugText(UI.cam, .{ .pos = self.tests_reel.reel.rect.get(.bottom_center).add(.new(0, 1.3)), .scale = 0.75 }, "All Tests passed!", .black);
-                self.result_ui_state.draw(drawer);
-            } else {
-                self.check_all_ui_state.draw(drawer);
             }
             if (self.tutorial_state.allowPickingVaus()) try fnks_reel.draw(self.available_fnks, .from(self.tutorial_state));
             if (self.tutorial_state.allowCreatingVaus()) try self.fnk_manager.draw();
@@ -4212,7 +4188,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 },
             }
 
-            self.ui_state_v2.draw();
+            self.ui_state.draw();
 
             switch (self.tutorial_state) {
                 // ↑←→
