@@ -3292,13 +3292,21 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         /// create/edit/delete fnks
         const FnkManager = struct {
             sexpr_point: Point = .{ .pos = .new(2, 3), .scale = 0.5, .turns = -0.25 },
+
             cur: ?*const Sexpr,
 
             pub fn getButtonRect(self: FnkManager, which: enum { load }) Rect {
                 std.debug.assert(which == .load);
                 return .{
-                    .top_left = self.sexpr_point.applyToLocalPosition(.new(2, 2)),
-                    .size = .one,
+                    .top_left = self.sexpr_point.applyToLocalPosition(.new(2, 1.5)),
+                    .size = .new(1.25, 0.75),
+                };
+            }
+
+            fn generalRect(self: FnkManager) Rect {
+                return .{
+                    .top_left = self.sexpr_point.applyToLocalPosition(.new(2.5, -2)),
+                    .size = .new(3.1, 2.2),
                 };
             }
 
@@ -3307,7 +3315,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             fn handlePoint(self: FnkManager) Point {
-                return self.sexpr_point.applyToLocalPoint(.{ .pos = .new(-1, -2), .scale = 0.5 });
+                return self.sexpr_point.applyToLocalPoint(.{ .pos = .new(2.1, -2), .scale = 0.5 });
             }
 
             pub fn move(self: *FnkManager, mouse: Mouse, ui: *UI_State) void {
@@ -3327,15 +3335,18 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             pub fn draw(self: FnkManager) !void {
                 const camera = UI.cam;
+                drawer.drawRect(camera, self.generalRect(), .black, null);
                 drawer.drawCircle(
                     camera,
                     self.handlePoint(),
                     .black,
-                    null,
+                    .gray(128),
                 );
                 artist.drawFnkHolderForFnkAt(camera, self.sexpr_point, 1);
                 if (self.cur) |v| {
                     try artist.drawSexpr(camera, self.sexpr_point, v);
+                } else {
+                    drawer.drawAtomHint(camera, self.sexpr_point);
                 }
                 // drawer.drawDebugText(camera, sexpr_point.applyToLocalPoint(.{ .pos = .new(-1, 0) }), "change vau", .black);
             }
