@@ -2193,7 +2193,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .toolbar_special_var => toolbar.special_var_state.next_value,
                     .sample => |sample| self.samples[sample.index].get(sample.which).?.getAt(sample.local).?,
                     .external_fnk => |fnk| self.available_fnks[fnk.index].getAt(fnk.local).?,
-                    .fnk_manager => null,
+                    .fnk_manager => return self.fnk_manager.cur,
                     .meta_converter => |local| if (meta_converter.sexpr) |v| v.getAt(local).? else null,
                     .list_viewer => |addr| if (self.list_viewer.getSexpr(addr.which)) |v| v.getAt(addr.local).? else null,
                     // examples_reel.getPoint(sample.index, sample.which), sample.local),
@@ -2209,7 +2209,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         const value_without_variables = try value.changeAllVariablesToNil(self.mem);
                         self.main_input = try self.main_input.setAt(self.mem, local_address, value_without_variables);
                     },
-                    .fnk_manager => unreachable,
+                    .fnk_manager => {
+                        self.fnk_manager.cur = try value.changeAllVariablesToNil(self.mem);
+                    },
                     .meta_converter => |local_address| {
                         try meta_converter.setSexpr(self.mem, value, local_address);
                     },
@@ -2264,6 +2266,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 reset_view,
                 check_all,
                 back_to_menu,
+
+                fnk_manager_load,
             };
             const ButtonState = struct {
                 pos: Rect,
@@ -2276,7 +2280,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             buttons: std.EnumArray(Label, ButtonState),
 
-            pub fn init(tests_reel_rect: Rect) @This() {
+            pub fn init(tests_reel_rect: Rect, fnk_manager_load: Rect) @This() {
                 return .{
                     .buttons = .init(.{
                         .back = .{
@@ -2300,6 +2304,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 .{ .size = .new(tests_reel_rect.size.x, 0.8) },
                             }),
                             .text = "Back to menu",
+                            .visible = false,
+                        },
+                        .fnk_manager_load = .{
+                            .pos = fnk_manager_load,
+                            .text = "Load",
                             .visible = false,
                         },
                     }),
@@ -3277,22 +3286,37 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         /// create/edit/delete fnks
         const FnkManager = struct {
             sexpr_point: Point = .{ .pos = .new(2, 3), .scale = 0.5, .turns = -0.25 },
+            cur: ?*const Sexpr,
+
+            pub fn getButtonRect(self: FnkManager, which: enum { load }) Rect {
+                std.debug.assert(which == .load);
+                return .{
+                    .top_left = self.sexpr_point.applyToLocalPosition(.new(2, 2)),
+                    .size = .one,
+                };
+            }
 
             pub fn init() FnkManager {
-                return .{};
+                return .{ .cur = null };
             }
 
             fn handlePoint(self: FnkManager) Point {
                 return self.sexpr_point.applyToLocalPoint(.{ .pos = .new(-1, -2), .scale = 0.5 });
             }
 
-            pub fn move(self: *FnkManager, mouse: Mouse) void {
+            pub fn move(self: *FnkManager, mouse: Mouse, ui: *UI_State) void {
                 self.sexpr_point.pos.addInPlace(mouse.cur.pos(UI.cam)
                     .sub(mouse.prev.pos(UI.cam)));
+                ui.buttons.getPtr(.fnk_manager_load).pos = self.getButtonRect(.load);
             }
 
             pub fn findOverlap(self: FnkManager, mouse_ui_pos: Vec2) bool {
                 return SexprView.overlapsAtom(self.sexpr_point, mouse_ui_pos, .atom);
+            }
+
+            pub fn update(self: FnkManager, ui: *UI_State, enabled: bool) void {
+                ui.buttons.getPtr(.fnk_manager_load).enabled = self.cur != null;
+                ui.buttons.getPtr(.fnk_manager_load).visible = enabled;
             }
 
             pub fn draw(self: FnkManager) !void {
@@ -3304,6 +3328,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     null,
                 );
                 artist.drawFnkHolderForFnkAt(camera, self.sexpr_point, 1);
+                if (self.cur) |v| {
+                    try artist.drawSexpr(camera, self.sexpr_point, v);
+                }
                 // drawer.drawDebugText(camera, sexpr_point.applyToLocalPoint(.{ .pos = .new(-1, 0) }), "change vau", .black);
             }
         };
@@ -3468,6 +3495,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 try updateSolvedSamples(.{ .name = fnk_name, .body = fnk_body }, tests, persistence, mem);
             }
 
+            const fnk_manager: FnkManager = .init();
             return .{
                 .tests_reel = tests_reel,
                 .fnk_name = fnk_name,
@@ -3476,7 +3504,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .persistence = persistence,
                 .cases = cases,
                 .main_input = if (DESIGN.no_current_data) .invalid_field else main_input,
-                .ui_state = .init(tests_reel.reel.rect),
+                .ui_state = .init(tests_reel.reel.rect, fnk_manager.getButtonRect(.load)),
                 .available_fnks = available_fnks,
                 // TODO: figure out when to enable the meta features
                 .meta_enabled = false,
@@ -3498,7 +3526,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .particles = .init(platform.gpa),
                 .particles_cases = .init(platform.gpa),
                 .list_viewer = .init(tutorial_state == .intro_to_list_viewer),
-                .fnk_manager = .init(),
+                .fnk_manager = fnk_manager,
             };
         }
 
@@ -3597,6 +3625,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             try self.list_viewer.update(&mouse, delta_seconds);
             fnks_reel.reel.update(fnks_reel.nRows(self.available_fnks.len), &mouse, delta_seconds);
             moveCamera(&self.camera, delta_seconds, platform.getKeyboard(), mouse);
+            self.fnk_manager.update(&self.ui_state, self.tutorial_state.allowCreatingVaus());
 
             const camera = self.camera;
 
@@ -3605,7 +3634,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .grabbing => |*x| switch (x.*) {
                     .ui => {},
                     .list_viewer_handle => self.list_viewer.move(platform.getMouse()),
-                    .fnk_manager_handle => self.fnk_manager.move(platform.getMouse()),
+                    .fnk_manager_handle => self.fnk_manager.move(platform.getMouse(), &self.ui_state),
                     .case => |*grabbing| {
                         // grabbing case parent is the nothing!
                         grabbing.case.pattern_point_relative_to_parent.lerp_towards((Point{
@@ -3848,12 +3877,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         },
                         .sexpr => |grabbing| {
                             if (grabbing.address_if_released) |address| {
-                                if (address == .fnk_manager) {
-                                    return .{ .change_to = .{
-                                        .fnk_name = try grabbing.sexpr.changeAllVariablesToNil(self.mem),
-                                        .ui_point = self.fnk_manager.sexpr_point,
-                                    } };
-                                } else if (DESIGN.no_current_data and address == .main_input) {
+                                if (DESIGN.no_current_data and address == .main_input) {
                                     self.focus = .nothing;
                                     return .{ .launch_execution = .{ .value = try grabbing.sexpr.changeAllVariablesToNil(self.mem), .pos = grabbing.point, .is_pattern = grabbing.is_pattern } };
                                 } else {
@@ -3997,6 +4021,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 // .play => if (DESIGN.no_current_data) unreachable else return .launch_execution,
                                 .check_all => return .launch_test,
                                 .back_to_menu => return .back_to_level_select,
+                                .fnk_manager_load => return .{ .change_to = .{ .fnk_name = self.fnk_manager.cur.?, .ui_point = self.fnk_manager.sexpr_point } },
                             }
                         },
                     },
