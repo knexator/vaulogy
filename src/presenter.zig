@@ -2502,7 +2502,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 return .{
                     .main = v,
                     .remaining_lifetime = 1,
-                    .velocity = .{ .turns = 0.2, .pos = .new(math.maybeMirror(5, v.is_pattern > 0.5), 5), .scale = 0.8 },
+                    .velocity = .{ .turns = 0.2, .pos = .new(math.maybeMirror(5.0, v.is_pattern > 0.5), 5), .scale = 0.8 },
                 };
             }
 
@@ -2510,7 +2510,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 return .{
                     .main = v,
                     .remaining_lifetime = 0.5,
-                    .velocity = .{ .turns = -0.1, .pos = .new(math.maybeMirror(3, v.is_pattern > 0.5), -2), .scale = 0.5 },
+                    .velocity = .{ .turns = -0.1, .pos = .new(math.maybeMirror(3.0, v.is_pattern > 0.5), -2), .scale = 0.5 },
                 };
             }
 

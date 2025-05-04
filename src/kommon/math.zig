@@ -43,7 +43,11 @@ pub fn lerp_towards_range(v: *f32, min: f32, max: f32, ratio: f32, delta_seconds
     }
 }
 
-pub fn maybeMirror(v: f32, mirror: bool) f32 {
+pub fn maybeMirror(v: anytype, mirror: bool) switch (@TypeOf(v)) {
+    comptime_float => f32,
+    comptime_int => i32,
+    else => |x| x,
+} {
     return if (mirror) -v else v;
 }
 
@@ -140,8 +144,19 @@ pub fn ZVec2(T: type) type {
             return dot(v, v);
         }
 
+        pub fn neg(v: Self) Self {
+            return new(-v.x, -v.y);
+        }
+
         pub fn dot(a: Self, b: Self) Scalar {
             return a.x * b.x + a.y * b.y;
+        }
+
+        pub fn mod(a: Self, m: UVec2) Self {
+            return new(
+                @mod(a.x, m.cast(Scalar).x),
+                @mod(a.y, m.cast(Scalar).y),
+            );
         }
 
         pub fn aspectRatio(v: Self) f32 {
@@ -192,6 +207,10 @@ pub const Vec2 = extern struct {
 
     pub fn scale(v: Self, s: Scalar) Self {
         return new(v.x * s, v.y * s);
+    }
+
+    pub fn neg(v: Self) Scalar {
+        return new(-v.x, -v.y);
     }
 
     pub fn mul(a: Self, b: Self) Self {
@@ -372,6 +391,19 @@ pub const FColor = extern struct {
     pub fn toArray(c: FColor) [4]f32 {
         return .{ c.r, c.g, c.b, c.a };
     }
+
+    pub fn fromArray(arr: [4]f32) FColor {
+        return .{ .r = arr[0], .g = arr[1], .b = arr[2], .a = arr[3] };
+    }
+
+    pub fn lerp(a: FColor, b: FColor, t: f32) FColor {
+        return fromArray(.{
+            std.math.lerp(a.r, b.r, t),
+            std.math.lerp(a.g, b.g, t),
+            std.math.lerp(a.b, b.b, t),
+            std.math.lerp(a.a, b.a, t),
+        });
+    }
 };
 
 pub const Color = extern struct {
@@ -438,6 +470,28 @@ pub const Color = extern struct {
             .b = tof32(c.b) / 255,
             .a = tof32(c.a) / 255,
         };
+    }
+
+    pub fn fromFColor(c: FColor) Color {
+        return .{
+            .r = @intFromFloat(c.r * 255),
+            .g = @intFromFloat(c.g * 255),
+            .b = @intFromFloat(c.b * 255),
+            .a = @intFromFloat(c.a * 255),
+        };
+    }
+
+    pub fn gradient(comptime steps: usize, comptime start: Color, comptime end: Color) [steps]Color {
+        const funk = @import("funktional.zig");
+        return funk.map(struct {
+            pub fn anon(t: f32) Color {
+                return .fromFColor(.lerp(
+                    start.toFColor(),
+                    end.toFColor(),
+                    t,
+                ));
+            }
+        }.anon, &funk.linspace01(steps, true));
     }
 };
 
@@ -710,9 +764,16 @@ pub const Random = struct {
     }
 
     pub fn inRect(this: Random, rect: Rect) Vec2 {
-        return Vec2.new(
+        return .new(
             this.between(rect.top_left.x, rect.top_left.x + rect.size.x),
             this.between(rect.top_left.y, rect.top_left.y + rect.size.y),
+        );
+    }
+
+    pub fn inURect(this: Random, rect: URect) UVec2 {
+        return .new(
+            rect.top_left.x + this.rnd.intRangeLessThan(usize, 0, rect.inner_size.x),
+            rect.top_left.y + this.rnd.intRangeLessThan(usize, 0, rect.inner_size.y),
         );
     }
 

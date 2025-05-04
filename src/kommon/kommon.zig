@@ -8,6 +8,7 @@ pub const itertools = @import("itertools.zig");
 pub const input = @import("input.zig");
 pub const BFS = @import("bfs.zig").BFS;
 pub const meta = @import("meta.zig");
+pub const CircularBuffer = @import("circular_buffer.zig").CircularBuffer;
 
 comptime {
     std.testing.refAllDeclsRecursive(@This());

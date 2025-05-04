@@ -115,6 +115,15 @@ pub fn mapOOP(
     return result;
 }
 
+pub fn linspace01(n_steps: usize, include_endpoint: bool) [n_steps]f32 {
+    const denominator: f32 = @floatFromInt(if (include_endpoint) (n_steps - 1) else n_steps);
+    return fromCount(n_steps, struct {
+        pub fn anon(n: usize) f32 {
+            return n / denominator;
+        }
+    }.anon);
+}
+
 pub fn sum(comptime T: type, values: []const T) T {
     var result: T = 0;
     for (values) |v| {
@@ -123,13 +132,6 @@ pub fn sum(comptime T: type, values: []const T) T {
     return result;
 }
 
-// pub fn concatComptime(comptime strs: []const []const u8) [
-//     sum(usize, &map(struct {
-//         pub fn anon(v: []const u8) usize {
-//             return v.len;
-//         }
-//     }.anon, strs))
-// ]u8 {
 pub fn concatComptime(comptime strs: []const []const u8) []const u8 {
     var result: []const u8 = "";
     for (strs) |s| {
