@@ -32,6 +32,8 @@ pub fn CircularBuffer(comptime T: type, comptime buffer_size: usize) type {
         pub fn clear(self: *Self) void {
             self.primer_hueco = self.primer_elemento;
         }
+
+        // TODO: count()
     };
 }
 

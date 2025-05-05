@@ -145,6 +145,7 @@ pub fn ZVec2(T: type) type {
         }
 
         pub fn neg(v: Self) Self {
+            if (!(@typeInfo(T).int.signedness == .signed)) @panic("operation not supported on this type");
             return new(-v.x, -v.y);
         }
 
@@ -167,6 +168,7 @@ pub fn ZVec2(T: type) type {
     };
 }
 
+const GrowOrShrink = enum { grow, shrink };
 pub const Vec2 = extern struct {
     pub const Scalar = f32;
 
@@ -209,7 +211,7 @@ pub const Vec2 = extern struct {
         return new(v.x * s, v.y * s);
     }
 
-    pub fn neg(v: Self) Scalar {
+    pub fn neg(v: Self) Self {
         return new(-v.x, -v.y);
     }
 
@@ -250,6 +252,10 @@ pub const Vec2 = extern struct {
         return e1.rotate(turns);
     }
 
+    pub fn fromPolar(length: f32, turns: f32) Self {
+        return fromTurns(turns).scale(length);
+    }
+
     pub fn normalized(v: Self) Self {
         return v.scale(1 / v.mag());
     }
@@ -266,11 +272,50 @@ pub const Vec2 = extern struct {
         return a.x * b.x + a.y * b.y;
     }
 
+    /// The area of the paralelogram with a,b as sides
+    pub fn cross(a: Self, b: Self) Scalar {
+        return a.x * b.y - a.y * b.x;
+    }
+
+    test "cross" {
+        try std.testing.expectEqual(1, cross(.e1, .e2));
+        try std.testing.expectEqual(-1, cross(.e2, .e1));
+        try std.testing.expectEqual(3, cross(Vec2.e1.scale(3), .e2));
+        try std.testing.expectEqual(0, cross(.e1, .e1));
+        try std.testing.expectEqual(0, cross(.e2, .e2));
+    }
+
     pub fn lerp(a: Self, b: Self, t: f32) Self {
         return new(
             std.math.lerp(a.x, b.x, t),
             std.math.lerp(a.y, b.y, t),
         );
+    }
+
+    pub fn withAspectRatio(original: Vec2, target_ratio: f32, mode: GrowOrShrink) Vec2 {
+        const actual_ratio = original.x / original.y;
+        if (actual_ratio < target_ratio) {
+            return switch (mode) {
+                .grow => original.mul(.new(target_ratio / actual_ratio, 1)),
+                .shrink => original.mul(.new(1, actual_ratio / target_ratio)),
+            };
+        } else if (actual_ratio > target_ratio) {
+            return switch (mode) {
+                .grow => original.mul(.new(1, actual_ratio / target_ratio)),
+                .shrink => original.mul(.new(target_ratio / actual_ratio, 1)),
+            };
+        } else return original;
+        return .zero;
+    }
+
+    test "withAspectRatio" {
+        try expectApproxEqAbs(.new(2, 1), Vec2.one.withAspectRatio(2, .grow), 0.0001);
+        try expectApproxEqAbs(.new(1, 0.5), Vec2.one.withAspectRatio(2, .shrink), 0.0001);
+        try expectApproxEqAbs(.new(1, 2), Vec2.one.withAspectRatio(0.5, .grow), 0.0001);
+        try expectApproxEqAbs(.new(0.5, 1), Vec2.one.withAspectRatio(0.5, .shrink), 0.0001);
+
+        try expectApproxEqAbs(.new(6, 3), Vec2.new(4, 3).withAspectRatio(2, .grow), 0.0001);
+        try expectApproxEqAbs(.new(4, 2), Vec2.new(4, 3).withAspectRatio(2, .shrink), 0.0001);
     }
 
     pub fn expectApproxEqRel(expected: Vec2, actual: Vec2, tolerance: anytype) !void {
@@ -309,6 +354,8 @@ pub const Rect = struct {
     top_left: Vec2,
     size: Vec2,
 
+    pub const unit: Rect = .{ .top_left = .zero, .size = .one };
+
     pub fn lerp(a: Rect, b: Rect, t: f32) Rect {
         return .{
             .top_left = .lerp(a.top_left, b.top_left, t),
@@ -320,21 +367,24 @@ pub const Rect = struct {
         return self.top_left.add(self.size.scale(0.5));
     }
 
+    const MeasureKind = enum { top_center, top_right, bottom_center, center, size };
     // TODO: autogen from enum
     /// They are all Vec2 since otherwise .get wouldn't know what to return
-    const Measure = union(enum) {
+    const Measure = union(MeasureKind) {
         top_center: Vec2,
         top_right: Vec2,
         bottom_center: Vec2,
+        center: Vec2,
         size: Vec2,
     };
 
-    pub fn get(self: Rect, which: std.meta.FieldEnum(Measure)) Vec2 {
+    pub fn get(self: Rect, which: MeasureKind) Vec2 {
         return switch (which) {
             .top_center => self.top_left.addX(self.size.x / 2),
             .top_right => self.top_left.addX(self.size.x),
             .size => self.size,
             .bottom_center => self.top_left.add(self.size.mul(.new(0.5, 1))),
+            .center => self.top_left.add(self.size.scale(0.5)),
         };
     }
 
@@ -371,6 +421,36 @@ pub const Rect = struct {
                 }
             },
         }
+    }
+
+    pub fn with(original: Rect, change: Measure, keep: MeasureKind) Rect {
+        return switch (change) {
+            else => @panic("TODO"),
+            .size => |size| switch (keep) {
+                else => @panic("TODO"),
+                .center => .fromCenterAndSize(original.get(.center), size),
+            },
+        };
+    }
+
+    pub fn withAspectRatio(original: Rect, target_ratio: f32, mode: GrowOrShrink, keep: MeasureKind) Rect {
+        const new_size = original.size.withAspectRatio(target_ratio, mode);
+        return original.with(.{ .size = new_size }, keep);
+    }
+
+    test "withAspectRatio" {
+        try expectApproxEqRel(Rect.fromCenterAndSize(.half, .new(2, 1)), Rect.unit.withAspectRatio(2, .grow, .center), 0.0001);
+        try expectApproxEqRel(Rect.fromCenterAndSize(.half, .new(1, 0.5)), Rect.unit.withAspectRatio(2, .shrink, .center), 0.0001);
+    }
+
+    pub fn expectApproxEqRel(expected: Rect, actual: Rect, tolerance: anytype) !void {
+        try Vec2.expectApproxEqRel(expected.top_left, actual.top_left, tolerance);
+        try Vec2.expectApproxEqRel(expected.size, actual.size, tolerance);
+    }
+
+    pub fn expectApproxEqAbs(expected: Rect, actual: Rect, tolerance: anytype) !void {
+        try Vec2.expectApproxEqAbs(expected.top_left, actual.top_left, tolerance);
+        try Vec2.expectApproxEqAbs(expected.size, actual.size, tolerance);
     }
 
     pub fn applyToLocalPosition(self: Rect, p: Vec2) Vec2 {
@@ -481,15 +561,15 @@ pub const Color = extern struct {
         };
     }
 
+    pub fn lerp(a: Color, b: Color, t: f32) Color {
+        return fromFColor(.lerp(a.toFColor(), b.toFColor(), t));
+    }
+
     pub fn gradient(comptime steps: usize, comptime start: Color, comptime end: Color) [steps]Color {
         const funk = @import("funktional.zig");
         return funk.map(struct {
             pub fn anon(t: f32) Color {
-                return .fromFColor(.lerp(
-                    start.toFColor(),
-                    end.toFColor(),
-                    t,
-                ));
+                return Color.lerp(start, end, t);
             }
         }.anon, &funk.linspace01(steps, true));
     }
