@@ -95,7 +95,7 @@ pub const builtin_levels: []const BuiltinLevel = &.{
     \\ @v -> planetFromOlympian: @v {
     \\   Mercury -> ((top . Mercury) . bottom);
     \\   // Venus -> ((top . Venus) . bottom);
-    \\   Ares -> ((top . Ares) . bottom);
+    \\   Mars -> ((top . Mars) . bottom);
     \\ }
     \\ // Hermes -> ((top . Mercury) . bottom);
     \\ // Aphrodite -> ((top . Venus) . bottom);

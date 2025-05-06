@@ -107,3 +107,31 @@ done:
 - level 1: enfasis check
 - allow infinite loops
 - move camera with middle click
+
+###
+
+- main menu: intenta arrastrar the level name
+- le ralla el cambio súbito al darle a "check all"
+- lvl1: cree que el orden es importante
+- lvl1: cree que estan conectados los casos: el output de uno sera el input del siguiente
+- lvl1: no ve el point de tener el level name
+- main menu: didn't notice lvl2 was unlocked
+- lvl2: le ralla poder mover el caso, y la toolbar
+- quiere poner el wildcard-pattern en la template
+- pone las templates muy a la izquiera, casi en el fnk holder
+- lvl3: le ralla el true/false de la toolbar
+- lvl4: too many previous vaus options*
+- didn't know how to delete cases, couldn't add them reliably (had to acertar entre dos casos)
+- passed lvl3 without understanding that its a fnk call :(
+- lvl4: thinks that b & c are sequential in "a -> a {b -> b; c -> c;}"
+- visual bug: unbound variables cable extends to the start
+- lvl4: forbid modifying the parent case
+- didn't get that each vau name corresponds to a vau source*, maybe show the src on hover the fnkreel
+
+*these two could be solved by having the player manually choose which vaus to add to the bag of vaus
+
+soon:
+- lvl2 (and others): don't allow anything until "check all"
+
+ok:
+- lvl1: 4 mins sin pistas!!
