@@ -79,7 +79,11 @@ pub const Triangulator = struct {
 
     // TODO: don't assume vertex order
     /// Get the set of indices that triangulate a polygon. Assumes the vertices are in e1->e2 order
-    pub fn triangulate(allocator: std.mem.Allocator, vertices: []const Vec2) ![][3]usize {
+    pub fn triangulate(comptime IndexType: type, allocator: std.mem.Allocator, vertices: []const Vec2) ![][3]IndexType {
+        assert(switch (@typeInfo(IndexType)) {
+            .int, .comptime_int => true,
+            else => false,
+        });
         var backing_array: []Vertex = try allocator.alloc(Vertex, vertices.len);
         defer allocator.free(backing_array);
         for (backing_array, vertices, 0..) |*dst, pos, k| {
@@ -92,7 +96,7 @@ pub const Triangulator = struct {
         }
 
         var handle: *const Vertex = &backing_array[0];
-        const result: [][3]usize = try allocator.alloc([3]usize, vertices.len - 2);
+        const result: [][3]IndexType = try allocator.alloc([3]IndexType, vertices.len - 2);
         errdefer allocator.free(result);
         for (result) |*dst| {
             const original_handle = handle;
@@ -102,9 +106,9 @@ pub const Triangulator = struct {
             }
 
             dst.* = .{
-                handle.prev.original_index,
-                handle.original_index,
-                handle.next.original_index,
+                @intCast(handle.prev.original_index),
+                @intCast(handle.original_index),
+                @intCast(handle.next.original_index),
             };
             handle.prev.next = handle.next;
             handle.next.prev = handle.prev;
