@@ -165,7 +165,7 @@ test "triangulate triangle" {
     };
     const real_area = 5;
 
-    const indices = try Triangulator.triangulate(std.testing.allocator, vertices);
+    const indices = try Triangulator.triangulate(usize, std.testing.allocator, vertices);
     defer std.testing.allocator.free(indices);
 
     try std.testing.expectEqual(vertices.len - 2, indices.len);
@@ -186,7 +186,7 @@ test "triangulate rect" {
     };
     const real_area = 2;
 
-    const indices = try Triangulator.triangulate(std.testing.allocator, vertices);
+    const indices = try Triangulator.triangulate(usize, std.testing.allocator, vertices);
     defer std.testing.allocator.free(indices);
 
     try std.testing.expectEqual(vertices.len - 2, indices.len);
@@ -208,7 +208,7 @@ test "triangulate non-convex polygon" {
     };
     const real_area = 4;
 
-    const indices = try Triangulator.triangulate(std.testing.allocator, vertices);
+    const indices = try Triangulator.triangulate(usize, std.testing.allocator, vertices);
     defer std.testing.allocator.free(indices);
 
     try std.testing.expectEqual(vertices.len - 2, indices.len);
@@ -229,7 +229,7 @@ test "triangulate with holes" {
         .fromPolar(2, 0),
     };
 
-    const indices = try Triangulator.triangulate(std.testing.allocator, vertices);
+    const indices = try Triangulator.triangulate(usize, std.testing.allocator, vertices);
     defer std.testing.allocator.free(indices);
 
     try std.testing.expectEqual(vertices.len - 2, indices.len);

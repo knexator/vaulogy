@@ -486,7 +486,7 @@ pub const FColor = extern struct {
     }
 };
 
-pub const Color = extern struct {
+pub const UColor = extern struct {
     r: u8,
     g: u8,
     b: u8,
@@ -496,54 +496,54 @@ pub const Color = extern struct {
     pub const black = new(0, 0, 0);
     pub const cyan = new(0, 255, 255);
 
-    pub fn new(r: u8, g: u8, b: u8) Color {
+    pub fn new(r: u8, g: u8, b: u8) UColor {
         return .{ .r = r, .g = g, .b = b };
     }
 
-    pub fn from01(r: f32, g: f32, b: f32) Color {
+    pub fn from01(r: f32, g: f32, b: f32) UColor {
         assert(in01(r) and in01(g) and in01(b));
-        return Color.new(
+        return UColor.new(
             @intFromFloat(r * 255),
             @intFromFloat(g * 255),
             @intFromFloat(b * 255),
         );
     }
 
-    pub fn fromHex(comptime str: []const u8) Color {
+    pub fn fromHex(comptime str: []const u8) UColor {
         @setEvalBranchQuota(10000);
         const error_message = std.fmt.comptimePrint("bad format for str {s}", .{str});
         if (str.len != 7 or str[0] != '#') @compileError(error_message);
         errdefer @compileError(error_message);
-        return comptime Color{
+        return comptime UColor{
             .r = try std.fmt.parseInt(u8, str[1..3], 16),
             .g = try std.fmt.parseInt(u8, str[3..5], 16),
             .b = try std.fmt.parseInt(u8, str[5..7], 16),
         };
     }
 
-    pub fn fromHexAtRunTime(str: []const u8) !Color {
+    pub fn fromHexAtRunTime(str: []const u8) !UColor {
         if (str.len != 7 or str[0] != '#') return error.BadHexCode;
         var it = std.mem.window(u8, str[1..], 2, 2);
-        return Color{
+        return UColor{
             .r = std.fmt.parseInt(u8, it.next().?, 16) catch return error.BadHexCode,
             .g = std.fmt.parseInt(u8, it.next().?, 16) catch return error.BadHexCode,
             .b = std.fmt.parseInt(u8, it.next().?, 16) catch return error.BadHexCode,
         };
     }
 
-    pub fn gray(v: u8) Color {
+    pub fn gray(v: u8) UColor {
         return new(v, v, v);
     }
 
-    pub fn withAlpha(c: Color, a: u8) Color {
-        return Color{ .r = c.r, .g = c.g, .b = c.b, .a = a };
+    pub fn withAlpha(c: UColor, a: u8) UColor {
+        return UColor{ .r = c.r, .g = c.g, .b = c.b, .a = a };
     }
 
-    pub fn withAlpha01(c: Color, a: f32) Color {
+    pub fn withAlpha01(c: UColor, a: f32) UColor {
         return withAlpha(c, @intFromFloat(a * 255));
     }
 
-    pub fn toFColor(c: Color) FColor {
+    pub fn toFColor(c: UColor) FColor {
         return .{
             .r = tof32(c.r) / 255,
             .g = tof32(c.g) / 255,
@@ -552,7 +552,7 @@ pub const Color = extern struct {
         };
     }
 
-    pub fn fromFColor(c: FColor) Color {
+    pub fn fromFColor(c: FColor) UColor {
         return .{
             .r = @intFromFloat(c.r * 255),
             .g = @intFromFloat(c.g * 255),
@@ -561,15 +561,15 @@ pub const Color = extern struct {
         };
     }
 
-    pub fn lerp(a: Color, b: Color, t: f32) Color {
+    pub fn lerp(a: UColor, b: UColor, t: f32) UColor {
         return fromFColor(.lerp(a.toFColor(), b.toFColor(), t));
     }
 
-    pub fn gradient(comptime steps: usize, comptime start: Color, comptime end: Color) [steps]Color {
+    pub fn gradient(comptime steps: usize, comptime start: UColor, comptime end: UColor) [steps]UColor {
         const funk = @import("funktional.zig");
         return funk.map(struct {
-            pub fn anon(t: f32) Color {
-                return Color.lerp(start, end, t);
+            pub fn anon(t: f32) UColor {
+                return UColor.lerp(start, end, t);
             }
         }.anon, &funk.linspace01(steps, true));
     }
@@ -865,8 +865,8 @@ pub const Random = struct {
         return Vec2.e1.rotate(this.rnd.float(f32));
     }
 
-    pub fn color(this: Random) Color {
-        return Color.new(
+    pub fn color(this: Random) UColor {
+        return UColor.new(
             this.rnd.int(u8),
             this.rnd.int(u8),
             this.rnd.int(u8),
