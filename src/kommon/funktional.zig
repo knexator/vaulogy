@@ -90,9 +90,8 @@ pub fn mapWithIndexAndCtx(comptime map_fn: anytype, comptime in: []const FirstIn
     return result;
 }
 
-pub fn mapWithCtx(comptime map_fn: anytype, comptime in: []const SecondInputOf(map_fn), ctx: anytype) [in.len]ReturnOf(map_fn) {
+pub fn mapWithCtx(comptime map_fn: anytype, comptime in: []const SecondInputOf(map_fn), ctx: FirstInputOf(map_fn)) [in.len]ReturnOf(map_fn) {
     std.debug.assert(@typeInfo(@TypeOf(map_fn)).@"fn".params.len == 2);
-    std.debug.assert(FirstInputOf(map_fn) == @TypeOf(ctx));
     var result: [in.len]ReturnOf(map_fn) = undefined;
     for (in, &result) |v, *target| {
         target.* = map_fn(ctx, v);
