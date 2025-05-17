@@ -11,6 +11,9 @@ pub const meta = @import("meta.zig");
 pub const CircularBuffer = @import("circular_buffer.zig").CircularBuffer;
 pub const Triangulator = @import("triangulator.zig").Triangulator;
 pub const Noise = @import("fastnoise.zig").Noise(f32);
+pub const Gl = @import("Gl.zig");
+pub const Canvas = @import("Canvas.zig");
+pub const renderer = @import("renderer.zig");
 
 comptime {
     std.testing.refAllDeclsRecursive(@This());
