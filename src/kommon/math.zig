@@ -27,6 +27,10 @@ pub fn towards(v: *f32, goal: f32, max_delta: f32) void {
     }
 }
 
+pub fn clampPtr(v: *f32, min_inclusive: f32, max_inclusive: f32) void {
+    v.* = clamp(v.*, min_inclusive, max_inclusive);
+}
+
 const lerp_towards_float = lerp_towards;
 pub fn lerp_towards(v: *f32, goal: f32, ratio: f32, delta_seconds: f32) void {
     // TODO: make this framerate independent
@@ -68,7 +72,8 @@ pub fn tof32(value: anytype) f32 {
     return switch (@typeInfo(T)) {
         .float, .comptime_float => value,
         .int, .comptime_int => @floatFromInt(value),
-        else => @compileError("Expected an int, float or vector of one, found " ++ @typeName(T)),
+        .bool => if (value) 1.0 else 0.0,
+        else => @compileError("Expected an int, float, bool, or vector of one, found " ++ @typeName(T)),
     };
 }
 
@@ -292,6 +297,10 @@ pub const Vec2 = extern struct {
         );
     }
 
+    pub fn equals(a: Self, b: Self) bool {
+        return a.x == b.x and a.y == b.y;
+    }
+
     pub fn withAspectRatio(original: Vec2, target_ratio: f32, mode: GrowOrShrink) Vec2 {
         const actual_ratio = original.x / original.y;
         if (actual_ratio < target_ratio) {
@@ -361,6 +370,12 @@ pub const Rect = struct {
             .top_left = .lerp(a.top_left, b.top_left, t),
             .size = .lerp(a.size, b.size, t),
         };
+    }
+
+    pub fn intersect(a: Rect, b: Rect) ?Rect {
+        // TODO NOW
+        _ = b;
+        return a;
     }
 
     pub fn getCenter(self: Rect) Vec2 {
@@ -468,12 +483,28 @@ pub const FColor = extern struct {
     b: f32,
     a: f32 = 1,
 
+    pub const white = UColor.white.toFColor();
+    pub const black = UColor.black.toFColor();
+    pub const cyan = UColor.cyan.toFColor();
+
+    pub fn new(r: f32, g: f32, b: f32) FColor {
+        return .{ .r = r, .g = g, .b = b };
+    }
+
+    pub fn gray(v: f32) FColor {
+        return new(v, v, v);
+    }
+
     pub fn toArray(c: FColor) [4]f32 {
         return .{ c.r, c.g, c.b, c.a };
     }
 
     pub fn fromArray(arr: [4]f32) FColor {
         return .{ .r = arr[0], .g = arr[1], .b = arr[2], .a = arr[3] };
+    }
+
+    pub fn withAlpha(c: FColor, a: f32) FColor {
+        return FColor{ .r = c.r, .g = c.g, .b = c.b, .a = a };
     }
 
     pub fn lerp(a: FColor, b: FColor, t: f32) FColor {
@@ -483,6 +514,19 @@ pub const FColor = extern struct {
             std.math.lerp(a.b, b.b, t),
             std.math.lerp(a.a, b.a, t),
         });
+    }
+
+    pub fn fromHex(comptime str: []const u8) FColor {
+        return UColor.fromHex(str).toFColor();
+    }
+
+    pub fn gradient(comptime steps: usize, comptime start: FColor, comptime end: FColor) [steps]FColor {
+        const funk = @import("funktional.zig");
+        return funk.map(struct {
+            pub fn anon(t: f32) FColor {
+                return FColor.lerp(start, end, t);
+            }
+        }.anon, &funk.linspace01(steps, true));
     }
 };
 

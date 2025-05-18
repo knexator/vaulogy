@@ -109,10 +109,10 @@ pub fn fillShape(
     camera: Rect,
     parent: Point,
     shape: PrecomputedShape,
-    color: Color,
+    color: FColor,
 ) void {
     self.gl.useRenderable(self.fill_shape_renderable, shape.local_points.ptr, shape.local_points.len * @sizeOf(Vec2), shape.triangles, &.{
-        .{ .name = "u_color", .value = .{ .FColor = color.toFColor() } },
+        .{ .name = "u_color", .value = .{ .FColor = color } },
         .{ .name = "u_point", .value = .{ .Point = parent } },
         .{ .name = "u_rect", .value = .{ .Rect = camera } },
     }, null);
@@ -123,7 +123,7 @@ pub fn fillCircle(
     camera: Rect,
     center: Vec2,
     radius: f32,
-    color: Color,
+    color: FColor,
 ) void {
     self.fillShape(
         camera,
@@ -138,7 +138,7 @@ pub fn fillSquare(
     camera: Rect,
     top_left: Vec2,
     side: f32,
-    color: Color,
+    color: FColor,
 ) void {
     self.fillShape(
         camera,
@@ -152,7 +152,7 @@ pub fn fillRect(
     self: Canvas,
     camera: Rect,
     rect: Rect,
-    color: Color,
+    color: FColor,
 ) void {
     self.fillShape(
         camera,
@@ -170,7 +170,7 @@ pub fn fillRect(
     );
 }
 
-pub fn fillArc(self: *Canvas, camera: Rect, center: Vec2, radius: f32, turns_start: f32, turns_end: f32, color: Color) !void {
+pub fn fillArc(self: *Canvas, camera: Rect, center: Vec2, radius: f32, turns_start: f32, turns_end: f32, color: FColor) !void {
     self.fillShape(camera, .{
         .pos = center,
         .scale = radius,
@@ -185,7 +185,7 @@ pub fn fillArc(self: *Canvas, camera: Rect, center: Vec2, radius: f32, turns_sta
     ) ++ [1]Vec2{.zero})), color);
 }
 
-pub fn fillCrown(self: *Canvas, camera: Rect, center: Vec2, radius: f32, width: f32, color: Color) !void {
+pub fn fillCrown(self: *Canvas, camera: Rect, center: Vec2, radius: f32, width: f32, color: FColor) !void {
     const CIRCLE_RESOLUTION = 128;
     self.fillShape(camera, .{
         .pos = center,
@@ -400,7 +400,7 @@ pub const TextRenderer = struct {
 const std = @import("std");
 const assert = std.debug.assert;
 const math = @import("math.zig");
-const Color = math.UColor;
+const UColor = math.UColor;
 const FColor = math.FColor;
 const Camera = math.Camera;
 const Rect = math.Rect;
