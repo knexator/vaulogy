@@ -2161,7 +2161,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         Point{},
                         full_address,
                     ),
-                    .toolbar => |index| Camera.remap(UI.cam, toolbar.things[index].point, self.camera),
+                    .toolbar => |index| if (toolbar.things.len == 0) unreachable else Camera.remap(UI.cam, toolbar.things[index].point, self.camera),
                     .main_input => |local| if (DESIGN.no_current_data) MAIN_INPUT_POS else SexprView.sexprChildView(MAIN_INPUT_POS, local),
                     .main_fnk_name => |local| SexprView.sexprChildView(MAIN_FNK_POS, local),
                     .toolbar_special_var => Camera.remap(UI.cam, toolbar.special_var_point, self.camera),
@@ -2187,7 +2187,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             pub fn getSexpr(address: @This(), self: Self) !?*const Sexpr {
                 return switch (address) {
                     .full_address => |full_address| try self.cases.getSexprAt(full_address),
-                    .toolbar => |index| toolbar.things[index].value,
+                    .toolbar => |index| if (toolbar.things.len == 0) unreachable else toolbar.things[index].value,
                     .main_input => |local| if (DESIGN.no_current_data) null else self.main_input.getAt(local).?,
                     .main_fnk_name => |local| self.fnk_name.getAt(local).?,
                     .toolbar_special_var => toolbar.special_var_state.next_value,
@@ -2562,10 +2562,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         const toolbar = struct {
             const atom_values = [_]*const Sexpr{
-                Sexpr.pair_nil_nil,
-                Sexpr.builtin.nil,
-                Sexpr.builtin.true,
-                Sexpr.builtin.false,
+                // Sexpr.pair_nil_nil,
+                // Sexpr.builtin.nil,
+                // Sexpr.builtin.true,
+                // Sexpr.builtin.false,
             };
             const things = blk: {
                 var result: [atom_values.len]struct { value: *const Sexpr, point: Point, index: usize } = undefined;
@@ -2579,7 +2579,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 break :blk xx;
             };
 
-            const special_var_point = things[0].point.applyToLocalPoint(.{ .pos = .new(-2, 0) });
+            const special_var_point = (if (things.len == 0) Camera.remap(DEFAULT_CAM, .{
+                .pos = .new(3.5, -2.5),
+                .scale = 0.5,
+            }, UI.cam) else things[0].point).applyToLocalPoint(.{ .pos = .new(-2, 0) });
             var special_var_state: struct {
                 random_instance: std.Random.DefaultPrng = std.Random.DefaultPrng.init(0),
                 next_value: *const Sexpr = &Sexpr.doVar("first_var"),
@@ -2597,7 +2600,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
             } = .{};
 
-            const special_case_point = things[things.len - 1].point.applyToLocalPoint(.{ .pos = .new(5.4, 0) });
+            const special_case_point = if (things.len == 0)
+                special_var_point.applyToLocalPoint(.{ .pos = .new(4, 0) })
+            else
+                things[things.len - 1].point.applyToLocalPoint(.{ .pos = .new(5.4, 0) });
             var special_case_state: struct {
                 random_instance: std.Random.DefaultPrng = std.Random.DefaultPrng.init(1),
                 next_var: *const Sexpr = Sexpr.builtin.vars.v1,
@@ -2686,18 +2692,18 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
                 const camera = UI.cam;
 
-                drawer.setTransparency(if (modifier.specialVarEnabled(wildcard_in_play)) 1 else 0.5);
-                try artist.drawPatternSexpr(camera, special_var_point, special_var_state.next_value);
-
-                drawer.setTransparency(if (modifier.thingsEnabled()) 1 else 0.5);
-                for (things) |thing| {
-                    try artist.drawSexpr(camera, thing.point, thing.value);
+                if (modifier.specialVarEnabled(wildcard_in_play)) {
+                    try artist.drawPatternSexpr(camera, special_var_point, special_var_state.next_value);
+                }
+                if (modifier.thingsEnabled()) {
+                    for (things) |thing| {
+                        try artist.drawSexpr(camera, thing.point, thing.value);
+                    }
                 }
 
-                drawer.setTransparency(if (modifier.specialCaseEnabled()) 1 else 0.5);
-                try drawTinyCase(special_case_point, special_case_state.value(undefined).pattern, special_case_state.value(undefined).template);
-
-                if (modifier != .normal) drawer.setTransparency(1);
+                if (modifier.specialCaseEnabled()) {
+                    try drawTinyCase(special_case_point, special_case_state.value(undefined).pattern, special_case_state.value(undefined).template);
+                }
             }
         };
 
@@ -4264,7 +4270,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     if (!DESIGN.no_current_data) drawer.drawDebugText(camera, .{ .pos = .new(2.5, -4), .scale = 0.75 }, "← Don't forget to hit Play to see the Vau in action!", .black);
                 },
                 .fourth_level => {
-                    drawer.drawDebugText(camera, .{ .pos = .new(8.125, -3.5), .scale = 0.75 }, "Add new Cases with this ↓", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(7.5, -3.5), .scale = 0.75 }, "↓ Add new Cases with this", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(3, 6), .scale = 0.75 }, "Nested Cases will\nbe called on the result →", .black);
                 },
                 .fifth_level => {

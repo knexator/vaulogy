@@ -36,7 +36,6 @@ done:
 
 ###
 
-- too much toolbar on level 2
 - idea: change wrapping to multiple copies and/or reordering
 - tell player about right click
 - didn't know how to delete cases
@@ -53,6 +52,7 @@ done:
 - idea: start level two with @x -> (@x . @x)
 - forgot about what yellow vau does; show a preview of the tests when hovering it?
 - level idea: x -> (x . map(x))
+- too much toolbar on level 2
 
 ###
 
@@ -119,7 +119,6 @@ done:
 - lvl2: le ralla poder mover el caso, y la toolbar
 - quiere poner el wildcard-pattern en la template
 - pone las templates muy a la izquiera, casi en el fnk holder
-- lvl3: le ralla el true/false de la toolbar
 - lvl4: too many previous vaus options*
 - didn't know how to delete cases, couldn't add them reliably (had to acertar entre dos casos)
 - passed lvl3 without understanding that its a fnk call :(
@@ -135,3 +134,6 @@ soon:
 
 ok:
 - lvl1: 4 mins sin pistas!!
+
+done:
+- lvl3: le ralla el true/false de la toolbar
