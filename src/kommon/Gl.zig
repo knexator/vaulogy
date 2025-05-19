@@ -44,6 +44,36 @@ useRenderable: *const fn (
     texture: ?Texture,
 ) void,
 
+buildInstancedRenderable: *const fn (
+    /// without preamble!
+    vertex_src: [:0]const u8,
+    /// without preamble!
+    fragment_src: [:0]const u8,
+    per_vertex_attributes: VertexInfo.Collection,
+    per_instance_attributes: VertexInfo.Collection,
+    uniforms: []const UniformInfo.In,
+) error{
+    ShaderCreationError,
+    ProgramCreationError,
+    AttributeLocationError,
+    UniformLocationError,
+    TooManyUniforms,
+}!InstancedRenderable,
+
+useInstancedRenderable: *const fn (
+    renderable: InstancedRenderable,
+    // TODO: make the vertex data optional, since it could be precomputed
+    vertex_data_ptr: *const anyopaque,
+    vertex_data_len_bytes: usize,
+    // TODO: make triangles optional, since they could be precomputed
+    triangles: []const [3]IndexType,
+    instance_data_ptr: *const anyopaque,
+    instance_data_len_bytes: usize,
+    uniforms: []const UniformInfo.Runtime,
+    // TODO: multiple textures
+    texture: ?Texture,
+) void,
+
 pub const VertexInfo = struct {
     // TODO: kind
     pub const In = struct {
@@ -167,6 +197,15 @@ pub const Renderable = struct {
     program: enum(c_uint) { null = 0, _ },
     vao: enum(c_uint) { null = 0, _ }, // vertex array object: the draw call state, roughly
     vbo: enum(c_uint) { null = 0, _ }, // vertex buffer object: the vertex data itself
+    ebo: enum(c_uint) { null = 0, _ }, // element buffer object: the triangle indices
+    uniforms: std.BoundedArray(UniformInfo, 8),
+};
+
+pub const InstancedRenderable = struct {
+    program: enum(c_uint) { null = 0, _ },
+    vao: enum(c_uint) { null = 0, _ }, // vertex array object: the draw call state, roughly
+    vbo_vertices: enum(c_uint) { null = 0, _ }, // vertex buffer object: the vertex data itself
+    vbo_instances: enum(c_uint) { null = 0, _ }, // vertex buffer object: the vertex data itself
     ebo: enum(c_uint) { null = 0, _ }, // element buffer object: the triangle indices
     uniforms: std.BoundedArray(UniformInfo, 8),
 };

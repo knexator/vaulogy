@@ -5,6 +5,7 @@ frame_arena: std.heap.ArenaAllocator,
 /// only valid for a frame!
 gl: Gl,
 
+fill_instanced_circles_renderable: Gl.Renderable,
 fill_shape_renderable: Gl.Renderable,
 text_renderers: []TextRenderer,
 
@@ -91,6 +92,33 @@ pub fn init(gl: Gl, gpa: std.mem.Allocator, comptime font_jsons: []const []const
                 .{ .name = "u_color", .kind = .FColor },
             },
         ),
+        .fill_instanced_circles_renderable = try gl.buildInstancedRenderable(
+            \\uniform vec4 u_camera; // as top_left, size
+            \\
+            \\in vec2 a_vertex_position;
+            \\in vec2 a_center;
+            \\void main() {
+            \\  vec2 camera_position = (a_center + a_vertex_position - u_rect.xy) / u_rect.zw;
+            \\  gl_Position = vec4((camera_position * 2.0 - 1.0) * vec2(1, -1), 0, 1);
+            \\}
+        ,
+            \\precision highp float;
+            \\out vec4 out_color;
+            \\
+            \\void main() {
+            \\  out_color = vec4(1.0);
+            \\}
+        ,
+            .{ .attribs = &.{
+                .{ .name = "a_vertex_position", .kind = .Vec2 },
+            } },
+            .{ .attribs = &.{
+                .{ .name = "a_center", .kind = .Vec2 },
+            } },
+            &.{
+                .{ .name = "u_camera", .kind = .Rect },
+            },
+        ),
         .DEFAULT_SHAPES = try .init(gpa),
         .text_renderers = text_renderers,
     };
@@ -111,11 +139,18 @@ pub fn fillShape(
     shape: PrecomputedShape,
     color: FColor,
 ) void {
-    self.gl.useRenderable(self.fill_shape_renderable, shape.local_points.ptr, shape.local_points.len * @sizeOf(Vec2), shape.triangles, &.{
-        .{ .name = "u_color", .value = .{ .FColor = color } },
-        .{ .name = "u_point", .value = .{ .Point = parent } },
-        .{ .name = "u_rect", .value = .{ .Rect = camera } },
-    }, null);
+    self.gl.useRenderable(
+        self.fill_shape_renderable,
+        shape.local_points.ptr,
+        shape.local_points.len * @sizeOf(Vec2),
+        shape.triangles,
+        &.{
+            .{ .name = "u_color", .value = .{ .FColor = color } },
+            .{ .name = "u_point", .value = .{ .Point = parent } },
+            .{ .name = "u_rect", .value = .{ .Rect = camera } },
+        },
+        null,
+    );
 }
 
 pub fn fillCircle(
@@ -199,6 +234,35 @@ pub fn fillCrown(self: *Canvas, camera: Rect, center: Vec2, radius: f32, width: 
         radius + width / 2,
     ))), color);
 }
+
+pub fn fillInstancedCircles(
+    self: *Canvas,
+    camera: Rect,
+    points: []const Vec2,
+) void {
+    // self.fill_instanced_circles_renderable
+    self.gl.useInstancedRenderable(
+        self.fill_instanced_circles_renderable,
+        self.DEFAULT_SHAPES.circle_128.local_points.ptr,
+        self.DEFAULT_SHAPES.circle_128.local_points.len * @sizeOf(Vec2),
+        self.DEFAULT_SHAPES.circle_128.triangles,
+        points.ptr,
+        points.len * @sizeOf(Vec2),
+        &.{
+            .{ .name = "u_camera", .value = .{ .Rect = camera } },
+        },
+        null,
+    );
+}
+
+// // https://wwwtyro.net/2019/11/18/instanced-lines.html
+// pub fn line(
+//     self: *Canvas,
+//     camera: Rect,
+//     points: []const Vec2,
+//     world_width: f32,
+//     color: FColor,
+// ) void {}
 
 /// Performs triangulation; consider caching the result.
 pub fn tmpShape(
