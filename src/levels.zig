@@ -45,10 +45,10 @@ const Vals = struct {
 
 pub const builtin_levels: []const BuiltinLevel = &.{
     .{ .fnk_name = &Sexpr.doLit("planetFromOlympian"), .manual_samples = &.{
+        .{ .input = &Sexpr.doLit("Zeus"), .output = &Sexpr.doLit("Jupiter") },
+        .{ .input = &Sexpr.doLit("Ares"), .output = &Sexpr.doLit("Mars") },
         .{ .input = &Sexpr.doLit("Hermes"), .output = &Sexpr.doLit("Mercury") },
         .{ .input = &Sexpr.doLit("Aphrodite"), .output = &Sexpr.doLit("Venus") },
-        .{ .input = &Sexpr.doLit("Ares"), .output = &Sexpr.doLit("Mars") },
-        .{ .input = &Sexpr.doLit("Zeus"), .output = &Sexpr.doLit("Jupiter") },
     }, .description = "The simplest Vau: a hardcoded translation", .premade_solution = 
     \\planetFromOlympian {
     \\  Hermes -> Mercury;

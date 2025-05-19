@@ -112,7 +112,6 @@ done:
 
 - main menu: intenta arrastrar the level name
 - le ralla el cambio súbito al darle a "check all"
-- lvl1: cree que el orden es importante
 - lvl1: cree que estan conectados los casos: el output de uno sera el input del siguiente
 - lvl1: no ve el point de tener el level name
 - main menu: didn't notice lvl2 was unlocked
@@ -137,3 +136,4 @@ ok:
 
 done:
 - lvl3: le ralla el true/false de la toolbar
+- lvl1: cree que el orden es importante
