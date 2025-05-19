@@ -524,6 +524,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         try self.persistence.fnks.put(fnk.name, fnk.body);
                         try self.persistence.updateSolvedStatusOfAll(&self.mem);
                         try platform.setPlayerData(self.persistence, &self.mem);
+                        try editing.resetSolvedSamples();
                         const prev_editing = editing.*;
                         self.state = .{ .testing_fnk = .{ .main = try .init(
                             editing.camera,
@@ -3555,13 +3556,16 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         // TODO: don't call this if nothing actually changed
         fn onChangedSomething(self: *Self) !void {
+            try self.resetSolvedSamples();
+            _ = try self.cases.updateWildcards(platform.gpa);
+        }
+
+        fn resetSolvedSamples(self: *Self) !void {
             if (DESIGN.instant_feedback) {
                 try updateSolvedSamples(try self.getFnk(), self.samples, self.persistence, self.mem);
             } else {
                 self.forgetSolvedSamples();
             }
-
-            _ = try self.cases.updateWildcards(platform.gpa);
         }
 
         fn forgetSolvedSamples(self: Self) void {
