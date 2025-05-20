@@ -248,6 +248,7 @@ pub fn fillInstancedCircles(
         self.DEFAULT_SHAPES.circle_128.triangles,
         points.ptr,
         points.len * @sizeOf(Vec2),
+        points.len,
         &.{
             .{ .name = "u_camera", .value = .{ .Rect = camera } },
         },

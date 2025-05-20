@@ -69,6 +69,7 @@ useInstancedRenderable: *const fn (
     triangles: []const [3]IndexType,
     instance_data_ptr: *const anyopaque,
     instance_data_len_bytes: usize,
+    instance_count: usize,
     uniforms: []const UniformInfo.Runtime,
     // TODO: multiple textures
     texture: ?Texture,
