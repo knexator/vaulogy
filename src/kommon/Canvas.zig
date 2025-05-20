@@ -5,7 +5,7 @@ frame_arena: std.heap.ArenaAllocator,
 /// only valid for a frame!
 gl: Gl,
 
-fill_instanced_circles_renderable: Gl.Renderable,
+fill_instanced_circles_renderable: Gl.InstancedRenderable,
 fill_shape_renderable: Gl.Renderable,
 text_renderers: []TextRenderer,
 
@@ -98,7 +98,7 @@ pub fn init(gl: Gl, gpa: std.mem.Allocator, comptime font_jsons: []const []const
             \\in vec2 a_vertex_position;
             \\in vec2 a_center;
             \\void main() {
-            \\  vec2 camera_position = (a_center + a_vertex_position - u_rect.xy) / u_rect.zw;
+            \\  vec2 camera_position = (a_center + a_vertex_position - u_camera.xy) / u_camera.zw;
             \\  gl_Position = vec4((camera_position * 2.0 - 1.0) * vec2(1, -1), 0, 1);
             \\}
         ,
