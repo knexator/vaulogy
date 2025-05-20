@@ -6,6 +6,7 @@ frame_arena: std.heap.ArenaAllocator,
 gl: Gl,
 
 fill_instanced_circles_renderable: Gl.InstancedRenderable,
+instanced_rounded_lines_renderable: Gl.InstancedRenderable,
 fill_shape_renderable: Gl.Renderable,
 text_renderers: []TextRenderer,
 
@@ -117,6 +118,42 @@ pub fn init(gl: Gl, gpa: std.mem.Allocator, comptime font_jsons: []const []const
             } },
             &.{
                 .{ .name = "u_camera", .kind = .Rect },
+            },
+        ),
+        .instanced_rounded_lines_renderable = try gl.buildInstancedRenderable(
+            \\uniform vec4 u_camera; // as top_left, size
+            \\uniform float u_width;
+            \\in vec2 a_vertex_position;
+            \\in float a_vertex_is_b_side;
+            \\in vec2 a_line_a;
+            \\in vec2 a_line_b;
+            \\void main() {
+            \\  vec2 basis_x = normalize(a_line_b - a_line_a);
+            \\  vec2 basis_y = vec2(-basis_x.y, basis_x.x);
+            \\  vec2 world_position = mix(a_line_a, a_line_b, a_vertex_is_b_side) + u_width * (a_vertex_position.x * basis_x + a_vertex_position.y * basis_y);
+            \\  vec2 camera_position = (world_position - u_camera.xy) / u_camera.zw;
+            \\  gl_Position = vec4((camera_position * 2.0 - 1.0) * vec2(1, -1), 0, 1);
+            \\}
+        ,
+            \\precision highp float;
+            \\out vec4 out_color;
+            \\uniform vec4 u_color;
+            \\void main() {
+            \\  out_color = u_color;
+            \\}
+        ,
+            .{ .attribs = &.{
+                .{ .name = "a_vertex_position", .kind = .Vec2 },
+                .{ .name = "a_vertex_is_b_side", .kind = .f32 },
+            } },
+            .{ .attribs = &.{
+                .{ .name = "a_line_a", .kind = .Vec2 },
+                .{ .name = "a_line_b", .kind = .Vec2 },
+            }, .stride = @sizeOf(Vec2) },
+            &.{
+                .{ .name = "u_camera", .kind = .Rect },
+                .{ .name = "u_width", .kind = .f32 },
+                .{ .name = "u_color", .kind = .FColor },
             },
         ),
         .DEFAULT_SHAPES = try .init(gpa),
@@ -240,7 +277,6 @@ pub fn fillInstancedCircles(
     camera: Rect,
     points: []const Vec2,
 ) void {
-    // self.fill_instanced_circles_renderable
     self.gl.useInstancedRenderable(
         self.fill_instanced_circles_renderable,
         self.DEFAULT_SHAPES.circle_128.local_points.ptr,
@@ -257,13 +293,73 @@ pub fn fillInstancedCircles(
 }
 
 // // https://wwwtyro.net/2019/11/18/instanced-lines.html
-// pub fn line(
-//     self: *Canvas,
-//     camera: Rect,
-//     points: []const Vec2,
-//     world_width: f32,
-//     color: FColor,
-// ) void {}
+pub fn line(
+    self: *Canvas,
+    camera: Rect,
+    points: []const Vec2,
+    world_width: f32,
+    color: FColor,
+) void {
+    const VertexData = extern struct {
+        a_vertex_position: Vec2,
+        a_vertex_is_b_side: f32,
+    };
+    // TODO
+    const rounded_line_data: []const VertexData = &.{
+        // basic rect
+        .{ .a_vertex_position = .new(0, -0.5), .a_vertex_is_b_side = 0 },
+        .{ .a_vertex_position = .new(0, -0.5), .a_vertex_is_b_side = 1 },
+        .{ .a_vertex_position = .new(0, 0.5), .a_vertex_is_b_side = 0 },
+        .{ .a_vertex_position = .new(0, 0.5), .a_vertex_is_b_side = 1 },
+
+        // rounded cap for a
+        .{ .a_vertex_position = .new(0, 0), .a_vertex_is_b_side = 0 },
+        .{ .a_vertex_position = .new(0, -0.5), .a_vertex_is_b_side = 0 },
+        .{ .a_vertex_position = Vec2.new(-0.5, -0.5).scale(1.0 / @sqrt(2.0)), .a_vertex_is_b_side = 0 },
+        .{ .a_vertex_position = .new(-0.5, 0), .a_vertex_is_b_side = 0 },
+        .{ .a_vertex_position = Vec2.new(-0.5, 0.5).scale(1.0 / @sqrt(2.0)), .a_vertex_is_b_side = 0 },
+        .{ .a_vertex_position = .new(0, 0.5), .a_vertex_is_b_side = 0 },
+
+        // rounded cap for b
+        .{ .a_vertex_position = .new(0, 0), .a_vertex_is_b_side = 1 },
+        .{ .a_vertex_position = .new(0, -0.5), .a_vertex_is_b_side = 1 },
+        .{ .a_vertex_position = Vec2.new(0.5, -0.5).scale(1.0 / @sqrt(2.0)), .a_vertex_is_b_side = 1 },
+        .{ .a_vertex_position = .new(0.5, 0), .a_vertex_is_b_side = 1 },
+        .{ .a_vertex_position = Vec2.new(0.5, 0.5).scale(1.0 / @sqrt(2.0)), .a_vertex_is_b_side = 1 },
+        .{ .a_vertex_position = .new(0, 0.5), .a_vertex_is_b_side = 1 },
+    };
+    self.gl.useInstancedRenderable(
+        self.instanced_rounded_lines_renderable,
+        rounded_line_data.ptr,
+        rounded_line_data.len * @sizeOf(VertexData),
+        &.{
+            // basic rect
+            .{ 0, 1, 2 },
+            .{ 3, 2, 1 },
+
+            // rounded cap for a
+            .{ 4, 5, 6 },
+            .{ 4, 6, 7 },
+            .{ 4, 7, 8 },
+            .{ 4, 8, 9 },
+
+            // rounded cap for b
+            .{ 10, 11, 12 },
+            .{ 10, 12, 13 },
+            .{ 10, 13, 14 },
+            .{ 10, 14, 15 },
+        },
+        points.ptr,
+        points.len * @sizeOf(Vec2),
+        points.len - 1,
+        &.{
+            .{ .name = "u_camera", .value = .{ .Rect = camera } },
+            .{ .name = "u_width", .value = .{ .f32 = world_width } },
+            .{ .name = "u_color", .value = .{ .FColor = color } },
+        },
+        null,
+    );
+}
 
 /// Performs triangulation; consider caching the result.
 pub fn tmpShape(

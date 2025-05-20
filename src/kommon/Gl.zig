@@ -114,11 +114,13 @@ pub const VertexInfo = struct {
     pub const Kind = enum {
         Vec2,
         FColor,
+        f32,
 
         pub fn byteCount(kind: Kind) usize {
             return switch (kind) {
                 .Vec2 => @sizeOf(Vec2),
                 .FColor => @sizeOf(FColor),
+                .f32 => @sizeOf(f32),
             };
         }
 
@@ -126,6 +128,7 @@ pub const VertexInfo = struct {
             return switch (kind) {
                 .Vec2 => .FLOAT,
                 .FColor => .FLOAT,
+                .f32 => .FLOAT,
             };
         }
 
@@ -136,6 +139,7 @@ pub const VertexInfo = struct {
             @"4" = 4,
         } {
             return switch (kind) {
+                .f32 => .@"1",
                 .Vec2 => .@"2",
                 .FColor => .@"4",
             };
@@ -143,6 +147,7 @@ pub const VertexInfo = struct {
 
         pub fn normalized(kind: Kind) bool {
             return switch (kind) {
+                .f32 => false,
                 .Vec2 => false,
                 .FColor => false,
             };
@@ -178,6 +183,7 @@ pub const UniformInfo = struct {
         name: [:0]const u8,
         // TODO: comptime magic
         value: union(Kind) {
+            f32: f32,
             FColor: FColor,
             Rect: Rect,
             Point: Point,
@@ -185,6 +191,7 @@ pub const UniformInfo = struct {
     };
 
     pub const Kind = enum {
+        f32,
         FColor,
         Rect,
         Point,
