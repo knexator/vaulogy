@@ -382,13 +382,15 @@ pub const Rect = struct {
         return self.top_left.add(self.size.scale(0.5));
     }
 
-    const MeasureKind = enum { top_center, top_right, bottom_center, center, size };
+    const MeasureKind = enum { top_center, top_right, bottom_center, bottom_left, bottom_right, center, size };
     // TODO: autogen from enum
     /// They are all Vec2 since otherwise .get wouldn't know what to return
     const Measure = union(MeasureKind) {
         top_center: Vec2,
         top_right: Vec2,
         bottom_center: Vec2,
+        bottom_left: Vec2,
+        bottom_right: Vec2,
         center: Vec2,
         size: Vec2,
     };
@@ -399,6 +401,8 @@ pub const Rect = struct {
             .top_right => self.top_left.addX(self.size.x),
             .size => self.size,
             .bottom_center => self.top_left.add(self.size.mul(.new(0.5, 1))),
+            .bottom_left => self.top_left.addY(self.size.y),
+            .bottom_right => self.top_left.add(self.size),
             .center => self.top_left.add(self.size.scale(0.5)),
         };
     }
@@ -699,7 +703,7 @@ pub const Point = struct {
 
 // TODO: delete this and move the stuff into Rect
 pub const Camera = struct {
-    const aspect_ratio: f32 = 16.0 / 9.0;
+    pub const aspect_ratio: f32 = 16.0 / 9.0;
 
     center: Vec2,
     /// how many world units fit between the top and bottom of the camera view

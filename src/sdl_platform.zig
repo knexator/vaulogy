@@ -1,7 +1,12 @@
 const std = @import("std");
+const assert = std.debug.assert;
+const gl = @import("gl");
+const zstbi = @import("zstbi");
 
 const model = @import("main.zig");
 const presenter = @import("presenter.zig");
+
+const IndexType = Gl.IndexType;
 
 const SdlPlatform = struct {
     pub fn getPlayerData(mem: *model.VeryPermamentGameStuff) !?presenter.PlayerData {
@@ -28,13 +33,17 @@ const SdlPlatform = struct {
     }
 };
 
-var sdl_renderer: *c.SDL_Renderer = undefined;
+var gl_vtable: Gl = undefined;
+var canvas: Canvas = undefined;
 
+const Gl = @import("kommon/Gl.zig");
+const Canvas = @import("kommon/Canvas.zig");
 const tof32 = @import("kommon/math.zig").tof32;
 const Camera = presenter.Camera;
 const Point = presenter.Point;
 const Vec2 = presenter.Vec2;
 const Color = presenter.Color;
+const FColor = @import("kommon/math.zig").FColor;
 const Rect = presenter.Rect;
 const SdlDrawer = struct {
     fn screenFromWorld(camera: Camera, world_point: Point) Point {
@@ -62,13 +71,8 @@ const SdlDrawer = struct {
         );
     }
 
-    fn setRenderDrawColor(color: Color) void {
-        panickify(c.SDL_SetRenderDrawColor(sdl_renderer, color.r, color.g, color.b, 0xff));
-    }
-
     pub fn clear(color: Color) void {
-        setRenderDrawColor(color);
-        panickify(c.SDL_RenderClear(sdl_renderer));
+        gl_vtable.clear(color.toFColor());
     }
 
     pub fn setTransparency(alpha: f32) void {
@@ -104,98 +108,74 @@ const SdlDrawer = struct {
     }
 
     pub fn drawLine(camera: Camera, points: []const Vec2, color: Color) void {
-        const screen_positions = gpa.allocator().alloc(Vec2, points.len) catch @panic("OoM");
-        defer gpa.allocator().free(screen_positions);
-
-        for (points, screen_positions) |world_pos, *screen_pos| {
-            screen_pos.* = screenFromWorldPosition(camera, world_pos);
-        }
-
-        setRenderDrawColor(color);
-        for (0..screen_positions.len - 1) |i| {
-            const from = screen_positions[i];
-            const to = screen_positions[i + 1];
-            panickify(c.SDL_RenderLine(sdl_renderer, from.x, from.y, to.x, to.y));
-        }
+        const pixel_width = camera.height / window_size.y;
+        canvas.line(camera.toRect(), points, pixel_width, color.toFColor());
     }
 
     pub fn drawRect(camera: Camera, rect: Rect, stroke: ?Color, fill: ?Color) void {
-        const screen_top_left = screenFromWorldPosition(camera, rect.top_left);
-        const screen_size = screenFromWorldSize(camera, rect.size);
-
-        const sdl_rect = c.SDL_FRect{
-            .x = screen_top_left.x,
-            .y = screen_top_left.y,
-            .w = screen_size.x,
-            .h = screen_size.y,
-        };
-
         if (fill) |col| {
-            setRenderDrawColor(col);
-            panickify(c.SDL_RenderFillRect(sdl_renderer, &sdl_rect));
+            canvas.fillRect(camera.toRect(), rect, col.toFColor());
         }
         if (stroke) |col| {
-            setRenderDrawColor(col);
-            panickify(c.SDL_RenderRect(sdl_renderer, &sdl_rect));
+            const pixel_width = camera.height / window_size.y;
+            canvas.strokeRect(camera.toRect(), rect, pixel_width, col.toFColor());
         }
     }
 
     pub fn drawDebugText(camera: Camera, center: Point, text: [:0]const u8, color: Color) void {
-        const screen_point = screenFromWorld(camera, center);
-        // TODO: scale
-        // panickify(c.SDL_SetRenderScale(sdl_renderer, screen_point.scale / 8, screen_point.scale / 8));
-        // defer panickify(c.SDL_SetRenderScale(sdl_renderer, 1, 1));
-        setRenderDrawColor(color);
+        const v = std.math.lerp(0.1, 0.4, mouse.cur.client_pos.y);
+        // const v = std.math.lerp(0, 0.3, mouse.cur.client_pos.y);
+        std.log.debug("v: {d}", .{v});
         var it = std.mem.splitScalar(u8, text, '\n');
-        var y: f32 = -4 - 8 * (tof32(std.mem.count(u8, text, "\n")) / 2);
+        const n_lines = blk: {
+            var result: usize = 0;
+            while (it.next()) |_| result += 1;
+            it.reset();
+            break :blk result;
+        };
+        var k: f32 = -(tof32(n_lines) - 1) / 2;
         while (it.next()) |line| {
-            const lineZ = gpa.allocator().dupeZ(u8, line) catch @panic("OoM");
-            defer gpa.allocator().free(lineZ);
-            panickify(c.SDL_RenderDebugText(sdl_renderer, screen_point.pos.x - tof32(line.len) * 4, screen_point.pos.y + y, lineZ));
-            y += 8;
+            defer k += 1.0;
+            canvas.text_renderers[0].drawText(
+                gl_vtable,
+                camera.toRect(),
+                center.applyToLocalPosition(.new(
+                    -tof32(line.len) * 0.158,
+                    0.22583334 + k * 0.725,
+                )),
+                line,
+                center.scale * 0.7,
+                color.toFColor(),
+            );
         }
+        // const screen_point = screenFromWorld(camera, center);
+        // // TODO: scale
+        // // panickify(c.SDL_SetRenderScale(sdl_renderer, screen_point.scale / 8, screen_point.scale / 8));
+        // // defer panickify(c.SDL_SetRenderScale(sdl_renderer, 1, 1));
+        // setRenderDrawColor(color);
+        // var it = std.mem.splitScalar(u8, text, '\n');
+        // var y: f32 = -4 - 8 * (tof32(std.mem.count(u8, text, "\n")) / 2);
+        // while (it.next()) |line| {
+        //     const lineZ = gpa.allocator().dupeZ(u8, line) catch @panic("OoM");
+        //     defer gpa.allocator().free(lineZ);
+        //     panickify(c.SDL_RenderDebugText(sdl_renderer, screen_point.pos.x - tof32(line.len) * 4, screen_point.pos.y + y, lineZ));
+        //     y += 8;
+        // }
     }
 
-    fn polygon(screen_positions: []const Vec2, triangles: []const [3]usize, outline_points: []const usize, fill: Color, stroke: Color) void {
-        const vertices = gpa.allocator().alloc(c.SDL_Vertex, screen_positions.len) catch @panic("OoM");
-        defer gpa.allocator().free(vertices);
+    fn polygon(screen_positions: []const Vec2, triangles: []const [3]IndexType, outline_points: []const usize, fill: Color, stroke: Color) void {
+        const camera: Rect = .{ .top_left = .zero, .size = window_size };
+        canvas.fillShape(
+            camera,
+            .{},
+            .{ .local_points = screen_positions, .triangles = triangles },
+            fill.toFColor(),
+        );
 
-        for (screen_positions, vertices) |pos, *vertex| {
-            vertex.* = c.SDL_Vertex{
-                .position = c.SDL_FPoint{ .x = pos.x, .y = pos.y },
-                .color = c.SDL_FColor{
-                    .r = @as(f32, @floatFromInt(fill.r)) / 255.0,
-                    .g = @as(f32, @floatFromInt(fill.g)) / 255.0,
-                    .b = @as(f32, @floatFromInt(fill.b)) / 255.0,
-                    .a = 1.0,
-                },
-                .tex_coord = c.SDL_FPoint{ .x = 0, .y = 0 },
-            };
-        }
-
-        const indices = gpa.allocator().alloc(c_int, 3 * triangles.len) catch @panic("OoM");
-        for (triangles, 0..) |triangle, k| {
-            indices[k * 3 + 0] = @intCast(triangle[0]);
-            indices[k * 3 + 1] = @intCast(triangle[1]);
-            indices[k * 3 + 2] = @intCast(triangle[2]);
-        }
-        defer gpa.allocator().free(indices);
-
-        setRenderDrawColor(fill);
-        panickify(c.SDL_RenderGeometry(
-            sdl_renderer,
-            null,
-            vertices.ptr,
-            @intCast(vertices.len),
-            indices.ptr,
-            @intCast(indices.len),
-        ));
-
-        setRenderDrawColor(stroke);
         for (0..outline_points.len) |i| {
             const from = screen_positions[outline_points[i]];
             const to = screen_positions[outline_points[(i + 1) % outline_points.len]];
-            panickify(c.SDL_RenderLine(sdl_renderer, from.x, from.y, to.x, to.y));
+            canvas.line(camera, &.{ from, to }, 1, stroke.toFColor());
         }
     }
 
@@ -210,7 +190,7 @@ const SdlDrawer = struct {
             Vec2.new(-1, -1),
             Vec2.new(0, -1),
         };
-        const indices = [_][3]usize{
+        const indices = [_][3]u16{
             .{ 1, 2, 3 },
             .{ 0, 1, 3 },
             .{ 0, 3, 4 },
@@ -251,11 +231,15 @@ const SdlDrawer = struct {
             );
         }
 
-        const indices = gpa.allocator().alloc([3]usize, profile.len * 2 + 3) catch @panic("TODO");
+        const indices = gpa.allocator().alloc([3]IndexType, profile.len * 2 + 3) catch @panic("TODO");
         defer gpa.allocator().free(indices);
         @memset(indices, .{ 0, 0, 0 });
         for (0..indices.len) |i| {
-            indices[i] = .{ 2, (3 + i) % screen_positions.len, (4 + i) % screen_positions.len };
+            indices[i] = .{
+                2,
+                @intCast((3 + i) % screen_positions.len),
+                @intCast((4 + i) % screen_positions.len),
+            };
         }
 
         const outline = gpa.allocator().alloc(usize, screen_positions.len) catch @panic("TODO");
@@ -277,7 +261,7 @@ const SdlDrawer = struct {
             Vec2.new(0.5, -1),
             Vec2.new(0, -1),
         };
-        const indices = [_][3]usize{
+        const indices = [_][3]IndexType{
             .{ 1, 2, 3 },
             .{ 0, 1, 3 },
             .{ 0, 3, 5 },
@@ -302,7 +286,7 @@ const SdlDrawer = struct {
             Vec2.new(-0.5, -1),
             Vec2.new(0, -1),
         };
-        const indices = [_][3]usize{
+        const indices = [_][3]IndexType{
             .{ 1, 2, 3 },
             .{ 0, 1, 3 },
             .{ 0, 3, 5 },
@@ -329,7 +313,7 @@ const SdlDrawer = struct {
             Vec2.new(0.5, -1),
             Vec2.new(0, -1),
         };
-        const indices = [_][3]usize{
+        const indices = [_][3]IndexType{
             .{ 1, 2, 3 },
             .{ 0, 1, 3 },
             .{ 0, 3, 4 },
@@ -358,7 +342,7 @@ const SdlDrawer = struct {
             Vec2.new(-1, -1),
             Vec2.new(0, -1),
         };
-        const indices = [_][3]usize{
+        const indices = [_][3]IndexType{
             .{ 1, 2, 3 },
             .{ 0, 1, 3 },
             .{ 0, 3, 4 },
@@ -385,7 +369,7 @@ const SdlDrawer = struct {
             Vec2.new(2, -1),
             Vec2.new(0, -1),
         };
-        const indices = [_][3]usize{
+        const indices = [_][3]IndexType{
             .{ 1, 2, 3 },
             .{ 0, 1, 3 },
             .{ 0, 3, 4 },
@@ -407,50 +391,53 @@ const SdlDrawer = struct {
     }
 
     pub fn drawCable(camera: Camera, world_from: Vec2, world_to: Vec2, world_scale: f32, offset: f32) void {
-        const screen_from = screenFromWorldPosition(camera, world_from);
-        const screen_to = screenFromWorldPosition(camera, world_to);
-        const scale = screenFromWorldScale(camera, world_scale);
-        _ = scale;
         _ = offset;
-        setRenderDrawColor(Color.black);
-        panickify(c.SDL_RenderLine(sdl_renderer, screen_from.x, screen_from.y, screen_to.x, screen_to.y));
+        const pixel_width = camera.height / window_size.y;
+        canvas.line(camera.toRect(), &.{ world_from, world_to }, world_scale * pixel_width, .black);
     }
 
     pub fn drawFnkHolder(camera: Camera, world_point: Point) void {
-        const screen_point = screenFromWorld(camera, world_point);
+        const pixel_width = camera.height / window_size.y;
+        canvas.strokeCircle(
+            32,
+            camera.toRect(),
+            world_point.pos,
+            world_point.scale / 2.0,
+            pixel_width,
+            .black,
+        );
 
-        setRenderDrawColor(Color.black);
-        strokeCircle(32, screen_point.applyToLocalPoint(.{ .scale = 0.5 }));
-
-        strokePoints(2, &.{
-            screen_point.applyToLocalPosition(.new(0, -0.5)),
-            screen_point.applyToLocalPosition(.new(0, -1.5)),
-        });
+        canvas.line(
+            camera.toRect(),
+            &.{
+                world_point.applyToLocalPosition(.new(0, -0.5)),
+                world_point.applyToLocalPosition(.new(0, -1.5)),
+            },
+            pixel_width,
+            .black,
+        );
     }
 
     fn strokePoints(N: comptime_int, screen_positions: *const [N]Vec2) void {
-        var sdl_points: [N]c.SDL_FPoint = undefined;
-        for (&sdl_points, screen_positions) |*target, source| {
-            target.* = c.SDL_FPoint{ .x = source.x, .y = source.y };
-        }
-        panickify(c.SDL_RenderLines(sdl_renderer, &sdl_points, sdl_points.len));
-    }
-
-    fn strokeCircle(N: comptime_int, screen_point: Point) void {
-        var screen_positions: [N + 1]c.SDL_FPoint = undefined;
-        for (0..N) |k| {
-            const radians = std.math.tau * @as(f32, @floatFromInt(k)) / @as(f32, @floatFromInt(N));
-            const point = screen_point.applyToLocalPosition(Vec2.new(std.math.cos(radians), std.math.sin(radians)));
-            screen_positions[k] = c.SDL_FPoint{ .x = point.x, .y = point.y };
-        }
-        screen_positions[N] = screen_positions[0];
-        panickify(c.SDL_RenderLines(sdl_renderer, &screen_positions, screen_positions.len));
+        // TODO NOW
+        _ = screen_positions;
+        // var sdl_points: [N]c.SDL_FPoint = undefined;
+        // for (&sdl_points, screen_positions) |*target, source| {
+        //     target.* = c.SDL_FPoint{ .x = source.x, .y = source.y };
+        // }
+        // panickify(c.SDL_RenderLines(sdl_renderer, &sdl_points, sdl_points.len));
     }
 
     pub fn drawCaseHolder(camera: Camera, world_point: Point) void {
-        const screen_point = screenFromWorld(camera, world_point);
-        setRenderDrawColor(Color.white);
-        strokeCircle(32, screen_point.applyToLocalPoint(.{ .scale = 0.5 }));
+        const pixel_width = camera.height / window_size.y;
+        canvas.strokeCircle(
+            32,
+            camera.toRect(),
+            world_point.pos,
+            world_point.scale / 2.0,
+            pixel_width,
+            .white,
+        );
     }
 
     pub fn drawAtom(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {
@@ -479,11 +466,15 @@ const SdlDrawer = struct {
             );
         }
 
-        const indices = gpa.allocator().alloc([3]usize, profile.len * 2 + 3) catch @panic("TODO");
+        const indices = gpa.allocator().alloc([3]IndexType, profile.len * 2 + 3) catch @panic("TODO");
         defer gpa.allocator().free(indices);
         @memset(indices, .{ 0, 0, 0 });
         for (0..indices.len) |i| {
-            indices[i] = .{ 2, (3 + i) % screen_positions.len, (4 + i) % screen_positions.len };
+            indices[i] = .{
+                2,
+                @intCast((3 + i) % screen_positions.len),
+                @intCast((4 + i) % screen_positions.len),
+            };
         }
 
         const outline = gpa.allocator().alloc(usize, screen_positions.len) catch @panic("TODO");
@@ -501,6 +492,8 @@ const SdlDrawer = struct {
         drawLine(camera, points, visuals[0].color);
     }
 };
+
+var gl_procs: gl.ProcTable = undefined;
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
 const sdl_platform = presenter.Platform{
@@ -581,37 +574,419 @@ pub fn main() !void {
     try errify(c.SDL_Init(c.SDL_INIT_VIDEO));
     defer c.SDL_Quit();
 
+    errify(c.SDL_SetHint(c.SDL_HINT_RENDER_VSYNC, "1")) catch {};
+
+    try errify(c.SDL_GL_SetAttribute(c.SDL_GL_CONTEXT_MAJOR_VERSION, gl.info.version_major));
+    try errify(c.SDL_GL_SetAttribute(c.SDL_GL_CONTEXT_MINOR_VERSION, gl.info.version_minor));
+    if (gl.info.profile) |profile| try errify(c.SDL_GL_SetAttribute(c.SDL_GL_CONTEXT_PROFILE_MASK, switch (profile) {
+        .core => c.SDL_GL_CONTEXT_PROFILE_CORE,
+        else => @compileError("TODO"),
+    }));
+    try errify(c.SDL_GL_SetAttribute(c.SDL_GL_CONTEXT_FLAGS, c.SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG));
+
+    if (true) {
+        try errify(c.SDL_GL_SetAttribute(c.SDL_GL_MULTISAMPLEBUFFERS, 1));
+        try errify(c.SDL_GL_SetAttribute(c.SDL_GL_MULTISAMPLESAMPLES, 16));
+    }
+
     std.log.debug("SDL video drivers: {}", .{fmtSdlDrivers(
         c.SDL_GetCurrentVideoDriver().?,
         c.SDL_GetNumVideoDrivers(),
         c.SDL_GetVideoDriver,
     )});
 
-    errify(c.SDL_SetHint(c.SDL_HINT_RENDER_VSYNC, "1")) catch {};
+    const sdl_window: *c.SDL_Window = try errify(c.SDL_CreateWindow(
+        "Vaulogy",
+        @intFromFloat(window_size.x),
+        @intFromFloat(window_size.y),
+        c.SDL_WINDOW_OPENGL,
+    ));
+    defer c.SDL_DestroyWindow(sdl_window);
 
-    const window: *c.SDL_Window, const renderer: *c.SDL_Renderer = create_window_and_renderer: {
-        var window: ?*c.SDL_Window = null;
-        var renderer: ?*c.SDL_Renderer = null;
-        try errify(c.SDL_CreateWindowAndRenderer("Vaulogy", @intFromFloat(window_size.x), @intFromFloat(window_size.y), 0, &window, &renderer));
-        errdefer comptime unreachable;
+    const gl_context = try errify(c.SDL_GL_CreateContext(sdl_window));
+    defer errify(c.SDL_GL_DestroyContext(gl_context)) catch {};
+    try errify(c.SDL_GL_MakeCurrent(sdl_window, gl_context));
+    defer errify(c.SDL_GL_MakeCurrent(sdl_window, null)) catch {};
+    if (!gl_procs.init(c.SDL_GL_GetProcAddress)) return error.GlInitFailed;
+    gl.makeProcTableCurrent(&gl_procs);
+    defer gl.makeProcTableCurrent(null);
 
-        break :create_window_and_renderer .{ window.?, renderer.? };
+    gl.Viewport(0, 0, @intCast(window_size.toInt(c_int).x), @intCast(window_size.toInt(c_int).y));
+    gl.Enable(gl.BLEND);
+    gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+    const sdl_gl = struct {
+        pub const vtable: Gl = .{
+            .clear = clear,
+            .buildRenderable = buildRenderable,
+            .useRenderable = useRenderable,
+            .buildTexture2D = buildTexture2D,
+            .buildInstancedRenderable = buildInstancedRenderable,
+            .useInstancedRenderable = useInstancedRenderable,
+        };
+
+        pub fn clear(color: FColor) void {
+            gl.ClearBufferfv(gl.COLOR, 0, &color.toArray());
+        }
+
+        pub fn buildTexture2D(data: *const anyopaque) Gl.Texture {
+            const image: *const zstbi.Image = @alignCast(@ptrCast(data));
+
+            const has_alpha = switch (image.num_components) {
+                3 => false,
+                4 => true,
+                else => unreachable,
+            };
+
+            var texture: c_uint = undefined;
+            gl.GenTextures(1, @ptrCast(&texture));
+            gl.BindTexture(gl.TEXTURE_2D, texture);
+            gl.TexImage2D(
+                gl.TEXTURE_2D,
+                0,
+                if (has_alpha) gl.RGBA else gl.RGB,
+                @intCast(image.width),
+                @intCast(image.height),
+                0,
+                if (has_alpha) gl.RGBA else gl.RGB,
+                gl.UNSIGNED_BYTE,
+                image.data.ptr,
+            );
+            gl.GenerateMipmap(gl.TEXTURE_2D);
+            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            // TODO: let user choose quality
+            gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+
+            return .{ .id = texture };
+        }
+
+        pub fn buildRenderable(
+            vertex_src: [:0]const u8,
+            fragment_src: [:0]const u8,
+            attributes: Gl.VertexInfo.Collection,
+            uniforms: []const Gl.UniformInfo.In,
+        ) !Gl.Renderable {
+            const program = try (ProgramInfo{
+                .vertex = vertex_src,
+                .fragment = fragment_src,
+            }).load();
+
+            var vao: c_uint = undefined;
+            gl.GenVertexArrays(1, @ptrCast(&vao));
+
+            gl.BindVertexArray(vao);
+
+            var vbo: c_uint = undefined;
+            gl.GenBuffers(1, @ptrCast(&vbo));
+            var ebo: c_uint = undefined;
+            gl.GenBuffers(1, @ptrCast(&ebo));
+
+            gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo);
+            defer gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, 0);
+
+            gl.BindBuffer(gl.ARRAY_BUFFER, vbo);
+            defer gl.BindBuffer(gl.ARRAY_BUFFER, 0);
+
+            defer gl.BindVertexArray(0);
+
+            for (attributes.attribs, 0..) |attribute, k| {
+                const index: gl.uint = @intCast(gl.GetAttribLocation(program, attribute.name));
+                if (index == -1) return error.AttributeLocationError;
+                gl.EnableVertexAttribArray(index);
+                gl.VertexAttribPointer(
+                    index,
+                    @intFromEnum(attribute.kind.count()),
+                    @intFromEnum(attribute.kind.type()),
+                    if (attribute.kind.normalized()) gl.TRUE else gl.FALSE,
+                    // TODO: check in debugger if this is computed once
+                    @intCast(attributes.getStride()),
+                    attributes.getOffset(k),
+                );
+            }
+
+            var uniforms_data = std.BoundedArray(Gl.UniformInfo, 8).init(0) catch unreachable;
+            for (uniforms) |uniform| {
+                const location = gl.GetUniformLocation(program, uniform.name);
+                if (location == -1) return error.UniformLocationError;
+                uniforms_data.append(.{
+                    .location = location,
+                    .name = uniform.name,
+                    .kind = uniform.kind,
+                }) catch return error.TooManyUniforms;
+            }
+
+            return .{
+                .program = @enumFromInt(program),
+                .vao = @enumFromInt(vao),
+                .vbo = @enumFromInt(vbo),
+                .ebo = @enumFromInt(ebo),
+                .uniforms = uniforms_data,
+            };
+        }
+
+        pub fn useRenderable(
+            renderable: Gl.Renderable,
+            vertices_ptr: *const anyopaque,
+            vertices_len_bytes: usize,
+            // vertices: []const anyopaque,
+            // TODO: make triangles optional, since they could be precomputed
+            triangles: []const [3]Gl.IndexType,
+            uniforms: []const Gl.UniformInfo.Runtime,
+            // TODO: multiple textures
+            texture: ?Gl.Texture,
+        ) void {
+            {
+                gl.BindBuffer(gl.ARRAY_BUFFER, @intFromEnum(renderable.vbo));
+                gl.BufferData(
+                    gl.ARRAY_BUFFER,
+                    @intCast(vertices_len_bytes),
+                    @ptrCast(vertices_ptr),
+                    gl.DYNAMIC_DRAW,
+                );
+                gl.BindBuffer(gl.ARRAY_BUFFER, 0);
+            }
+
+            {
+                gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, @intFromEnum(renderable.ebo));
+                gl.BufferData(
+                    gl.ELEMENT_ARRAY_BUFFER,
+                    @intCast(@sizeOf([3]Gl.IndexType) * triangles.len),
+                    triangles.ptr,
+                    gl.DYNAMIC_DRAW,
+                );
+                gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, 0);
+            }
+
+            if (texture) |t| gl.BindTexture(gl.TEXTURE_2D, t.id);
+            defer if (texture) |_| gl.BindTexture(gl.TEXTURE_2D, 0);
+
+            gl.BindVertexArray(@intFromEnum(renderable.vao));
+            defer gl.BindVertexArray(0);
+
+            gl.UseProgram(@intFromEnum(renderable.program));
+            defer gl.UseProgram(0);
+
+            for (uniforms) |uniform| {
+                // const u = uniform.location;
+                // TODO
+                const u = blk: {
+                    for (renderable.uniforms.slice()) |u| {
+                        if (std.mem.eql(u8, u.name, uniform.name)) break :blk u.location;
+                    } else unreachable;
+                };
+                switch (uniform.value) {
+                    .FColor => |v| gl.Uniform4f(u, v.r, v.g, v.b, v.a),
+                    .Rect => |v| gl.Uniform4f(u, v.top_left.x, v.top_left.y, v.size.x, v.size.y),
+                    .Point => |v| gl.Uniform4f(u, v.pos.x, v.pos.y, v.turns, v.scale),
+                    .f32 => |v| gl.Uniform1f(u, v),
+                }
+            }
+
+            gl.DrawElements(gl.TRIANGLES, @intCast(3 * triangles.len), switch (Gl.IndexType) {
+                u16 => gl.UNSIGNED_SHORT,
+                else => @compileError("not implemented"),
+            }, 0);
+        }
+
+        pub fn buildInstancedRenderable(
+            vertex_src: [:0]const u8,
+            fragment_src: [:0]const u8,
+            per_vertex_attributes: Gl.VertexInfo.Collection,
+            per_instance_attributes: Gl.VertexInfo.Collection,
+            uniforms: []const Gl.UniformInfo.In,
+        ) !Gl.InstancedRenderable {
+            const program = try (ProgramInfo{
+                .vertex = vertex_src,
+                .fragment = fragment_src,
+            }).load();
+
+            var vao: c_uint = undefined;
+            gl.GenVertexArrays(1, @ptrCast(&vao));
+
+            gl.BindVertexArray(vao);
+
+            // TODO: single GenBuffers call
+            var vbo_vertices: c_uint = undefined;
+            gl.GenBuffers(1, @ptrCast(&vbo_vertices));
+            var vbo_instances: c_uint = undefined;
+            gl.GenBuffers(1, @ptrCast(&vbo_instances));
+            var ebo: c_uint = undefined;
+            gl.GenBuffers(1, @ptrCast(&ebo));
+
+            gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo);
+            // defer gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, 0);
+
+            defer gl.BindVertexArray(0);
+
+            // https://webgl2fundamentals.org/webgl/lessons/webgl-instanced-drawing.html
+
+            {
+                gl.BindBuffer(gl.ARRAY_BUFFER, vbo_vertices);
+                // defer gl.BindBuffer(gl.ARRAY_BUFFER, 0);
+
+                const attributes = per_vertex_attributes;
+                for (attributes.attribs, 0..) |attribute, k| {
+                    const index: gl.uint = @intCast(gl.GetAttribLocation(program, attribute.name));
+                    if (index == -1) return error.AttributeLocationError;
+                    gl.EnableVertexAttribArray(index);
+                    gl.VertexAttribPointer(
+                        index,
+                        @intFromEnum(attribute.kind.count()),
+                        @intFromEnum(attribute.kind.type()),
+                        if (attribute.kind.normalized()) gl.TRUE else gl.FALSE,
+                        // TODO: check in debugger if this is computed once
+                        @intCast(attributes.getStride()),
+                        attributes.getOffset(k),
+                    );
+                }
+            }
+
+            {
+                gl.BindBuffer(gl.ARRAY_BUFFER, vbo_instances);
+                // defer gl.BindBuffer(gl.ARRAY_BUFFER, 0);
+
+                const attributes = per_instance_attributes;
+                for (attributes.attribs, 0..) |attribute, k| {
+                    const index: gl.uint = @intCast(gl.GetAttribLocation(program, attribute.name));
+                    if (index == -1) return error.AttributeLocationError;
+                    gl.EnableVertexAttribArray(index);
+                    gl.VertexAttribPointer(
+                        index,
+                        @intFromEnum(attribute.kind.count()),
+                        @intFromEnum(attribute.kind.type()),
+                        if (attribute.kind.normalized()) gl.TRUE else gl.FALSE,
+                        // TODO: check in debugger if this is computed once
+                        @intCast(attributes.getStride()),
+                        attributes.getOffset(k),
+                    );
+                    gl.VertexAttribDivisor(index, 1);
+                }
+            }
+
+            var uniforms_data = std.BoundedArray(Gl.UniformInfo, 8).init(0) catch unreachable;
+            for (uniforms) |uniform| {
+                const location = gl.GetUniformLocation(program, uniform.name);
+                if (location == -1) return error.UniformLocationError;
+                uniforms_data.append(.{
+                    .location = location,
+                    .name = uniform.name,
+                    .kind = uniform.kind,
+                }) catch return error.TooManyUniforms;
+            }
+
+            return .{
+                .program = @enumFromInt(program),
+                .vao = @enumFromInt(vao),
+                .vbo_vertices = @enumFromInt(vbo_vertices),
+                .vbo_instances = @enumFromInt(vbo_instances),
+                .ebo = @enumFromInt(ebo),
+                .uniforms = uniforms_data,
+            };
+        }
+
+        pub fn useInstancedRenderable(
+            renderable: Gl.InstancedRenderable,
+            // TODO: make the vertex data optional, since it could be precomputed
+            vertex_data_ptr: *const anyopaque,
+            vertex_data_len_bytes: usize,
+            // TODO: make triangles optional, since they could be precomputed
+            triangles: []const [3]Gl.IndexType,
+            instance_data_ptr: *const anyopaque,
+            instance_data_len_bytes: usize,
+            instance_count: usize,
+            uniforms: []const Gl.UniformInfo.Runtime,
+            // TODO: multiple textures
+            texture: ?Gl.Texture,
+        ) void {
+            {
+                gl.BindBuffer(gl.ARRAY_BUFFER, @intFromEnum(renderable.vbo_vertices));
+                gl.BufferData(
+                    gl.ARRAY_BUFFER,
+                    @intCast(vertex_data_len_bytes),
+                    @ptrCast(vertex_data_ptr),
+                    gl.DYNAMIC_DRAW,
+                );
+                gl.BindBuffer(gl.ARRAY_BUFFER, 0);
+            }
+
+            {
+                gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, @intFromEnum(renderable.ebo));
+                gl.BufferData(
+                    gl.ELEMENT_ARRAY_BUFFER,
+                    @intCast(@sizeOf([3]Gl.IndexType) * triangles.len),
+                    triangles.ptr,
+                    gl.DYNAMIC_DRAW,
+                );
+                gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, 0);
+            }
+
+            {
+                gl.BindBuffer(gl.ARRAY_BUFFER, @intFromEnum(renderable.vbo_instances));
+                gl.BufferData(
+                    gl.ARRAY_BUFFER,
+                    @intCast(instance_data_len_bytes),
+                    @ptrCast(instance_data_ptr),
+                    gl.DYNAMIC_DRAW,
+                );
+                gl.BindBuffer(gl.ARRAY_BUFFER, 0);
+            }
+
+            // TODO
+            assert(texture == null);
+            // if (texture) |t| gl.BindTexture(gl.TEXTURE_2D, t.id);
+            // defer if (texture) |_| gl.BindTexture(gl.TEXTURE_2D, 0);
+
+            gl.BindVertexArray(@intFromEnum(renderable.vao));
+            defer gl.BindVertexArray(0);
+
+            gl.UseProgram(@intFromEnum(renderable.program));
+            defer gl.UseProgram(0);
+
+            for (uniforms) |uniform| {
+                // const u = uniform.location;
+                // TODO
+                const u = blk: {
+                    for (renderable.uniforms.slice()) |u| {
+                        if (std.mem.eql(u8, u.name, uniform.name)) break :blk u.location;
+                    } else unreachable;
+                };
+                switch (uniform.value) {
+                    .FColor => |v| gl.Uniform4f(u, v.r, v.g, v.b, v.a),
+                    .Rect => |v| gl.Uniform4f(u, v.top_left.x, v.top_left.y, v.size.x, v.size.y),
+                    .Point => |v| gl.Uniform4f(u, v.pos.x, v.pos.y, v.turns, v.scale),
+                    .f32 => |v| gl.Uniform1f(u, v),
+                }
+            }
+
+            gl.DrawElementsInstanced(gl.TRIANGLES, @intCast(3 * triangles.len), switch (Gl.IndexType) {
+                u16 => gl.UNSIGNED_SHORT,
+                else => @compileError("not implemented"),
+            }, null, @intCast(instance_count));
+        }
     };
-    sdl_renderer = renderer;
-    defer c.SDL_DestroyRenderer(renderer);
-    defer c.SDL_DestroyWindow(window);
+    gl_vtable = sdl_gl.vtable;
 
-    std.log.debug("SDL render drivers: {}", .{fmtSdlDrivers(
-        c.SDL_GetRendererName(renderer).?,
-        c.SDL_GetNumRenderDrivers(),
-        c.SDL_GetRenderDriver,
-    )});
+    zstbi.init(gpa.allocator());
+    defer zstbi.deinit();
+    var arial_atlas = try zstbi.Image.loadFromMemory(@embedFile("./fonts/Arial.png"), 0);
+    defer arial_atlas.deinit();
+
+    canvas = try .init(gl_vtable, gpa.allocator(), &.{@embedFile("./fonts/Arial.json")}, &.{&arial_atlas});
+    defer canvas.deinit(gl_vtable, gpa.allocator());
 
     try @TypeOf(game).init(&game);
 
-    var timekeeper: Timekeeper = .{ .tocks_per_s = c.SDL_GetPerformanceFrequency() };
+    // var timekeeper: Timekeeper = .{ .tocks_per_s = c.SDL_GetPerformanceFrequency() };
 
+    var timer: std.time.Timer = try .start();
     main_loop: while (true) {
+        const lap: f32 = @floatFromInt(timer.lap());
+        if (lap / std.time.ns_per_ms > 17) {
+            std.log.warn("slow frame: {d}ms", .{lap / std.time.ns_per_ms});
+        } else if (lap / std.time.ns_per_ms < 15) {
+            std.log.warn("fast frame: {d}ms", .{lap / std.time.ns_per_ms});
+        }
+
         // Process SDL events
         {
             var event: c.SDL_Event = undefined;
@@ -656,7 +1031,8 @@ pub fn main() !void {
         }
 
         // Update the game state
-        while (timekeeper.consume()) {
+        // while (timekeeper.consume()) {
+        {
             // frame logic
             try game.update(1.0 / 60.0);
             mouse.prev = mouse.cur;
@@ -665,14 +1041,10 @@ pub fn main() !void {
         }
 
         // Draw
-        {
-            // SdlDrawer.clear(Color.new(0x47, 0x5b, 0x8d));
-            // SdlDrawer.drawRect(.{ .center = Vec2.half, .height = 3 }, .{ .size = .new(1, 1), .top_left = .zero });
-            try game.draw();
-            try errify(c.SDL_RenderPresent(renderer));
-        }
+        try game.draw();
+        try errify(c.SDL_GL_SwapWindow(sdl_window));
 
-        timekeeper.produce(c.SDL_GetPerformanceCounter());
+        // timekeeper.produce(c.SDL_GetPerformanceCounter());
     }
 }
 
@@ -790,3 +1162,66 @@ inline fn panickify(value: anytype) switch (@typeInfo(@TypeOf(value))) {
         std.debug.panic("SDL error: {s}", .{c.SDL_GetError()});
     };
 }
+
+// TODO: delete/improve this
+pub const ProgramInfo = struct {
+    const preamble: [:0]const u8 =
+        \\#version 330 core
+        \\
+    ;
+    vertex: [:0]const u8,
+    fragment: [:0]const u8,
+
+    fn doShader(stage: enum { vertex, fragment }, source: [:0]const u8) !gl.uint {
+        assert(!std.mem.startsWith(u8, source, "#version"));
+        const result = gl.CreateShader(switch (stage) {
+            .vertex => gl.VERTEX_SHADER,
+            .fragment => gl.FRAGMENT_SHADER,
+        });
+        gl.ShaderSource(
+            result,
+            2,
+            &.{ preamble.ptr, source.ptr },
+            &.{ @intCast(preamble.len), @intCast(source.len) },
+        );
+        gl.CompileShader(result);
+
+        var success: gl.int = undefined;
+        gl.GetShaderiv(result, gl.COMPILE_STATUS, &success);
+        if (success == 0) {
+            var info_log: [512]u8 = undefined;
+            var info_len: gl.sizei = undefined;
+            gl.GetShaderInfoLog(result, info_log.len, &info_len, &info_log);
+            std.log.err("Failed to compile shader: {s}", .{info_log[0..@intCast(info_len)]});
+            return error.ShaderCreationError;
+        }
+
+        return result;
+    }
+
+    pub fn load(self: ProgramInfo) !gl.uint {
+        const vertex_shader = try doShader(.vertex, self.vertex);
+        defer gl.DeleteShader(vertex_shader);
+
+        const fragment_shader = try doShader(.fragment, self.fragment);
+        defer gl.DeleteShader(fragment_shader);
+
+        const program = gl.CreateProgram();
+
+        gl.AttachShader(program, vertex_shader);
+        gl.AttachShader(program, fragment_shader);
+        gl.LinkProgram(program);
+
+        var success: gl.int = undefined;
+        gl.GetProgramiv(program, gl.LINK_STATUS, &success);
+        if (success == 0) {
+            var info_log: [512]u8 = undefined;
+            var info_len: gl.sizei = undefined;
+            gl.GetProgramInfoLog(program, info_log.len, &info_len, &info_log);
+            std.log.err("Failed to link shader: {s}", .{info_log[0..@intCast(info_len)]});
+            return error.ShaderCreationError;
+        }
+
+        return program;
+    }
+};

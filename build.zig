@@ -115,6 +115,13 @@ pub fn build(b: *std.Build) void {
         });
         const sdl_lib = sdl_dep.artifact("SDL3");
         sdlgame_exe.linkLibrary(sdl_lib);
+        sdlgame_exe.root_module.addImport("zstbi", b.dependency("zstbi", .{}).module("root"));
+        // The closest version to WebGL2
+        sdlgame_exe.root_module.addImport("gl", @import("zigglgen").generateBindingsModule(b, .{
+            .api = .gl,
+            .version = .@"3.3",
+            .profile = .core,
+        }));
         b.installArtifact(sdlgame_exe);
 
         const run_sdlgame_cmd = b.addRunArtifact(sdlgame_exe);
@@ -130,6 +137,13 @@ pub fn build(b: *std.Build) void {
         });
         sdlgame_exe_check.root_module.addOptions("DESIGN", DESIGN.default.toOptions(b));
         sdlgame_exe_check.linkLibrary(sdl_lib);
+        sdlgame_exe_check.root_module.addImport("zstbi", b.dependency("zstbi", .{}).module("root"));
+        // The closest version to WebGL2
+        sdlgame_exe_check.root_module.addImport("gl", @import("zigglgen").generateBindingsModule(b, .{
+            .api = .gl,
+            .version = .@"3.3",
+            .profile = .core,
+        }));
         check.dependOn(&sdlgame_exe_check.step);
     }
 

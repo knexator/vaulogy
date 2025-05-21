@@ -242,6 +242,52 @@ pub fn fillRect(
     );
 }
 
+pub fn strokeRect(
+    self: Canvas,
+    camera: Rect,
+    rect: Rect,
+    width: f32,
+    color: FColor,
+) void {
+    self.line(
+        camera,
+        &.{
+            rect.top_left,
+            rect.get(.top_right),
+            rect.get(.bottom_right),
+            rect.get(.bottom_left),
+            rect.top_left,
+        },
+        width,
+        color,
+    );
+}
+
+pub fn strokeCircle(
+    self: Canvas,
+    comptime resolution: usize,
+    camera: Rect,
+    center: Vec2,
+    radius: f32,
+    width: f32,
+    color: FColor,
+) void {
+    self.line(
+        camera,
+        &funk.mapWithCtx(
+            struct {
+                pub fn anon(ctx: struct { radius: f32, center: Vec2 }, t: f32) Vec2 {
+                    return ctx.center.add(.fromPolar(ctx.radius, t));
+                }
+            }.anon,
+            &funk.linspace01(resolution, true),
+            .{ .radius = radius, .center = center },
+        ),
+        width,
+        color,
+    );
+}
+
 pub fn fillArc(self: *Canvas, camera: Rect, center: Vec2, radius: f32, turns_start: f32, turns_end: f32, color: FColor) !void {
     self.fillShape(camera, .{
         .pos = center,
@@ -294,7 +340,7 @@ pub fn fillInstancedCircles(
 
 // // https://wwwtyro.net/2019/11/18/instanced-lines.html
 pub fn line(
-    self: *Canvas,
+    self: Canvas,
     camera: Rect,
     points: []const Vec2,
     world_width: f32,
@@ -461,6 +507,7 @@ pub const TextRenderer = struct {
                 \\
                 \\in vec2 v_texcoord;
                 \\uniform sampler2D u_texture;
+                \\uniform vec4 u_color;
                 \\
                 \\float median(float r, float g, float b) {
                 \\  return max(min(r, g), min(max(r, g), b));
@@ -485,14 +532,16 @@ pub const TextRenderer = struct {
                 \\  float transition_pixels = 1.0;
                 \\  float alpha = clamp(inverseLerp(-transition_pixels / 2.0, transition_pixels / 2.0, distance_in_pixels), 0.0, 1.0);
                 \\  // TODO: premultiply alpha?
-                \\  out_color = vec4(vec3(1.0), alpha);
+                \\  out_color = mix(vec4(0), u_color, alpha);
                 \\}
             ,
                 .{ .attribs = &.{
                     .{ .name = "a_position", .kind = .Vec2 },
                     .{ .name = "a_texcoord", .kind = .Vec2 },
                 } },
-                &.{},
+                &.{
+                    .{ .name = "u_color", .kind = .FColor },
+                },
             ),
         };
     }
@@ -507,19 +556,47 @@ pub const TextRenderer = struct {
 
     // TODO: kerning
     // TODO: single draw call, maybe
-    pub fn drawText(self: TextRenderer, gl: Gl, camera: Rect, bottom_left: Vec2, text: []const u8, em: f32) void {
+    pub fn drawText(
+        self: TextRenderer,
+        gl: Gl,
+        camera: Rect,
+        bottom_left: Vec2,
+        text: []const u8,
+        em: f32,
+        color: FColor,
+    ) void {
         var cursor: Vec2 = bottom_left;
         for (text) |char| {
-            cursor = self.drawLetter(gl, camera, cursor, char, em);
+            cursor = self.drawLetter(
+                gl,
+                camera,
+                cursor,
+                char,
+                em,
+                color,
+            );
         }
     }
 
     // TODO: use a map
-    pub fn drawLetter(self: TextRenderer, gl: Gl, camera: Rect, bottom_left: Vec2, letter: u8, em: f32) Vec2 {
+    pub fn drawLetter(
+        self: TextRenderer,
+        gl: Gl,
+        camera: Rect,
+        bottom_left: Vec2,
+        letter: u8,
+        em: f32,
+        color: FColor,
+    ) Vec2 {
+        const default_glyph_info = blk: {
+            for (self.font_info.value.glyphs) |glyph| {
+                if (glyph.unicode == '?') break :blk glyph;
+            } else unreachable;
+        };
         const glyph_info = blk: {
             for (self.font_info.value.glyphs) |glyph| {
                 if (glyph.unicode == letter) break :blk glyph;
-            } else unreachable;
+            } else break :blk default_glyph_info;
         };
         if (glyph_info.atlasBounds) |b| {
             const s = UVec2.new(
@@ -530,28 +607,37 @@ pub const TextRenderer = struct {
 
             // TODO: use a better api
             const VertexData = extern struct { position: Vec2, texcoord: Vec2 };
-            gl.useRenderable(self.renderable, &[4]VertexData{
-                .{
-                    .position = camera.localFromWorldPosition(bottom_left
-                        .add(Vec2.new(p.left, p.bottom).scale(em))),
-                    .texcoord = Vec2.new(b.left, b.bottom).div(s),
+            gl.useRenderable(
+                self.renderable,
+                &[4]VertexData{
+                    .{
+                        .position = camera.localFromWorldPosition(bottom_left
+                            .add(Vec2.new(p.left, p.bottom).scale(em))),
+                        .texcoord = Vec2.new(b.left, b.bottom).div(s),
+                    },
+                    .{
+                        .position = camera.localFromWorldPosition(bottom_left
+                            .add(Vec2.new(p.right, p.bottom).scale(em))),
+                        .texcoord = Vec2.new(b.right, b.bottom).div(s),
+                    },
+                    .{
+                        .position = camera.localFromWorldPosition(bottom_left
+                            .add(Vec2.new(p.left, p.top).scale(em))),
+                        .texcoord = Vec2.new(b.left, b.top).div(s),
+                    },
+                    .{
+                        .position = camera.localFromWorldPosition(bottom_left
+                            .add(Vec2.new(p.right, p.top).scale(em))),
+                        .texcoord = Vec2.new(b.right, b.top).div(s),
+                    },
                 },
-                .{
-                    .position = camera.localFromWorldPosition(bottom_left
-                        .add(Vec2.new(p.right, p.bottom).scale(em))),
-                    .texcoord = Vec2.new(b.right, b.bottom).div(s),
+                4 * @sizeOf(VertexData),
+                &.{ .{ 0, 1, 2 }, .{ 3, 2, 1 } },
+                &.{
+                    .{ .name = "u_color", .value = .{ .FColor = color } },
                 },
-                .{
-                    .position = camera.localFromWorldPosition(bottom_left
-                        .add(Vec2.new(p.left, p.top).scale(em))),
-                    .texcoord = Vec2.new(b.left, b.top).div(s),
-                },
-                .{
-                    .position = camera.localFromWorldPosition(bottom_left
-                        .add(Vec2.new(p.right, p.top).scale(em))),
-                    .texcoord = Vec2.new(b.right, b.top).div(s),
-                },
-            }, 4 * @sizeOf(VertexData), &.{ .{ 0, 1, 2 }, .{ 3, 2, 1 } }, &.{}, self.atlas_texture);
+                self.atlas_texture,
+            );
         }
 
         return bottom_left.addX(em * glyph_info.advance);
