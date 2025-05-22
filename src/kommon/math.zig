@@ -338,6 +338,10 @@ pub const Vec2 = extern struct {
     }
 };
 
+pub fn square(x: anytype) @TypeOf(x) {
+    return x * x;
+}
+
 pub fn sin(turns: f32) f32 {
     return @sin(turns * std.math.tau);
 }

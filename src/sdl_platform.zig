@@ -66,6 +66,10 @@ const SdlDrawer = struct {
         // const cube_x: Vec3 = rnd.direction3D();
         // const cube_y: Vec3 = .new(-cube_x.y, cube_x.x, cube_x.z);
 
+        // https://en.wikipedia.org/wiki/Depth_of_field
+        // https://en.wikipedia.org/wiki/Circle_of_confusion
+        // https://developer.nvidia.com/gpugems/gpugems/part-iv-image-processing/chapter-23-depth-field-survey-techniques
+
         const center: Vec2 = rnd.inRect(camera);
         const AsdfPoint = struct {
             pos: Vec3,
@@ -104,7 +108,7 @@ const SdlDrawer = struct {
 
             const color: FColor = .lerp(
                 .fromHex("#557119"),
-                .fromHex("#746239"),
+                .fromHex("#646629"),
                 @abs(t * 2 - 1),
             );
 
@@ -137,7 +141,7 @@ const SdlDrawer = struct {
                 camera,
                 x.pos.XY().add(center),
                 math.lerp(1, 10, x.relative_depth_dist) * pixel_width * 2,
-                x.color.withAlpha(1.0 - math.clamp01(x.relative_depth_dist)),
+                x.color.withAlpha(1.0 - math.square(math.clamp01(x.relative_depth_dist))),
             );
         }
     }
