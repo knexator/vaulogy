@@ -45,10 +45,103 @@ const tof32 = @import("kommon/math.zig").tof32;
 const Camera = presenter.Camera;
 const Point = presenter.Point;
 const Vec2 = presenter.Vec2;
+const Vec3 = math.Vec3;
 const Color = presenter.Color;
 const FColor = @import("kommon/math.zig").FColor;
 const Rect = presenter.Rect;
 const SdlDrawer = struct {
+    pub fn asdfBackground() void {
+        const camera: Rect = .{ .top_left = .zero, .size = window_size.scale(10.0 / window_size.y) };
+        // const color: FColor = .fromHex("#557119");
+        const pixel_width = camera.size.y / window_size.y;
+
+        var r: std.Random.DefaultPrng = .init(1);
+        const rnd: math.Random = .init(r.random());
+
+        // TODO: random
+        const cube_x: Vec3 = .new(0.95, 0.23, 0.20);
+        const cube_y: Vec3 = .new(0.15, -0.93, 0.31);
+        const cube_z: Vec3 = .new(-0.26, 0.26, 0.92);
+
+        // const cube_x: Vec3 = rnd.direction3D();
+        // const cube_y: Vec3 = .new(-cube_x.y, cube_x.x, cube_x.z);
+
+        const center: Vec2 = rnd.inRect(camera);
+        const AsdfPoint = struct {
+            pos: Vec3,
+            color: FColor,
+            relative_depth_dist: f32,
+        };
+        var points = std.ArrayList(AsdfPoint).initCapacity(canvas.frame_arena.allocator(), 700) catch @panic("OoM");
+
+        for (0..700) |_| {
+            // const b = rnd.between(0, 1);
+
+            const t = rnd.between(0, 1);
+            const trefoil_pos: Vec3 = Vec3.new(
+                math.sin(t) + 2 * math.sin(2 * t),
+                math.cos(t) - 2 * math.cos(2 * t),
+                -math.sin(3 * t),
+            ).scale(0.3).add(Vec3.new(
+                rnd.between(-1, 1),
+                rnd.between(-1, 1),
+                rnd.between(-1, 1),
+            ).scale(0.05));
+
+            const pos: Vec3 = Vec3.sampleBasis(
+                trefoil_pos,
+                .{ cube_x, cube_y, cube_z },
+            );
+
+            // const pos: Vec3 = Vec3.sampleBasis(
+            //     .new(
+            //         rnd.between(-1, 1),
+            //         rnd.between(-1, 1),
+            //         rnd.between(-1, 1),
+            //     ),
+            //     .{ cube_x, cube_y, cube_z },
+            // );
+
+            const color: FColor = .lerp(
+                .fromHex("#557119"),
+                .fromHex("#746239"),
+                @abs(t * 2 - 1),
+            );
+
+            const depth_range = 1;
+            // circle at depth 0.0 is r pixels sized, with alpha of 1
+            const depth = pos.z + math.remap(mouse.cur.client_pos.y, 0, 1, -1, 1);
+            const relative_depth_dist = @abs(depth / depth_range);
+            if (rnd.between(0, 1) > relative_depth_dist) {
+                points.appendAssumeCapacity(.{
+                    .pos = pos,
+                    .color = color,
+                    .relative_depth_dist = relative_depth_dist,
+                });
+                // canvas.fillCircle(
+                //     camera,
+                //     pos.XY().add(center),
+                //     math.lerp(1, 10, relative_depth_dist) * pixel_width * 2,
+                //     color.withAlpha(1.0 - math.clamp01(relative_depth_dist)),
+                // );
+            }
+        }
+        // TODO: generate the points in order, ideally
+        std.mem.sort(AsdfPoint, points.items, {}, struct {
+            pub fn anon(_: void, a: AsdfPoint, b: AsdfPoint) bool {
+                return a.pos.z < b.pos.z;
+            }
+        }.anon);
+        for (points.items) |x| {
+            canvas.fillCircle(
+                camera,
+                x.pos.XY().add(center),
+                math.lerp(1, 10, x.relative_depth_dist) * pixel_width * 2,
+                x.color.withAlpha(1.0 - math.clamp01(x.relative_depth_dist)),
+            );
+        }
+    }
+
     fn screenFromWorld(camera: Camera, world_point: Point) Point {
         const rect = camera.toRect();
         const local = Point.inverseApplyGetLocal(Point{
@@ -490,6 +583,7 @@ const sdl_platform = presenter.Platform{
     .setCursor = SdlPlatform.setCursor,
 };
 const sdl_drawer = presenter.Drawer{
+    .asdfBackground = SdlDrawer.asdfBackground,
     .clear = SdlDrawer.clear,
     .setTransparency = SdlDrawer.setTransparency,
     .clipAtomRegion = SdlDrawer.clipAtomRegion,

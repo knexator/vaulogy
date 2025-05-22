@@ -338,6 +338,116 @@ pub const Vec2 = extern struct {
     }
 };
 
+pub fn sin(turns: f32) f32 {
+    return @sin(turns * std.math.tau);
+}
+pub fn cos(turns: f32) f32 {
+    return @cos(turns * std.math.tau);
+}
+
+pub const Vec3 = extern struct {
+    pub const Scalar = f32;
+
+    x: Scalar,
+    y: Scalar,
+    z: Scalar,
+
+    const Self = @This();
+
+    pub const zero = new(0, 0, 0);
+    pub const one = new(1, 1, 1);
+    pub const half = new(0.5, 0.5, 0.5);
+    pub const e1 = new(1, 0, 0);
+    pub const e2 = new(0, 1, 0);
+    pub const e3 = new(0, 0, 1);
+
+    pub fn new(x: Scalar, y: Scalar, z: Scalar) Self {
+        return .{ .x = x, .y = y, .z = z };
+    }
+
+    pub fn XY(v: Self) Vec2 {
+        return .new(v.x, v.y);
+    }
+
+    pub fn add(a: Self, b: Self) Self {
+        return new(a.x + b.x, a.y + b.y, a.z + b.z);
+    }
+
+    pub fn addInPlace(a: *Self, b: Self) void {
+        a.* = a.add(b);
+    }
+
+    pub fn sub(a: Self, b: Self) Self {
+        return new(a.x - b.x, a.y - b.y, a.z - b.z);
+    }
+
+    pub fn scale(v: Self, s: Scalar) Self {
+        return new(v.x * s, v.y * s, v.z * s);
+    }
+
+    pub fn neg(v: Self) Self {
+        return new(-v.x, -v.y, -v.z);
+    }
+
+    pub fn mul(a: Self, b: Self) Self {
+        return new(a.x * b.x, a.y * b.y, a.z * b.z);
+    }
+
+    pub fn div(a: Self, b: Self) Self {
+        return new(a.x / b.x, a.y / b.y, a.z / b.z);
+    }
+
+    pub fn normalized(v: Self) Self {
+        return v.scale(1 / v.mag());
+    }
+
+    pub fn mag(v: Self) Scalar {
+        return @sqrt(v.magSq());
+    }
+
+    pub fn magSq(v: Self) Scalar {
+        return dot(v, v);
+    }
+
+    pub fn dot(a: Self, b: Self) Scalar {
+        return a.x * b.x + a.y * b.y + a.z * b.z;
+    }
+
+    pub fn lerp(a: Self, b: Self, t: f32) Self {
+        return new(
+            std.math.lerp(a.x, b.x, t),
+            std.math.lerp(a.y, b.y, t),
+            std.math.lerp(a.z, b.z, t),
+        );
+    }
+
+    pub fn sampleBasis(v: Self, basis: [3]Self) Self {
+        return Vec3.add(
+            basis[0].scale(v.x),
+            Vec3.add(
+                basis[1].scale(v.y),
+                basis[2].scale(v.z),
+            ),
+        );
+    }
+
+    pub fn equals(a: Self, b: Self) bool {
+        return a.x == b.x and a.y == b.y and a.z == b.z;
+    }
+
+    pub fn expectApproxEqRel(expected: Vec2, actual: Vec2, tolerance: anytype) !void {
+        try std.testing.expectApproxEqRel(expected.x, actual.x, tolerance);
+        try std.testing.expectApproxEqRel(expected.y, actual.y, tolerance);
+        try std.testing.expectApproxEqRel(expected.z, actual.z, tolerance);
+    }
+
+    pub fn expectApproxEqAbs(expected: Vec2, actual: Vec2, tolerance: anytype) !void {
+        try std.testing.expectApproxEqAbs(expected.x, actual.x, tolerance);
+        try std.testing.expectApproxEqAbs(expected.y, actual.y, tolerance);
+        try std.testing.expectApproxEqAbs(expected.z, actual.z, tolerance);
+    }
+};
+
 pub const URect = struct {
     top_left: UVec2,
     inner_size: UVec2,
@@ -911,6 +1021,15 @@ pub const Random = struct {
 
     pub fn direction(this: Random) Vec2 {
         return Vec2.e1.rotate(this.rnd.float(f32));
+    }
+
+    // TODO: better
+    pub fn direction3D(this: Random) Vec3 {
+        return Vec3.new(
+            this.between(-1, 1),
+            this.between(-1, 1),
+            this.between(-1, 1),
+        ).normalized();
     }
 
     pub fn color(this: Random) UColor {

@@ -191,6 +191,8 @@ const Color = presenter.Color;
 const Rect = presenter.Rect;
 const optimization_dont_draw_tiny = false;
 const WebDrawer = struct {
+    pub fn asdfBackground() void {}
+
     fn screenFromWorld(camera: Camera, world_point: Point) Point {
         const rect = camera.toRect();
         const local = Point.inverseApplyGetLocal(Point{
@@ -742,6 +744,7 @@ const web_platform = presenter.Platform{
     .setCursor = WebPlatform.setCursor,
 };
 const web_drawer = presenter.Drawer{
+    .asdfBackground = WebDrawer.asdfBackground,
     .clear = js_better.canvas.clear,
     .setTransparency = WebDrawer.setTransparency,
     .clipAtomRegion = WebDrawer.clipAtomRegion,

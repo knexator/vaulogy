@@ -185,6 +185,7 @@ pub const AtomVisuals = struct {
 
 pub const Drawer = struct {
     clear: fn (color: Color) void,
+    asdfBackground: fn () void,
     setTransparency: fn (alpha: f32) void,
     drawLine: fn (camera: Camera, points: []const Vec2, color: Color) void,
     drawRect: fn (camera: Camera, rect: Rect, stroke: ?Color, fill: ?Color) void,
@@ -587,6 +588,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
 
         pub fn draw(self: Self) OoM!void {
             drawer.clear(Color.gray(128));
+            drawer.asdfBackground();
             try switch (self.state) {
                 inline .testing_fnk, .executing_fnk => |x| x.main.draw(),
                 inline else => |x| x.draw(),
