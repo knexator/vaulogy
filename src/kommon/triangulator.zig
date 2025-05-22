@@ -41,6 +41,9 @@ pub const Triangulator = struct {
         }
     };
 
+    /// positive order = .e1, .e2, -.e1, -.e2
+    pub const VertexOrder = enum { pos, neg };
+
     const Vertex = struct {
         prev: *Vertex,
         next: *Vertex,
@@ -50,19 +53,23 @@ pub const Triangulator = struct {
 
         // TODO: cache convex/reflex for better performance
 
-        fn isConvex(self: Vertex) bool {
+        fn isConvex(self: Vertex, order: VertexOrder) bool {
             const prev = self.prev.position;
             const curr = self.position;
             const next = self.next.position;
 
-            return Vec2.cross(
+            const cross = Vec2.cross(
                 curr.sub(prev),
                 next.sub(curr),
-            ) < 0;
+            );
+            return switch (order) {
+                .pos => cross < 0,
+                .neg => cross > 0,
+            };
         }
 
-        pub fn isEar(self: Vertex) bool {
-            if (self.isConvex()) return false;
+        pub fn isEar(self: Vertex, order: VertexOrder) bool {
+            if (self.isConvex(order)) return false;
 
             const tri: Triangle = .{ .points = .{
                 self.prev.position,
@@ -77,45 +84,60 @@ pub const Triangulator = struct {
         }
     };
 
-    // TODO: don't assume vertex order
     /// Get the set of indices that triangulate a polygon. Assumes the vertices are in e1->e2 order
-    pub fn triangulate(comptime IndexType: type, allocator: std.mem.Allocator, vertices: []const Vec2) ![][3]IndexType {
-        assert(switch (@typeInfo(IndexType)) {
-            .int, .comptime_int => true,
-            else => false,
-        });
-        var backing_array: []Vertex = try allocator.alloc(Vertex, vertices.len);
-        defer allocator.free(backing_array);
-        for (backing_array, vertices, 0..) |*dst, pos, k| {
-            dst.* = .{
-                .position = pos,
-                .original_index = k,
-                .next = &backing_array[@mod(k + 1, vertices.len)],
-                .prev = &backing_array[@mod(k + vertices.len - 1, vertices.len)],
-            };
-        }
-
-        var handle: *const Vertex = &backing_array[0];
-        const result: [][3]IndexType = try allocator.alloc([3]IndexType, vertices.len - 2);
-        errdefer allocator.free(result);
-        for (result) |*dst| {
-            const original_handle = handle;
-            while (!handle.isEar()) {
-                handle = handle.next;
-                if (handle == original_handle) return error.BadVertexOrder;
+    pub fn triangulate(
+        comptime IndexType: type,
+        allocator: std.mem.Allocator,
+        vertices: []const Vec2,
+        /// null = guess
+        vertex_order: ?VertexOrder,
+    ) error{ BadVertexOrder, OutOfMemory }![][3]IndexType {
+        if (vertex_order) |order| {
+            assert(switch (@typeInfo(IndexType)) {
+                .int, .comptime_int => true,
+                else => false,
+            });
+            var backing_array: []Vertex = try allocator.alloc(Vertex, vertices.len);
+            defer allocator.free(backing_array);
+            for (backing_array, vertices, 0..) |*dst, pos, k| {
+                dst.* = .{
+                    .position = pos,
+                    .original_index = k,
+                    .next = &backing_array[@mod(k + 1, vertices.len)],
+                    .prev = &backing_array[@mod(k + vertices.len - 1, vertices.len)],
+                };
             }
 
-            dst.* = .{
-                @intCast(handle.prev.original_index),
-                @intCast(handle.original_index),
-                @intCast(handle.next.original_index),
-            };
-            handle.prev.next = handle.next;
-            handle.next.prev = handle.prev;
-            handle = handle.next;
-        }
+            var handle: *const Vertex = &backing_array[0];
+            const result: [][3]IndexType = try allocator.alloc([3]IndexType, vertices.len - 2);
+            errdefer allocator.free(result);
+            for (result) |*dst| {
+                const original_handle = handle;
+                while (!handle.isEar(order)) {
+                    handle = handle.next;
+                    if (handle == original_handle) return error.BadVertexOrder;
+                }
 
-        return result;
+                dst.* = .{
+                    @intCast(handle.prev.original_index),
+                    @intCast(handle.original_index),
+                    @intCast(handle.next.original_index),
+                };
+                handle.prev.next = handle.next;
+                handle.next.prev = handle.prev;
+                handle = handle.next;
+            }
+
+            return result;
+        } else {
+            return triangulate(IndexType, allocator, vertices, .pos) catch |err| switch (err) {
+                else => err,
+                error.BadVertexOrder => triangulate(IndexType, allocator, vertices, .neg) catch |err2| switch (err2) {
+                    else => err2,
+                    error.BadVertexOrder => unreachable,
+                },
+            };
+        }
     }
 
     pub fn polygonArea(vertices: []const Vec2, indices: []const [3]usize) f32 {
@@ -165,7 +187,7 @@ test "triangulate triangle" {
     };
     const real_area = 5;
 
-    const indices = try Triangulator.triangulate(usize, std.testing.allocator, vertices);
+    const indices = try Triangulator.triangulate(usize, std.testing.allocator, vertices, null);
     defer std.testing.allocator.free(indices);
 
     try std.testing.expectEqual(vertices.len - 2, indices.len);
@@ -186,7 +208,7 @@ test "triangulate rect" {
     };
     const real_area = 2;
 
-    const indices = try Triangulator.triangulate(usize, std.testing.allocator, vertices);
+    const indices = try Triangulator.triangulate(usize, std.testing.allocator, vertices, null);
     defer std.testing.allocator.free(indices);
 
     try std.testing.expectEqual(vertices.len - 2, indices.len);
@@ -208,7 +230,7 @@ test "triangulate non-convex polygon" {
     };
     const real_area = 4;
 
-    const indices = try Triangulator.triangulate(usize, std.testing.allocator, vertices);
+    const indices = try Triangulator.triangulate(usize, std.testing.allocator, vertices, null);
     defer std.testing.allocator.free(indices);
 
     try std.testing.expectEqual(vertices.len - 2, indices.len);
@@ -229,7 +251,7 @@ test "triangulate with holes" {
         .fromPolar(2, 0),
     };
 
-    const indices = try Triangulator.triangulate(usize, std.testing.allocator, vertices);
+    const indices = try Triangulator.triangulate(usize, std.testing.allocator, vertices, null);
     defer std.testing.allocator.free(indices);
 
     try std.testing.expectEqual(vertices.len - 2, indices.len);
@@ -248,6 +270,19 @@ test "can cast to plain indices" {
     };
 
     try std.testing.expectEqualSlices(usize, v2, @ptrCast(v1));
+}
+
+test "opposite order triangulation" {
+    const vertices: []const Vec2 = &.{
+        .fromPolar(1, 0),
+        .fromPolar(1, -1.0 / 3.0),
+        .fromPolar(1, -2.0 / 3.0),
+    };
+
+    const indices = try Triangulator.triangulate(usize, std.testing.allocator, vertices, null);
+    defer std.testing.allocator.free(indices);
+
+    try std.testing.expectEqual(1, indices.len);
 }
 
 const std = @import("std");

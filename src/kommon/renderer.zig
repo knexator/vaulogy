@@ -18,7 +18,7 @@ pub const PrecomputedShape = struct {
 
     pub fn fromPoints(gpa: std.mem.Allocator, points: []const Vec2) !PrecomputedShape {
         std.debug.assert(points.len >= 3);
-        const triangles = try Triangulator.triangulate(IndexType, gpa, points);
+        const triangles = try Triangulator.triangulate(IndexType, gpa, points, null);
         return .{
             // TODO: clarify ownership
             .local_points = try gpa.dupe(Vec2, points),

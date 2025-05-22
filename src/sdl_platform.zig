@@ -3,8 +3,11 @@ const assert = std.debug.assert;
 const gl = @import("gl");
 const zstbi = @import("zstbi");
 
+const funk = @import("kommon/funktional.zig");
+const math = @import("kommon/math.zig");
 const model = @import("main.zig");
 const presenter = @import("presenter.zig");
+const DESIGN = presenter.DESIGN;
 
 const IndexType = Gl.IndexType;
 
@@ -99,12 +102,25 @@ const SdlDrawer = struct {
     }
 
     pub fn drawShapeV2(camera: Camera, parent_world_point: Point, local_points: []const Vec2, stroke: ?Color, fill: ?Color) void {
-        // TODO
-        _ = camera;
-        _ = parent_world_point;
-        _ = local_points;
-        _ = stroke;
-        _ = fill;
+        if (fill) |col| {
+            canvas.fillShape(
+                camera.toRect(),
+                parent_world_point,
+                canvas.tmpShape(local_points) catch @panic("OoM"),
+                col.toFColor(),
+            );
+        }
+
+        if (stroke) |col| {
+            // TODO: wouldnt be needed if Rect had rotation
+            const world_points = canvas.frame_arena.allocator().alloc(Vec2, local_points.len + 1) catch @panic("OoM");
+            for (local_points, world_points[1..]) |p, *dst| {
+                dst.* = parent_world_point.applyToLocalPosition(p);
+            }
+            world_points[0] = world_points[world_points.len - 1];
+            const pixel_width = camera.height / window_size.y;
+            canvas.line(camera.toRect(), world_points, pixel_width, col.toFColor());
+        }
     }
 
     pub fn drawLine(camera: Camera, points: []const Vec2, color: Color) void {
@@ -123,9 +139,6 @@ const SdlDrawer = struct {
     }
 
     pub fn drawDebugText(camera: Camera, center: Point, text: [:0]const u8, color: Color) void {
-        const v = std.math.lerp(0.1, 0.4, mouse.cur.client_pos.y);
-        // const v = std.math.lerp(0, 0.3, mouse.cur.client_pos.y);
-        std.log.debug("v: {d}", .{v});
         var it = std.mem.splitScalar(u8, text, '\n');
         const n_lines = blk: {
             var result: usize = 0;
@@ -209,153 +222,138 @@ const SdlDrawer = struct {
         const profile = visuals.profile;
         const screen_point = screenFromWorld(camera, world_point);
         if (screen_point.scale < 0.1) return;
-        const local_positions = [_]Vec2{
-            Vec2.new(-1, -1),
-            Vec2.new(0, -1),
-            Vec2.new(0.5, 0),
-            Vec2.new(0, 1),
-            Vec2.new(-1, 1),
-        };
+        const skeleton_positions = if (DESIGN.round_data)
+            [1]Vec2{.new(-1, -1)} ++
+                funk.fromCount(32, struct {
+                    pub fn anon(k: usize) Vec2 {
+                        return Vec2.fromTurns(math.lerp(-0.25, 0.25, math.tof32(k) / 32)).addX(-0.5);
+                    }
+                }.anon) ++ [1]Vec2{.new(-1, 1)}
+        else
+            [_]Vec2{
+                Vec2.new(-1, -1),
+                Vec2.new(0, -1),
+                Vec2.new(0.5, 0),
+                Vec2.new(0, 1),
+                Vec2.new(-1, 1),
+            };
         // TODO: no allocations
-        var screen_positions: []Vec2 = gpa.allocator().alloc(Vec2, local_positions.len + profile.len * 2) catch @panic("TODO");
-        defer gpa.allocator().free(screen_positions);
-        for (local_positions, 0..) |pos, i| {
-            screen_positions[i] = screen_point.applyToLocalPosition(pos);
+        var local_positions: []Vec2 = canvas.frame_arena.allocator().alloc(Vec2, skeleton_positions.len + profile.len * 2) catch @panic("TODO");
+        for (skeleton_positions, 0..) |pos, i| {
+            local_positions[i] = pos;
         }
         for (profile, 0..) |pos, i| {
-            screen_positions[local_positions.len + i] = screen_point.applyToLocalPosition(
-                Vec2.new(-1.0 - pos.y, 1.0 - pos.x),
-            );
-            screen_positions[local_positions.len + profile.len * 2 - i - 1] = screen_point.applyToLocalPosition(
-                Vec2.new(-1.0 + pos.y, -1.0 + pos.x),
-            );
+            local_positions[skeleton_positions.len + i] = Vec2.new(-1.0 - pos.y, 1.0 - pos.x);
+            local_positions[skeleton_positions.len + profile.len * 2 - i - 1] = Vec2.new(-1.0 + pos.y, -1.0 + pos.x);
         }
-
-        const indices = gpa.allocator().alloc([3]IndexType, profile.len * 2 + 3) catch @panic("TODO");
-        defer gpa.allocator().free(indices);
-        @memset(indices, .{ 0, 0, 0 });
-        for (0..indices.len) |i| {
-            indices[i] = .{
-                2,
-                @intCast((3 + i) % screen_positions.len),
-                @intCast((4 + i) % screen_positions.len),
-            };
-        }
-
-        const outline = gpa.allocator().alloc(usize, screen_positions.len) catch @panic("TODO");
-        defer gpa.allocator().free(outline);
-        for (outline, 0..) |*x, k| {
-            x.* = k;
-        }
-        polygon(screen_positions, indices, outline, visuals.color, Color.black);
+        drawShapeV2(camera, world_point, local_positions, .black, visuals.color);
     }
 
     pub fn drawVariable(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {
-        const screen_point = screenFromWorld(camera, world_point);
-        if (screen_point.scale < 0.1) return;
-        const local_positions = [_]Vec2{
-            Vec2.new(-0.5, 0),
-            Vec2.new(0, 1),
-            Vec2.new(0.5, 1),
-            Vec2.new(0, 0),
-            Vec2.new(0.5, -1),
-            Vec2.new(0, -1),
-        };
-        const indices = [_][3]IndexType{
-            .{ 1, 2, 3 },
-            .{ 0, 1, 3 },
-            .{ 0, 3, 5 },
-            .{ 3, 4, 5 },
-        };
-        const outline = [_]usize{ 0, 1, 2, 3, 4, 5 };
-        var screen_positions: [local_positions.len]Vec2 = undefined;
-        for (local_positions, 0..) |pos, i| {
-            screen_positions[i] = screen_point.applyToLocalPosition(pos);
-        }
-        polygon(&screen_positions, &indices, &outline, visuals.color, Color.black);
+        const local_positions = if (DESIGN.round_data)
+            funk.fromCount(32, struct {
+                pub fn anon(k: usize) Vec2 {
+                    return Vec2.fromTurns(math.lerp(0.75, 0.25, math.tof32(k) / 32)).addX(0.5);
+                }
+            }.anon) ++ funk.fromCount(32, struct {
+                pub fn anon(k: usize) Vec2 {
+                    return Vec2.fromTurns(math.lerp(0.25, 0.75, math.tof32(k) / 32)).mul(.new(0.5, 1)).addX(0.5);
+                }
+            }.anon)
+        else
+            [_]Vec2{
+                Vec2.new(-0.5, 0),
+                Vec2.new(0, 1),
+                Vec2.new(0.5, 1),
+                Vec2.new(0, 0),
+                Vec2.new(0.5, -1),
+                Vec2.new(0, -1),
+            };
+        drawShapeV2(camera, world_point, &local_positions, .black, visuals.color);
     }
 
     pub fn drawPatternVariable(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {
-        const screen_point = screenFromWorld(camera, world_point);
-        if (screen_point.scale < 0.1) return;
-        const local_positions = [_]Vec2{
-            Vec2.new(0.5, 0),
-            Vec2.new(0, 1),
-            Vec2.new(-0.5, 1),
-            Vec2.new(0, 0),
-            Vec2.new(-0.5, -1),
-            Vec2.new(0, -1),
-        };
-        const indices = [_][3]IndexType{
-            .{ 1, 2, 3 },
-            .{ 0, 1, 3 },
-            .{ 0, 3, 5 },
-            .{ 3, 4, 5 },
-        };
-        const outline = [_]usize{ 0, 1, 2, 3, 4, 5 };
-        var screen_positions: [local_positions.len]Vec2 = undefined;
-        for (local_positions, 0..) |pos, i| {
-            screen_positions[i] = screen_point.applyToLocalPosition(pos);
-        }
-        polygon(&screen_positions, &indices, &outline, visuals.color, Color.black);
+        const local_positions = if (DESIGN.round_data)
+            funk.fromCount(32, struct {
+                pub fn anon(k: usize) Vec2 {
+                    return Vec2.fromTurns(math.lerp(-0.25, 0.25, math.tof32(k) / 32)).addX(-0.5);
+                }
+            }.anon) ++ funk.fromCount(32, struct {
+                pub fn anon(k: usize) Vec2 {
+                    return Vec2.fromTurns(math.lerp(0.25, -0.25, math.tof32(k) / 32)).mul(.new(0.5, 1)).addX(-0.5);
+                }
+            }.anon)
+        else
+            [_]Vec2{
+                Vec2.new(0.5, 0),
+                Vec2.new(0, 1),
+                Vec2.new(-0.5, 1),
+                Vec2.new(0, 0),
+                Vec2.new(-0.5, -1),
+                Vec2.new(0, -1),
+            };
+        drawShapeV2(camera, world_point, &local_positions, .black, visuals.color);
     }
 
     pub fn drawPairHolder(camera: Camera, world_point: Point) void {
-        const screen_point = screenFromWorld(camera, world_point);
-        if (screen_point.scale < 0.1) return;
-        const local_positions = [_]Vec2{
-            Vec2.new(-0.5, 0),
-            Vec2.new(0, 1),
-            Vec2.new(0.5, 1),
-            Vec2.new(0.25, 0.5),
-            Vec2.new(0.5, 0),
-            Vec2.new(0.25, -0.5),
-            Vec2.new(0.5, -1),
-            Vec2.new(0, -1),
-        };
-        const indices = [_][3]IndexType{
-            .{ 1, 2, 3 },
-            .{ 0, 1, 3 },
-            .{ 0, 3, 4 },
-            .{ 0, 4, 5 },
-            .{ 0, 5, 7 },
-            .{ 5, 6, 7 },
-        };
-        const outline = [_]usize{ 0, 1, 2, 3, 4, 5, 6, 7 };
-        var screen_positions: [local_positions.len]Vec2 = undefined;
-        for (local_positions, 0..) |pos, i| {
-            screen_positions[i] = screen_point.applyToLocalPosition(pos);
-        }
-        polygon(&screen_positions, &indices, &outline, Color.gray(96), Color.black);
+        const local_positions = if (DESIGN.round_data)
+            funk.fromCount(32, struct {
+                pub fn anon(k: usize) Vec2 {
+                    return Vec2.fromTurns(math.lerp(0.75, 0.25, math.tof32(k) / 32)).addX(0.5);
+                }
+            }.anon) ++ funk.fromCount(32, struct {
+                pub fn anon(k: usize) Vec2 {
+                    return Vec2.fromTurns(math.lerp(0.25, 0.75, math.tof32(k) / 32)).scale(0.5).add(.new(0.75, 0.5));
+                }
+            }.anon) ++ funk.fromCount(32, struct {
+                pub fn anon(k: usize) Vec2 {
+                    return Vec2.fromTurns(math.lerp(0.25, 0.75, math.tof32(k) / 32)).scale(0.5).add(.new(0.75, -0.5));
+                }
+            }.anon)
+        else
+            [_]Vec2{
+                Vec2.new(-0.5, 0),
+                Vec2.new(0, 1),
+                Vec2.new(0.5, 1),
+                Vec2.new(0.25, 0.5),
+                Vec2.new(0.5, 0),
+                Vec2.new(0.25, -0.5),
+                Vec2.new(0.5, -1),
+                Vec2.new(0, -1),
+            };
+
+        drawShapeV2(camera, world_point, &local_positions, .black, .gray(96));
     }
 
     pub fn drawPatternPairHolder(camera: Camera, world_point: Point) void {
-        const screen_point = screenFromWorld(camera, world_point);
-        if (screen_point.scale < 0.1) return;
-        const local_positions = [_]Vec2{
-            Vec2.new(0.5, 0),
-            Vec2.new(0, 1),
-            Vec2.new(-1, 1),
-            Vec2.new(-0.75, 0.5),
-            Vec2.new(-1, 0),
-            Vec2.new(-0.75, -0.5),
-            Vec2.new(-1, -1),
-            Vec2.new(0, -1),
-        };
-        const indices = [_][3]IndexType{
-            .{ 1, 2, 3 },
-            .{ 0, 1, 3 },
-            .{ 0, 3, 4 },
-            .{ 0, 4, 5 },
-            .{ 0, 5, 7 },
-            .{ 5, 6, 7 },
-        };
-        const outline = [_]usize{ 0, 1, 2, 3, 4, 5, 6, 7 };
-        var screen_positions: [local_positions.len]Vec2 = undefined;
-        for (local_positions, 0..) |pos, i| {
-            screen_positions[i] = screen_point.applyToLocalPosition(pos);
-        }
-        polygon(&screen_positions, &indices, &outline, Color.gray(96), Color.black);
+        const local_positions = if (DESIGN.round_data)
+            funk.fromCount(32, struct {
+                pub fn anon(k: usize) Vec2 {
+                    return Vec2.fromTurns(math.lerp(-0.25, 0.25, math.tof32(k) / 32)).addX(-0.5);
+                }
+            }.anon) ++ funk.fromCount(32, struct {
+                pub fn anon(k: usize) Vec2 {
+                    return Vec2.fromTurns(math.lerp(0.25, -0.25, math.tof32(k) / 32)).scale(0.5).add(.new(-1.25, 0.5));
+                }
+            }.anon) ++ funk.fromCount(32, struct {
+                pub fn anon(k: usize) Vec2 {
+                    return Vec2.fromTurns(math.lerp(0.25, -0.25, math.tof32(k) / 32)).scale(0.5).add(.new(-1.25, -0.5));
+                }
+            }.anon)
+
+                // [_]Vec2{ .new(-1.5, 1), .new(-1, 0.5), .new(-1.5, 0), .new(-1, -0.5), .new(-1.5, -1) }
+        else
+            [_]Vec2{
+                Vec2.new(0.5, 0),
+                Vec2.new(0, 1),
+                Vec2.new(-1, 1),
+                Vec2.new(-0.75, 0.5),
+                Vec2.new(-1, 0),
+                Vec2.new(-0.75, -0.5),
+                Vec2.new(-1, -1),
+                Vec2.new(0, -1),
+            };
+        drawShapeV2(camera, world_point, &local_positions, .black, .gray(96));
     }
 
     pub fn drawAtomDebug(camera: Camera, world_point: Point) void {
@@ -444,45 +442,32 @@ const SdlDrawer = struct {
         const profile = visuals.profile;
         const screen_point = screenFromWorld(camera, world_point);
         if (screen_point.scale < 0.1) return;
-        const local_positions = [_]Vec2{
-            Vec2.new(2, -1),
-            Vec2.new(0, -1),
-            Vec2.new(-0.5, 0),
-            Vec2.new(0, 1),
-            Vec2.new(2, 1),
-        };
+        const skeleton_positions = if (DESIGN.round_data)
+            [1]Vec2{.new(2, -1)} ++
+                funk.fromCount(32, struct {
+                    pub fn anon(k: usize) Vec2 {
+                        return Vec2.fromTurns(math.lerp(0.75, 0.25, math.tof32(k) / 32)).addX(0.5);
+                    }
+                }.anon) ++ [1]Vec2{.new(2, 1)}
+        else
+            [_]Vec2{
+                Vec2.new(2, -1),
+                Vec2.new(0, -1),
+                Vec2.new(-0.5, 0),
+                Vec2.new(0, 1),
+                Vec2.new(2, 1),
+            };
+
         // TODO: no allocations
-        var screen_positions: []Vec2 = gpa.allocator().alloc(Vec2, local_positions.len + profile.len * 2) catch @panic("TODO");
-        defer gpa.allocator().free(screen_positions);
-        for (local_positions, 0..) |pos, i| {
-            screen_positions[i] = screen_point.applyToLocalPosition(pos);
+        var local_positions: []Vec2 = canvas.frame_arena.allocator().alloc(Vec2, skeleton_positions.len + profile.len * 2) catch @panic("TODO");
+        for (skeleton_positions, 0..) |pos, i| {
+            local_positions[i] = pos;
         }
         for (profile, 0..) |pos, i| {
-            screen_positions[local_positions.len + i] = screen_point.applyToLocalPosition(
-                Vec2.new(2.0 - pos.y, 1.0 - pos.x),
-            );
-            screen_positions[local_positions.len + profile.len * 2 - i - 1] = screen_point.applyToLocalPosition(
-                Vec2.new(2.0 + pos.y, -1.0 + pos.x),
-            );
+            local_positions[skeleton_positions.len + i] = Vec2.new(2.0 - pos.y, 1.0 - pos.x);
+            local_positions[skeleton_positions.len + profile.len * 2 - i - 1] = Vec2.new(2.0 + pos.y, -1.0 + pos.x);
         }
-
-        const indices = gpa.allocator().alloc([3]IndexType, profile.len * 2 + 3) catch @panic("TODO");
-        defer gpa.allocator().free(indices);
-        @memset(indices, .{ 0, 0, 0 });
-        for (0..indices.len) |i| {
-            indices[i] = .{
-                2,
-                @intCast((3 + i) % screen_positions.len),
-                @intCast((4 + i) % screen_positions.len),
-            };
-        }
-
-        const outline = gpa.allocator().alloc(usize, screen_positions.len) catch @panic("TODO");
-        defer gpa.allocator().free(outline);
-        for (outline, 0..) |*x, k| {
-            x.* = k;
-        }
-        polygon(screen_positions, indices, outline, visuals.color, Color.black);
+        drawShapeV2(camera, world_point, local_positions, .black, visuals.color);
     }
 
     pub fn drawWildcardsCable(camera: Camera, points: []const Vec2, visuals: []const presenter.AtomVisuals) void {
@@ -980,6 +965,7 @@ pub fn main() !void {
 
     var timer: std.time.Timer = try .start();
     main_loop: while (true) {
+        _ = canvas.frame_arena.reset(.retain_capacity);
         const lap: f32 = @floatFromInt(timer.lap());
         if (lap / std.time.ns_per_ms > 17) {
             std.log.warn("slow frame: {d}ms", .{lap / std.time.ns_per_ms});
