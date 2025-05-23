@@ -116,7 +116,7 @@ const SdlDrawer = struct {
             // circle at depth 0.0 is r pixels sized, with alpha of 1
             const depth = pos.z + math.remap(mouse.cur.client_pos.y, 0, 1, -1, 1);
             const relative_depth_dist = @abs(depth / depth_range);
-            if (rnd.between(0, 1) > relative_depth_dist) {
+            if (true or rnd.between(0, 1) > relative_depth_dist) {
                 points.appendAssumeCapacity(.{
                     .pos = pos,
                     .color = color,
@@ -137,11 +137,14 @@ const SdlDrawer = struct {
             }
         }.anon);
         for (points.items) |x| {
+            const radius = math.lerp(1, 10, x.relative_depth_dist);
+            const area = math.square(radius);
+            const op = 1.0 / area;
             canvas.fillCircle(
                 camera,
                 x.pos.XY().add(center),
-                math.lerp(1, 10, x.relative_depth_dist) * pixel_width * 2,
-                x.color.withAlpha(1.0 - math.square(math.clamp01(x.relative_depth_dist))),
+                radius * pixel_width * 2,
+                x.color.withAlpha(op),
             );
         }
     }
