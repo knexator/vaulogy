@@ -74,7 +74,6 @@ const SdlDrawer = struct {
         const AsdfPoint = struct {
             pos: Vec3,
             color: FColor,
-            relative_depth_dist: f32,
         };
         var points = std.ArrayList(AsdfPoint).initCapacity(canvas.frame_arena.allocator(), 700) catch @panic("OoM");
 
@@ -112,23 +111,10 @@ const SdlDrawer = struct {
                 @abs(t * 2 - 1),
             );
 
-            const depth_range = 1;
-            // circle at depth 0.0 is r pixels sized, with alpha of 1
-            const depth = pos.z + math.remap(mouse.cur.client_pos.y, 0, 1, -1, 1);
-            const relative_depth_dist = @abs(depth / depth_range);
-            if (true or rnd.between(0, 1) > relative_depth_dist) {
-                points.appendAssumeCapacity(.{
-                    .pos = pos,
-                    .color = color,
-                    .relative_depth_dist = relative_depth_dist,
-                });
-                // canvas.fillCircle(
-                //     camera,
-                //     pos.XY().add(center),
-                //     math.lerp(1, 10, relative_depth_dist) * pixel_width * 2,
-                //     color.withAlpha(1.0 - math.clamp01(relative_depth_dist)),
-                // );
-            }
+            points.appendAssumeCapacity(.{
+                .pos = pos,
+                .color = color,
+            });
         }
         // TODO: generate the points in order, ideally
         std.mem.sort(AsdfPoint, points.items, {}, struct {
@@ -137,7 +123,8 @@ const SdlDrawer = struct {
             }
         }.anon);
         for (points.items) |x| {
-            const radius = math.lerp(1, 10, x.relative_depth_dist);
+            const dist_to_focus = @abs(x.pos.z + math.lerp(-1, 1, mouse.cur.client_pos.y));
+            const radius = dist_to_focus * 10 + 1;
             const area = math.square(radius);
             const op = 1.0 / area;
             canvas.fillCircle(
