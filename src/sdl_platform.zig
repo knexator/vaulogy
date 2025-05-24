@@ -46,6 +46,7 @@ const Camera = presenter.Camera;
 const Point = presenter.Point;
 const Vec2 = presenter.Vec2;
 const Vec3 = math.Vec3;
+const Rotor3 = math.Rotor3;
 const Color = presenter.Color;
 const FColor = @import("kommon/math.zig").FColor;
 const Rect = presenter.Rect;
@@ -55,22 +56,19 @@ const SdlDrawer = struct {
         // const color: FColor = .fromHex("#557119");
         const pixel_width = camera.size.y / window_size.y;
 
-        var r: std.Random.DefaultPrng = .init(1);
-        const rnd: math.Random = .init(r.random());
+        var rnd_instance: std.Random.DefaultPrng = .init(1);
+        const rnd: math.Random = .init(rnd_instance.random());
 
-        // TODO: random
-        const cube_x: Vec3 = .new(0.95, 0.23, 0.20);
-        const cube_y: Vec3 = .new(0.15, -0.93, 0.31);
-        const cube_z: Vec3 = .new(-0.26, 0.26, 0.92);
-
-        // const cube_x: Vec3 = rnd.direction3D();
-        // const cube_y: Vec3 = .new(-cube_x.y, cube_x.x, cube_x.z);
+        const rotor: Rotor3 = .fromTwoVecs(
+            rnd.direction3D(),
+            rnd.direction3D(),
+        );
 
         // https://en.wikipedia.org/wiki/Depth_of_field
         // https://en.wikipedia.org/wiki/Circle_of_confusion
         // https://developer.nvidia.com/gpugems/gpugems/part-iv-image-processing/chapter-23-depth-field-survey-techniques
 
-        const center: Vec2 = rnd.inRect(camera);
+        const center: Vec2 = .new(7, 7);
         const AsdfPoint = struct {
             pos: Vec3,
             color: FColor,
@@ -91,19 +89,13 @@ const SdlDrawer = struct {
                 rnd.between(-1, 1),
             ).scale(0.05));
 
-            const pos: Vec3 = Vec3.sampleBasis(
-                trefoil_pos,
-                .{ cube_x, cube_y, cube_z },
-            );
+            const pos: Vec3 = rotor.rotate(trefoil_pos);
 
-            // const pos: Vec3 = Vec3.sampleBasis(
-            //     .new(
-            //         rnd.between(-1, 1),
-            //         rnd.between(-1, 1),
-            //         rnd.between(-1, 1),
-            //     ),
-            //     .{ cube_x, cube_y, cube_z },
-            // );
+            // const pos: Vec3 = rotor.rotate(.new(
+            //     rnd.between(-1, 1),
+            //     rnd.between(-1, 1),
+            //     rnd.between(-1, 1),
+            // ));
 
             const color: FColor = .lerp(
                 .fromHex("#557119"),

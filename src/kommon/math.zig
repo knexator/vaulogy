@@ -413,6 +413,10 @@ pub const Vec3 = extern struct {
         return dot(v, v);
     }
 
+    pub fn isNormal(self: Self) bool {
+        return std.math.approxEqAbs(Scalar, self.magSq(), 1.0, 0.001);
+    }
+
     pub fn dot(a: Self, b: Self) Scalar {
         return a.x * b.x + a.y * b.y + a.z * b.z;
     }
@@ -449,6 +453,144 @@ pub const Vec3 = extern struct {
         try std.testing.expectApproxEqAbs(expected.x, actual.x, tolerance);
         try std.testing.expectApproxEqAbs(expected.y, actual.y, tolerance);
         try std.testing.expectApproxEqAbs(expected.z, actual.z, tolerance);
+    }
+};
+
+pub const Bivec3 = extern struct {
+    pub const Scalar = f32;
+    const Self = @This();
+
+    xy: Scalar,
+    yz: Scalar,
+    zx: Scalar,
+
+    pub const zero = new(0, 0, 0);
+    // pub const one = new(1, 1, 1);
+    // pub const half = new(0.5, 0.5, 0.5);
+    // pub const e1 = new(1, 0, 0);
+    // pub const e2 = new(0, 1, 0);
+    // pub const e3 = new(0, 0, 1);
+
+    pub fn new(xy: Scalar, yz: Scalar, zx: Scalar) Self {
+        return .{ .xy = xy, .yz = yz, .zx = zx };
+    }
+
+    pub fn wedge(u: Vec3, v: Vec3) Self {
+        return .{
+            .xy = u.x * v.y - u.y * v.x,
+            .yz = u.y * v.z - u.z * v.y,
+            .zx = u.z * v.x - u.x * v.z,
+        };
+    }
+
+    fn magSq(self: Bivec3) Scalar {
+        return self.xy * self.xy + self.yz * self.yz + self.zx * self.zx;
+    }
+
+    fn scale(self: Bivec3, s: Scalar) Bivec3 {
+        return new(
+            self.xy * s,
+            self.yz * s,
+            self.zx * s,
+        );
+    }
+
+    pub fn isNormal(self: Self) bool {
+        return std.math.approxEqAbs(Scalar, self.magSq(), 1.0, 0.001);
+    }
+};
+
+// TODO: rename
+pub const General3 = struct {
+    pub const Scalar = f32;
+    const Self = @This();
+
+    // TODO: rename 'rank'
+    rank0: Scalar,
+    rank1: Vec3,
+    rank2: Bivec3,
+
+    pub fn vectorProduct(a: Vec3, b: Vec3) Self {
+        return .{
+            .rank0 = Vec3.dot(a, b),
+            .rank1 = .zero,
+            .rank2 = Bivec3.wedge(a, b),
+        };
+    }
+
+    // https://marctenbosch.com/quaternions/#h_13
+    // pub fn reflect(plane_unit_normal: Vec3, pos: Vec3) Vec3 {
+    //     const asdf = vectorProduct(pos, plane_unit_normal);
+    // }
+};
+
+// from https://marctenbosch.com/quaternions/code.htm
+pub const Rotor3 = extern struct {
+    pub const Scalar = f32;
+
+    bivec: Bivec3 = .zero,
+    scalar: Scalar = 1.0,
+
+    pub fn fromTwoVecs(from: Vec3, to: Vec3) Rotor3 {
+        assert(from.isNormal());
+        assert(to.isNormal());
+        return normalized(.{
+            .scalar = 1 + Vec3.dot(to, from),
+            .bivec = Bivec3.wedge(to, from),
+        });
+    }
+    pub fn fromAngleAndPlane(plane: Bivec3, turns: f32) Rotor3 {
+        assert(plane.isNormal());
+        return .{
+            .scalar = cos(turns / 2.0),
+            .bivec = plane.scale(-sin(turns / 2.0)),
+        };
+    }
+
+    pub fn rotate(rotor: Rotor3, v: Vec3) Vec3 {
+        const b = rotor.bivec;
+
+        const q = Vec3.add(
+            v.scale(rotor.scalar),
+            .new(
+                v.y * b.xy - v.z * b.zx,
+                v.z * b.yz - v.x * b.xy,
+                v.y * b.zx - v.y * b.yz,
+            ),
+        );
+
+        // trivector!
+        const q_t =
+            v.x * b.yz +
+            v.y * b.zx +
+            v.z * b.xy;
+
+        return Vec3.add(
+            q.scale(rotor.scalar),
+            .new(
+                // zig fmt: off
+                 q.y * b.xy - q.z * b.zx + q_t * b.yz,
+                -q.x * b.xy + q_t * b.zx + q.z * b.yz,
+                 q_t * b.xy + q.x * b.zx - q.y * b.yz,
+                // zig fmt: on
+            ),
+        );
+    }
+
+    fn normalized(self: Rotor3) Rotor3 {
+        const s = 1.0 / self.mag();
+        return .{
+            .scalar = self.scalar * s,
+            .bivec = self.bivec.scale(s),
+        };
+    }
+
+    fn magSq(self: Rotor3) Scalar {
+        return square(self.scalar) + self.bivec.magSq();
+    }
+
+    fn mag(self: Rotor3) Scalar {
+        return @sqrt(self.magSq());
     }
 };
 
