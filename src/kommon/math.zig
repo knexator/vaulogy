@@ -873,6 +873,10 @@ pub const UColor = extern struct {
         return fromFColor(.lerp(a.toFColor(), b.toFColor(), t));
     }
 
+    pub fn equals(a: UColor, b: UColor) bool {
+        return std.meta.eql(a, b);
+    }
+
     pub fn gradient(comptime steps: usize, comptime start: UColor, comptime end: UColor) [steps]UColor {
         const funk = @import("funktional.zig");
         return funk.map(struct {

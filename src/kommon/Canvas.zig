@@ -67,7 +67,7 @@ pub fn init(gl: Gl, gpa: std.mem.Allocator, comptime font_jsons: []const []const
             point: Point,
         },
         .vertex =
-        \\uniform vec4 u_rect; // as top_left, size
+        \\uniform vec4 u_camera; // as top_left, size
         \\uniform vec4 u_point; // as pos, turns, scale
         \\
         \\in vec2 a_position;
@@ -76,7 +76,7 @@ pub fn init(gl: Gl, gpa: std.mem.Allocator, comptime font_jsons: []const []const
         \\  float c = cos(u_point.z * TAU);
         \\  float s = sin(u_point.z * TAU);
         \\  vec2 world_position = u_point.xy + u_point.w * (mat2x2(c,s,-s,c) * a_position);
-        \\  vec2 camera_position = (world_position - u_rect.xy) / u_rect.zw;
+        \\  vec2 camera_position = (world_position - u_camera.xy) / u_camera.zw;
         \\  gl_Position = vec4((camera_position * 2.0 - 1.0) * vec2(1, -1), 0, 1);
         \\}
         ,
@@ -107,7 +107,7 @@ pub fn init(gl: Gl, gpa: std.mem.Allocator, comptime font_jsons: []const []const
                 .{ .name = "a_position", .kind = .Vec2 },
             } },
             &.{
-                .{ .name = "u_rect", .kind = .Rect },
+                .{ .name = "u_camera", .kind = .Rect },
                 .{ .name = "u_point", .kind = .Point },
                 .{ .name = "u_color", .kind = .FColor },
             },
@@ -221,6 +221,46 @@ pub fn deinit(self: *Canvas, gl: Gl, gpa: std.mem.Allocator) void {
     _ = gl;
 }
 
+pub fn drawDirty(
+    self: Canvas,
+    comptime renderable_info: struct {
+        /// without preamble!
+        vertex_src: [:0]const u8,
+        /// without preamble!
+        fragment_src: [:0]const u8,
+        attributes: Gl.VertexInfo.Collection,
+        uniforms: []const Gl.UniformInfo.In,
+    },
+    asdf: struct {
+        vertices_ptr: *const anyopaque,
+        vertices_len_bytes: usize,
+        triangles: []const [3]Gl.IndexType,
+        uniforms: []const Gl.UniformInfo.Runtime,
+        texture: ?Gl.Texture,
+    },
+) !void {
+    const S = struct {
+        pub var renderable: ?Gl.Renderable = null;
+    };
+    if (S.renderable == null) {
+        S.renderable = try self.gl.buildRenderable(
+            renderable_info.vertex_src,
+            renderable_info.fragment_src,
+            renderable_info.attributes,
+            renderable_info.uniforms,
+        );
+        std.log.warn("built a renderable", .{});
+    }
+    self.gl.useRenderable(
+        S.renderable.?,
+        asdf.vertices_ptr,
+        asdf.vertices_len_bytes,
+        asdf.triangles,
+        asdf.uniforms,
+        asdf.texture,
+    );
+}
+
 // TODO: multiple shapes in one draw call
 pub fn fillShape(
     self: Canvas,
@@ -237,7 +277,7 @@ pub fn fillShape(
         &.{
             .{ .name = "u_color", .value = .{ .FColor = color } },
             .{ .name = "u_point", .value = .{ .Point = parent } },
-            .{ .name = "u_rect", .value = .{ .Rect = camera } },
+            .{ .name = "u_camera", .value = .{ .Rect = camera } },
         },
         null,
     );

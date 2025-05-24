@@ -79,7 +79,7 @@ const SdlDrawer = struct {
 
         var gpu_points = std.ArrayList(Canvas.InstancedShapeInfo).initCapacity(
             canvas.frame_arena.allocator(),
-            700 * 10,
+            700 * N_THINGS,
         ) catch @panic("OoM");
 
         const focus_dist = math.lerp(-1, 1, mouse.cur.client_pos.y);
@@ -548,7 +548,146 @@ const SdlDrawer = struct {
         );
     }
 
+    fn drawNilAtomCool(camera: Rect, world_point: Point, visuals: presenter.AtomVisuals) !void {
+        var gpu_points = std.ArrayList(Canvas.InstancedShapeInfo).initCapacity(
+            canvas.frame_arena.allocator(),
+            1000,
+        ) catch @panic("OoM");
+
+        var rnd_instance: std.Random.DefaultPrng = .init(2);
+        const rnd: math.Random = .init(rnd_instance.random());
+
+        const rotor: Rotor3 = .fromTwoVecs(
+            .e3,
+            rnd.direction().withZ(0.3).normalized(),
+        );
+        const focus_dist = math.lerp(-1, 1, mouse.cur.client_pos.y);
+
+        const color: FColor = .fromHex("#783407");
+        const pixel_width = camera.size.y / window_size.y;
+        if (false) {
+            for (0..150) |k| {
+                const t: f32 = tof32(k) / 151.0;
+                inline for (.{
+                    Vec2.fromTurns(math.lerp(0.75, 0.25, t)).addX(0.5),
+                    Vec2.lerp(.new(2, -1), .new(0.5, -1), t),
+                }) |local_p| {
+                    // TODO: rotate local p and then apply
+                    const pos = world_point.applyToLocalPosition(local_p).withZ(0);
+                    _ = rotor;
+                    // const pos = rotor.rotate(world_point.applyToLocalPosition(local_p).withZ(0));
+                    const dist_to_focus = @abs(pos.z - focus_dist);
+                    const radius = dist_to_focus * 10 + 1;
+                    const area = math.square(radius);
+                    const op = 1.0 / area;
+                    gpu_points.append(.{
+                        .color = color.withAlpha(op),
+                        .point = .{
+                            .pos = pos.XY(),
+                            .turns = 0.0,
+                            .scale = radius * pixel_width * 1.0,
+                        },
+                    }) catch @panic("OoM");
+                }
+            }
+            canvas.fillShapesInstanced(
+                camera,
+                canvas.DEFAULT_SHAPES.circle_8,
+                gpu_points.items,
+            );
+        }
+
+        try canvas.drawDirty(
+            .{
+                .vertex_src =
+                \\uniform vec4 u_camera; // as top_left, size
+                \\uniform vec4 u_point; // as pos, turns, scale
+                \\
+                \\in vec2 a_position;
+                \\out vec2 v_uv;
+                \\#define TAU 6.283185307179586
+                \\void main() {
+                \\  float c = cos(u_point.z * TAU);
+                \\  float s = sin(u_point.z * TAU);
+                \\  vec2 world_position = u_point.xy + u_point.w * (mat2x2(c,s,-s,c) * a_position);
+                \\  vec2 camera_position = (world_position - u_camera.xy) / u_camera.zw;
+                \\  gl_Position = vec4((camera_position * 2.0 - 1.0) * vec2(1, -1), 0, 1);
+                \\  v_uv = a_position;
+                \\}
+                ,
+                .fragment_src =
+                \\precision highp float;
+                \\out vec4 out_color;
+                \\in vec2 v_uv;
+                \\uniform vec4 u_color;
+                \\uniform float u_px_per_uv;
+                \\uniform float u_abs_dist_to_focus_plane;
+                \\float clamp01(float v) {
+                \\  return clamp(v, 0.0, 1.0);
+                \\}
+                \\float inverseLerp(float a, float b, float t) {
+                \\  return (t - a) / (b - a);
+                \\}
+                \\vec4 fill(vec4 color, float dist_in_px, float coc_radius_in_px) {
+                \\  return mix(color, vec4(color.xyz, 0), clamp01(inverseLerp(-coc_radius_in_px, coc_radius_in_px, dist_in_px)));
+                \\}
+                \\vec4 addColors(vec4 a, vec4 b) {
+                \\  return a * a.w + b * b.w;
+                \\}
+                \\void main() {
+                \\  vec4 border_color = vec4(vec3(0), 1);
+                \\  float dist = length(v_uv);
+                \\  float dist_to_interior_in_px = (dist - 1.0) * u_px_per_uv;
+                // \\  float dist_to_border_in_px = max(dist - 1.0, 0.99 - dist) * u_px_per_uv;
+                \\  float coc_radius_in_px = 0.5 + 1.0 * u_abs_dist_to_focus_plane * abs(u_px_per_uv);
+                \\  out_color = fill(u_color, dist_to_interior_in_px, coc_radius_in_px);
+                // \\  out_color = addColors(fill(u_color, dist_to_interior_in_px, coc_radius_in_px), fill(vec4(vec3(1), 0.5), dist_to_border_in_px, coc_radius_in_px));
+                \\}
+                ,
+                .attributes = .{ .attribs = &.{
+                    .{ .name = "a_position", .kind = .Vec2 },
+                } },
+                .uniforms = &.{
+                    .{ .name = "u_camera", .kind = .Rect },
+                    .{ .name = "u_point", .kind = .Point },
+                    .{ .name = "u_color", .kind = .FColor },
+                    .{ .name = "u_px_per_uv", .kind = .f32 },
+                    .{ .name = "u_abs_dist_to_focus_plane", .kind = .f32 },
+                },
+            },
+            .{
+                .vertices_ptr = &.{
+                    Vec2.new(-2, -2),
+                    Vec2.new(2, -2),
+                    Vec2.new(-2, 2),
+                    Vec2.new(2, 2),
+                },
+                .vertices_len_bytes = 4 * @sizeOf(Vec2),
+                .triangles = &.{
+                    .{ 0, 1, 2 },
+                    .{ 3, 2, 1 },
+                },
+                .uniforms = &.{
+                    .{ .name = "u_point", .value = .{
+                        .Point = world_point.applyToLocalPoint(.{ .pos = .new(0.5, 0) }),
+                    } },
+                    .{ .name = "u_camera", .value = .{ .Rect = camera } },
+                    .{ .name = "u_color", .value = .{ .FColor = visuals.color.toFColor() } },
+                    .{ .name = "u_px_per_uv", .value = .{ .f32 = world_point.scale * window_size.y / camera.size.y } },
+                    .{ .name = "u_abs_dist_to_focus_plane", .value = .{ .f32 = @abs(focus_dist * 2.0) } },
+                },
+                .texture = null,
+            },
+        );
+        // std.log.debug("{d}", .{0.5 + 0.001 * @abs(focus_dist * 2.0) * world_point.scale * window_size.y / camera.size.y});
+    }
+
     pub fn drawAtom(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {
+        // if (true or visuals.profile.len == 1 and visuals.color.equals(.from01(0.45, 0.45, 0.45))) {
+        {
+            drawNilAtomCool(camera.toRect(), world_point, visuals) catch unreachable;
+            return;
+        }
         const profile = visuals.profile;
         const screen_point = screenFromWorld(camera, world_point);
         if (screen_point.scale < 0.1) return;
@@ -803,7 +942,10 @@ pub fn main() !void {
             var uniforms_data = std.BoundedArray(Gl.UniformInfo, 8).init(0) catch unreachable;
             for (uniforms) |uniform| {
                 const location = gl.GetUniformLocation(program, uniform.name);
-                if (location == -1) return error.UniformLocationError;
+                if (location == -1) {
+                    std.log.debug("bad uniform: {s}", .{uniform.name});
+                    return error.UniformLocationError;
+                }
                 uniforms_data.append(.{
                     .location = location,
                     .name = uniform.name,
