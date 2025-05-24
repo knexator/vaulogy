@@ -39,93 +39,124 @@ const SdlPlatform = struct {
 var gl_vtable: Gl = undefined;
 var canvas: Canvas = undefined;
 
-const Gl = @import("kommon/Gl.zig");
-const Canvas = @import("kommon/Canvas.zig");
-const tof32 = @import("kommon/math.zig").tof32;
+const kommon = @import("kommon/kommon.zig");
+const Gl = kommon.Gl;
+const Canvas = kommon.Canvas;
+const tof32 = math.tof32;
 const Camera = presenter.Camera;
 const Point = presenter.Point;
 const Vec2 = presenter.Vec2;
 const Vec3 = math.Vec3;
 const Rotor3 = math.Rotor3;
 const Color = presenter.Color;
-const FColor = @import("kommon/math.zig").FColor;
+const FColor = math.FColor;
 const Rect = presenter.Rect;
+const Noise = kommon.Noise;
 const SdlDrawer = struct {
     pub fn asdfBackground() void {
         const camera: Rect = .{ .top_left = .zero, .size = window_size.scale(10.0 / window_size.y) };
         // const color: FColor = .fromHex("#557119");
         const pixel_width = camera.size.y / window_size.y;
 
+        const S = struct {
+            pub const noise: Noise = .{};
+            pub var t: f32 = 0;
+
+            pub fn randDir(offset: f32) Vec3 {
+                return Vec3.new(
+                    noise.genNoise3D(t, 0, offset),
+                    noise.genNoise3D(t, 50, offset),
+                    noise.genNoise3D(t, 100, offset),
+                ).normalized();
+            }
+        };
+        S.t += 30.0 * 1.0 / 60.0;
+
         var rnd_instance: std.Random.DefaultPrng = .init(1);
         const rnd: math.Random = .init(rnd_instance.random());
 
-        const rotor: Rotor3 = .fromTwoVecs(
-            rnd.direction3D(),
-            rnd.direction3D(),
-        );
+        const N_THINGS = 10;
 
-        // https://en.wikipedia.org/wiki/Depth_of_field
-        // https://en.wikipedia.org/wiki/Circle_of_confusion
-        // https://developer.nvidia.com/gpugems/gpugems/part-iv-image-processing/chapter-23-depth-field-survey-techniques
+        var gpu_points = std.ArrayList(Canvas.InstancedShapeInfo).initCapacity(
+            canvas.frame_arena.allocator(),
+            700 * 10,
+        ) catch @panic("OoM");
 
-        const center: Vec2 = .new(7, 7);
-        const AsdfPoint = struct {
-            pos: Vec3,
-            color: FColor,
-        };
-        var points = std.ArrayList(AsdfPoint).initCapacity(canvas.frame_arena.allocator(), 700) catch @panic("OoM");
+        const focus_dist = math.lerp(-1, 1, mouse.cur.client_pos.y);
 
-        for (0..700) |_| {
-            // const b = rnd.between(0, 1);
-
-            const t = rnd.between(0, 1);
-            const trefoil_pos: Vec3 = Vec3.new(
-                math.sin(t) + 2 * math.sin(2 * t),
-                math.cos(t) - 2 * math.cos(2 * t),
-                -math.sin(3 * t),
-            ).scale(0.3).add(Vec3.new(
-                rnd.between(-1, 1),
-                rnd.between(-1, 1),
-                rnd.between(-1, 1),
-            ).scale(0.05));
-
-            const pos: Vec3 = rotor.rotate(trefoil_pos);
-
-            // const pos: Vec3 = rotor.rotate(.new(
-            //     rnd.between(-1, 1),
-            //     rnd.between(-1, 1),
-            //     rnd.between(-1, 1),
-            // ));
-
-            const color: FColor = .lerp(
-                .fromHex("#557119"),
-                .fromHex("#646629"),
-                @abs(t * 2 - 1),
+        for (0..N_THINGS) |k| {
+            const rotor: Rotor3 = .fromTwoVecs(
+                rnd.direction3D().add(S.randDir(0 + tof32(k) * 100).scale(0.1)).normalized(),
+                rnd.direction3D().add(S.randDir(50 + tof32(k) * 100).scale(0.1)).normalized(),
             );
 
-            points.appendAssumeCapacity(.{
-                .pos = pos,
-                .color = color,
-            });
+            // https://en.wikipedia.org/wiki/Depth_of_field
+            // https://en.wikipedia.org/wiki/Circle_of_confusion
+            // https://developer.nvidia.com/gpugems/gpugems/part-iv-image-processing/chapter-23-depth-field-survey-techniques
+
+            const center = rnd.inRect(camera).withZ(rnd.between(-1, 1));
+
+            for (0..700) |_| {
+                // const b = rnd.between(0, 1);
+
+                const t = rnd.between(0, 1);
+                const trefoil_pos: Vec3 = Vec3.new(
+                    math.sin(t) + 2 * math.sin(2 * t),
+                    math.cos(t) - 2 * math.cos(2 * t),
+                    -math.sin(3 * t),
+                ).scale(0.3).add(Vec3.new(
+                    rnd.between(-1, 1),
+                    rnd.between(-1, 1),
+                    rnd.between(-1, 1),
+                ).scale(0.05));
+
+                const local_pos: Vec3 = rotor.rotate(trefoil_pos);
+
+                // const local_pos: Vec3 = rotor.rotate(.new(
+                //     rnd.between(-1, 1),
+                //     rnd.between(-1, 1),
+                //     rnd.between(-1, 1),
+                // ));
+
+                const pos = center.add(local_pos);
+
+                const color: FColor = .lerp(
+                    .fromHex("#557119"),
+                    .fromHex("#646629"),
+                    @abs(t * 2 - 1),
+                );
+
+                // points.appendAssumeCapacity(.{
+                //     .pos = local_pos.add(center),
+                //     .color = color,
+                // });
+                {
+                    const dist_to_focus = @abs(pos.z - focus_dist);
+                    const radius = dist_to_focus * 10 + 1;
+                    const area = math.square(radius);
+                    const op = 1.0 / area;
+                    gpu_points.appendAssumeCapacity(.{
+                        .color = color.withAlpha(op),
+                        .point = .{
+                            .pos = pos.XY(),
+                            .turns = 0.0,
+                            .scale = radius * pixel_width * 2,
+                        },
+                    });
+                }
+            }
         }
         // TODO: generate the points in order, ideally
-        std.mem.sort(AsdfPoint, points.items, {}, struct {
-            pub fn anon(_: void, a: AsdfPoint, b: AsdfPoint) bool {
-                return a.pos.z < b.pos.z;
-            }
-        }.anon);
-        for (points.items) |x| {
-            const dist_to_focus = @abs(x.pos.z + math.lerp(-1, 1, mouse.cur.client_pos.y));
-            const radius = dist_to_focus * 10 + 1;
-            const area = math.square(radius);
-            const op = 1.0 / area;
-            canvas.fillCircle(
-                camera,
-                x.pos.XY().add(center),
-                radius * pixel_width * 2,
-                x.color.withAlpha(op),
-            );
-        }
+        // std.mem.sort(AsdfPoint, points.items, {}, struct {
+        //     pub fn anon(_: void, a: AsdfPoint, b: AsdfPoint) bool {
+        //         return a.pos.z < b.pos.z;
+        //     }
+        // }.anon);
+        canvas.fillShapesInstanced(
+            camera,
+            canvas.DEFAULT_SHAPES.circle_8,
+            gpu_points.items,
+        );
     }
 
     fn screenFromWorld(camera: Camera, world_point: Point) Point {
@@ -912,8 +943,14 @@ pub fn main() !void {
 
                 const attributes = per_instance_attributes;
                 for (attributes.attribs, 0..) |attribute, k| {
-                    const index: gl.uint = @intCast(gl.GetAttribLocation(program, attribute.name));
-                    if (index == -1) return error.AttributeLocationError;
+                    const index: gl.uint = blk: {
+                        const index = gl.GetAttribLocation(program, attribute.name);
+                        if (index == -1) {
+                            std.log.err("bad attribute: {s}", .{attribute.name});
+                            return error.AttributeLocationError;
+                        }
+                        break :blk @intCast(index);
+                    };
                     gl.EnableVertexAttribArray(index);
                     gl.VertexAttribPointer(
                         index,

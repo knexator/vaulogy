@@ -5,6 +5,7 @@ frame_arena: std.heap.ArenaAllocator,
 /// only valid for a frame!
 gl: Gl,
 
+fill_instanced_shapes_renderable: Gl.InstancedRenderable,
 fill_instanced_circles_renderable: Gl.InstancedRenderable,
 instanced_rounded_lines_renderable: Gl.InstancedRenderable,
 fill_shape_renderable: Gl.Renderable,
@@ -12,6 +13,8 @@ text_renderers: []TextRenderer,
 
 DEFAULT_SHAPES: struct {
     circle_128: PrecomputedShape,
+    circle_32: PrecomputedShape,
+    circle_8: PrecomputedShape,
     square: PrecomputedShape,
 
     // TODO(zig): remove once we get comptime allocation
@@ -24,6 +27,20 @@ DEFAULT_SHAPES: struct {
                     false,
                 ),
             )),
+            .circle_32 = try .fromPoints(gpa, &funk.map(
+                Vec2.fromTurns,
+                &funk.linspace01(
+                    32,
+                    false,
+                ),
+            )),
+            .circle_8 = try .fromPoints(gpa, &funk.map(
+                Vec2.fromTurns,
+                &funk.linspace01(
+                    8,
+                    false,
+                ),
+            )),
             .square = .{
                 .local_points = &.{ .zero, .e1, .e2, .one },
                 .triangles = &.{ .{ 0, 1, 2 }, .{ 3, 2, 1 } },
@@ -33,6 +50,8 @@ DEFAULT_SHAPES: struct {
 
     pub fn deinit(self: @This(), gpa: std.mem.Allocator) void {
         self.circle_128.deinit(gpa);
+        self.circle_32.deinit(gpa);
+        self.circle_8.deinit(gpa);
     }
 },
 
@@ -91,6 +110,40 @@ pub fn init(gl: Gl, gpa: std.mem.Allocator, comptime font_jsons: []const []const
                 .{ .name = "u_rect", .kind = .Rect },
                 .{ .name = "u_point", .kind = .Point },
                 .{ .name = "u_color", .kind = .FColor },
+            },
+        ),
+        .fill_instanced_shapes_renderable = try gl.buildInstancedRenderable(
+            \\uniform vec4 u_camera; // as top_left, size
+            \\#define TAU 6.283185307179586
+            \\in vec2 a_vertex_position;
+            \\in vec4 a_point;
+            \\in vec4 a_color;
+            \\out vec4 v_color;
+            \\void main() {
+            \\  float c = cos(a_point.z * TAU);
+            \\  float s = sin(a_point.z * TAU);
+            \\  vec2 world_position = a_point.xy + a_point.w * (mat2x2(c,s,-s,c) * a_vertex_position);
+            \\  vec2 camera_position = (world_position - u_camera.xy) / u_camera.zw;
+            \\  gl_Position = vec4((camera_position * 2.0 - 1.0) * vec2(1, -1), 0, 1);
+            \\  v_color = a_color;
+            \\}
+        ,
+            \\precision highp float;
+            \\out vec4 out_color;
+            \\in vec4 v_color;
+            \\void main() {
+            \\  out_color = v_color;
+            \\}
+        ,
+            .{ .attribs = &.{
+                .{ .name = "a_vertex_position", .kind = .Vec2 },
+            } },
+            .{ .attribs = &.{
+                .{ .name = "a_point", .kind = .Point },
+                .{ .name = "a_color", .kind = .FColor },
+            } },
+            &.{
+                .{ .name = "u_camera", .kind = .Rect },
             },
         ),
         .fill_instanced_circles_renderable = try gl.buildInstancedRenderable(
@@ -316,6 +369,32 @@ pub fn fillCrown(self: *Canvas, camera: Rect, center: Vec2, radius: f32, width: 
         &funk.linspace(0, 1, CIRCLE_RESOLUTION, true),
         radius + width / 2,
     ))), color);
+}
+
+pub const InstancedShapeInfo = extern struct {
+    point: Point,
+    color: FColor,
+};
+
+pub fn fillShapesInstanced(
+    self: Canvas,
+    camera: Rect,
+    shape: PrecomputedShape,
+    instances: []const InstancedShapeInfo,
+) void {
+    self.gl.useInstancedRenderable(
+        self.fill_instanced_shapes_renderable,
+        shape.local_points.ptr,
+        shape.local_points.len * @sizeOf(Vec2),
+        shape.triangles,
+        instances.ptr,
+        instances.len * @sizeOf(InstancedShapeInfo),
+        instances.len,
+        &.{
+            .{ .name = "u_camera", .value = .{ .Rect = camera } },
+        },
+        null,
+    );
 }
 
 pub fn fillInstancedCircles(

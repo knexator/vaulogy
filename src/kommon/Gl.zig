@@ -114,12 +114,14 @@ pub const VertexInfo = struct {
     pub const Kind = enum {
         Vec2,
         FColor,
+        Point,
         f32,
 
         pub fn byteCount(kind: Kind) usize {
             return switch (kind) {
                 .Vec2 => @sizeOf(Vec2),
                 .FColor => @sizeOf(FColor),
+                .Point => @sizeOf(Point),
                 .f32 => @sizeOf(f32),
             };
         }
@@ -128,6 +130,7 @@ pub const VertexInfo = struct {
             return switch (kind) {
                 .Vec2 => .FLOAT,
                 .FColor => .FLOAT,
+                .Point => .FLOAT,
                 .f32 => .FLOAT,
             };
         }
@@ -142,6 +145,7 @@ pub const VertexInfo = struct {
                 .f32 => .@"1",
                 .Vec2 => .@"2",
                 .FColor => .@"4",
+                .Point => .@"4",
             };
         }
 
@@ -150,6 +154,7 @@ pub const VertexInfo = struct {
                 .f32 => false,
                 .Vec2 => false,
                 .FColor => false,
+                .Point => false,
             };
         }
     };

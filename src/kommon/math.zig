@@ -200,6 +200,10 @@ pub const Vec2 = extern struct {
         return new(v, v);
     }
 
+    pub fn withZ(v: Self, z: Scalar) Vec3 {
+        return .new(v.x, v.y, z);
+    }
+
     pub fn add(a: Self, b: Self) Self {
         return new(a.x + b.x, a.y + b.y);
     }
@@ -879,10 +883,10 @@ pub const UColor = extern struct {
     }
 };
 
-pub const Point = struct {
+pub const Point = extern struct {
     pos: Vec2 = .zero,
-    scale: f32 = 1,
     turns: f32 = 0,
+    scale: f32 = 1,
 
     pub fn lerp(a: Point, b: Point, t: f32) Point {
         // TODO: properly handle rotation
