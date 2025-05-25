@@ -632,16 +632,18 @@ const SdlDrawer = struct {
                 \\  return mix(color, vec4(color.xyz, 0), clamp01(inverseLerp(-coc_radius_in_px, coc_radius_in_px, dist_in_px)));
                 \\}
                 \\vec4 addColors(vec4 a, vec4 b) {
-                \\  return a * a.w + b * b.w;
+                \\  return vec4(mix(a.xyz, b.xyz, b.w / (a.w + b.w)), a.w + b.w);
                 \\}
                 \\void main() {
                 \\  vec4 border_color = vec4(vec3(0), 1);
                 \\  float dist = length(v_uv);
-                \\  float dist_to_interior_in_px = (dist - 1.0) * u_px_per_uv;
-                // \\  float dist_to_border_in_px = max(dist - 1.0, 0.99 - dist) * u_px_per_uv;
+                \\  float dist_to_interior_in_px = (dist - 0.99) * u_px_per_uv;
+                \\  float dist_to_border_in_px = max(dist - 1.0, 0.99 - dist) * u_px_per_uv;
                 \\  float coc_radius_in_px = 0.5 + 1.0 * u_abs_dist_to_focus_plane * abs(u_px_per_uv);
-                \\  out_color = fill(u_color, dist_to_interior_in_px, coc_radius_in_px);
-                // \\  out_color = addColors(fill(u_color, dist_to_interior_in_px, coc_radius_in_px), fill(vec4(vec3(1), 0.5), dist_to_border_in_px, coc_radius_in_px));
+                \\  out_color = addColors(
+                \\      fill(u_color, dist_to_interior_in_px, coc_radius_in_px), 
+                \\      fill(vec4(vec3(0),1), dist_to_border_in_px, coc_radius_in_px)
+                \\  );
                 \\}
                 ,
                 .attributes = .{ .attribs = &.{
