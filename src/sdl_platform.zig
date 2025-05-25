@@ -620,6 +620,7 @@ const SdlDrawer = struct {
                 \\out vec4 out_color;
                 \\in vec2 v_uv;
                 \\uniform vec4 u_color;
+                \\uniform vec4 u_color_lighter;
                 \\uniform float u_px_per_uv;
                 \\uniform float u_abs_dist_to_focus_plane;
                 \\float clamp01(float v) {
@@ -634,11 +635,28 @@ const SdlDrawer = struct {
                 \\vec4 addColors(vec4 a, vec4 b) {
                 \\  return vec4(mix(a.xyz, b.xyz, b.w / (a.w + b.w)), a.w + b.w);
                 \\}
+                \\float rawAtomProfile(float t) {
+                \\  // valid for Nil atom
+                \\  if (t < 0.25) {
+                \\    return mix(0, -0.25, t / 0.25);
+                \\  } else {
+                \\    return mix(-0.25, 0, (t - 0.25) / 0.75);
+                \\  }
+                \\}
+                \\// y in -1..1
+                \\float atomProfile(float y) {
+                \\  if (y >= 0) {
+                \\      return -rawAtomProfile(y);
+                \\  } else {
+                \\      return rawAtomProfile(-y);
+                \\  }
+                \\}
                 \\void main() {
-                \\  float dist = length(v_uv);
+                \\  float dist = length(vec2(min(v_uv.x, 0), v_uv.y));
+                \\  dist = max(dist, v_uv.x - 0.5 - atomProfile(v_uv.y));
                 \\  float coc_radius_in_px = 0.5 + 1.0 * u_abs_dist_to_focus_plane * abs(u_px_per_uv);
                 \\  float interior_size = 0.9; // mix(0.9, 1.0, smoothstep(0, 0.2, u_abs_dist_to_focus_plane));
-                \\  vec4 border_color = mix(vec4(u_color.xyz*2.0,0.7), u_color, smoothstep(0, 2, u_abs_dist_to_focus_plane));
+                \\  vec4 border_color = mix(vec4(u_color_lighter.rgb,0.7), u_color, smoothstep(0, 2, u_abs_dist_to_focus_plane));
                 \\  float dist_to_interior_in_px = (dist - interior_size) * u_px_per_uv;
                 \\  float dist_to_border_in_px = max(dist - 1.0, interior_size - dist) * u_px_per_uv;
                 \\  out_color = addColors(
@@ -654,6 +672,7 @@ const SdlDrawer = struct {
                     .{ .name = "u_camera", .kind = .Rect },
                     .{ .name = "u_point", .kind = .Point },
                     .{ .name = "u_color", .kind = .FColor },
+                    .{ .name = "u_color_lighter", .kind = .FColor },
                     .{ .name = "u_px_per_uv", .kind = .f32 },
                     .{ .name = "u_abs_dist_to_focus_plane", .kind = .f32 },
                 },
@@ -676,6 +695,7 @@ const SdlDrawer = struct {
                     } },
                     .{ .name = "u_camera", .value = .{ .Rect = camera } },
                     .{ .name = "u_color", .value = .{ .FColor = visuals.color.toFColor() } },
+                    .{ .name = "u_color_lighter", .value = .{ .FColor = visuals.color.toFColor().lighter() } },
                     .{ .name = "u_px_per_uv", .value = .{ .f32 = world_point.scale * window_size.y / camera.size.y } },
                     .{ .name = "u_abs_dist_to_focus_plane", .value = .{ .f32 = @abs(focus_dist * 2.0) } },
                 },

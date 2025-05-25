@@ -792,6 +792,76 @@ pub const FColor = extern struct {
             }
         }.anon, &funk.linspace01(steps, true));
     }
+
+    // TODO: use something fancier than HSV
+    pub const HSV = struct {
+        h: f32,
+        s: f32,
+        v: f32,
+        a: f32,
+
+        pub fn toRgb(hsv: HSV) FColor {
+            if (hsv.s == 0.0) {
+                return .{ .r = hsv.v, .g = hsv.v, .b = hsv.v, .a = hsv.a }; // achromatic (gray)
+            }
+
+            const h = hsv.h * 6.0;
+            const i: u32 = @intFromFloat(std.math.floor(h));
+            const f = h - @as(f32, @floatFromInt(i));
+            const p = hsv.v * (1.0 - hsv.s);
+            const q = hsv.v * (1.0 - hsv.s * f);
+            const t = hsv.v * (1.0 - hsv.s * (1.0 - f));
+
+            return switch (i % 6) {
+                0 => .{ .r = hsv.v, .g = t, .b = p, .a = hsv.a },
+                1 => .{ .r = q, .g = hsv.v, .b = p, .a = hsv.a },
+                2 => .{ .r = p, .g = hsv.v, .b = t, .a = hsv.a },
+                3 => .{ .r = p, .g = q, .b = hsv.v, .a = hsv.a },
+                4 => .{ .r = t, .g = p, .b = hsv.v, .a = hsv.a },
+                else => .{ .r = hsv.v, .g = p, .b = q, .a = hsv.a },
+            };
+        }
+    };
+
+    fn toHsv(color: FColor) HSV {
+        const max = @max(color.r, color.g, color.b);
+        const min = @min(color.r, color.g, color.b);
+        const delta = max - min;
+
+        var h: f32 = 0.0;
+        const s: f32 = if (max == 0.0) 0.0 else delta / max;
+        const v: f32 = max;
+
+        if (delta != 0.0) {
+            if (max == color.r) {
+                h = (color.g - color.b) / delta;
+                if (color.g < color.b) h += 6.0;
+            } else if (max == color.g) {
+                h = (color.b - color.r) / delta + 2.0;
+            } else {
+                h = (color.r - color.g) / delta + 4.0;
+            }
+            h /= 6.0;
+        }
+
+        return .{ .h = h, .s = s, .v = v, .a = color.a };
+    }
+
+    // TODO
+    pub fn lighter(color: FColor) FColor {
+        return .{
+            .r = color.r * 1.5,
+            .g = color.g * 1.5,
+            .b = color.b * 1.5,
+            .a = color.a,
+        };
+        // const delta_s = 0.2;
+        // const delta_v = 0.2;
+        // const hsv = color.toHsv();
+        // const new_v = std.math.clamp(hsv.v + delta_v, 0.0, 1.0);
+        // const new_s = std.math.clamp(hsv.s + delta_s, 0.0, 1.0);
+        // return (HSV{ .h = hsv.h, .s = new_s, .v = new_v, .a = color.a }).toRgb();
+    }
 };
 
 pub const UColor = extern struct {
