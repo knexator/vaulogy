@@ -635,14 +635,15 @@ const SdlDrawer = struct {
                 \\  return vec4(mix(a.xyz, b.xyz, b.w / (a.w + b.w)), a.w + b.w);
                 \\}
                 \\void main() {
-                \\  vec4 border_color = vec4(vec3(0), 1);
                 \\  float dist = length(v_uv);
-                \\  float dist_to_interior_in_px = (dist - 0.99) * u_px_per_uv;
-                \\  float dist_to_border_in_px = max(dist - 1.0, 0.99 - dist) * u_px_per_uv;
                 \\  float coc_radius_in_px = 0.5 + 1.0 * u_abs_dist_to_focus_plane * abs(u_px_per_uv);
+                \\  float interior_size = 0.9; // mix(0.9, 1.0, smoothstep(0, 0.2, u_abs_dist_to_focus_plane));
+                \\  vec4 border_color = mix(vec4(u_color.xyz*2.0,0.7), u_color, smoothstep(0, 2, u_abs_dist_to_focus_plane));
+                \\  float dist_to_interior_in_px = (dist - interior_size) * u_px_per_uv;
+                \\  float dist_to_border_in_px = max(dist - 1.0, interior_size - dist) * u_px_per_uv;
                 \\  out_color = addColors(
                 \\      fill(u_color, dist_to_interior_in_px, coc_radius_in_px), 
-                \\      fill(vec4(vec3(0),1), dist_to_border_in_px, coc_radius_in_px)
+                \\      fill(border_color, dist_to_border_in_px, coc_radius_in_px)
                 \\  );
                 \\}
                 ,
