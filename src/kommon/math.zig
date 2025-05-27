@@ -188,8 +188,25 @@ pub const Vec2 = extern struct {
     pub const e1 = new(1, 0);
     pub const e2 = new(0, 1);
 
+    pub const Coord = enum { x, y };
+    pub const coords: [2]Coord = .{ .x, .y };
+
     pub fn new(x: Scalar, y: Scalar) Self {
         return .{ .x = x, .y = y };
+    }
+
+    pub fn get(v: *Self, which: Coord) Scalar {
+        return switch (which) {
+            .x => v.x,
+            .y => v.y,
+        };
+    }
+
+    pub fn setInPlace(v: *Self, which: Coord, value: Scalar) void {
+        switch (which) {
+            .x => v.x = value,
+            .y => v.y = value,
+        }
     }
 
     pub fn toInt(v: Self, S: type) ZVec2(S) {
@@ -339,6 +356,12 @@ pub const Vec2 = extern struct {
     pub fn expectApproxEqAbs(expected: Vec2, actual: Vec2, tolerance: anytype) !void {
         try std.testing.expectApproxEqAbs(expected.x, actual.x, tolerance);
         try std.testing.expectApproxEqAbs(expected.y, actual.y, tolerance);
+    }
+
+    pub fn format(value: Vec2, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: std.io.AnyWriter) !void {
+        std.debug.assert(std.mem.eql(u8, fmt, ""));
+        std.debug.assert(std.meta.eql(options, .{}));
+        try writer.print("Vec2({d},{d})", .{ value.x, value.y });
     }
 };
 
@@ -738,6 +761,12 @@ pub const Rect = struct {
 
     pub fn localFromWorldPosition(self: Rect, p: Vec2) Vec2 {
         return p.sub(self.top_left).div(self.size);
+    }
+
+    pub fn format(value: Rect, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: std.io.AnyWriter) !void {
+        std.debug.assert(std.mem.eql(u8, fmt, ""));
+        std.debug.assert(std.meta.eql(options, .{}));
+        try writer.print("Rect(tl: {any}, size: {any})", .{ value.top_left, value.size });
     }
 };
 

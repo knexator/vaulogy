@@ -548,55 +548,7 @@ const SdlDrawer = struct {
         );
     }
 
-    fn drawNilAtomCool(camera: Rect, world_point: Point, visuals: presenter.AtomVisuals) !void {
-        var gpu_points = std.ArrayList(Canvas.InstancedShapeInfo).initCapacity(
-            canvas.frame_arena.allocator(),
-            1000,
-        ) catch @panic("OoM");
-
-        var rnd_instance: std.Random.DefaultPrng = .init(2);
-        const rnd: math.Random = .init(rnd_instance.random());
-
-        const rotor: Rotor3 = .fromTwoVecs(
-            .e3,
-            rnd.direction().withZ(0.3).normalized(),
-        );
-        const focus_dist = math.lerp(-1, 1, mouse.cur.client_pos.y);
-
-        const color: FColor = .fromHex("#783407");
-        const pixel_width = camera.size.y / window_size.y;
-        if (false) {
-            for (0..150) |k| {
-                const t: f32 = tof32(k) / 151.0;
-                inline for (.{
-                    Vec2.fromTurns(math.lerp(0.75, 0.25, t)).addX(0.5),
-                    Vec2.lerp(.new(2, -1), .new(0.5, -1), t),
-                }) |local_p| {
-                    // TODO: rotate local p and then apply
-                    const pos = world_point.applyToLocalPosition(local_p).withZ(0);
-                    _ = rotor;
-                    // const pos = rotor.rotate(world_point.applyToLocalPosition(local_p).withZ(0));
-                    const dist_to_focus = @abs(pos.z - focus_dist);
-                    const radius = dist_to_focus * 10 + 1;
-                    const area = math.square(radius);
-                    const op = 1.0 / area;
-                    gpu_points.append(.{
-                        .color = color.withAlpha(op),
-                        .point = .{
-                            .pos = pos.XY(),
-                            .turns = 0.0,
-                            .scale = radius * pixel_width * 1.0,
-                        },
-                    }) catch @panic("OoM");
-                }
-            }
-            canvas.fillShapesInstanced(
-                camera,
-                canvas.DEFAULT_SHAPES.circle_8,
-                gpu_points.items,
-            );
-        }
-
+    fn drawNilAtomCool(camera: Rect, world_point: Point, visuals: presenter.AtomVisuals, dist_to_focus: f32) !void {
         try canvas.drawDirty(
             .{
                 .vertex_src =
@@ -680,9 +632,9 @@ const SdlDrawer = struct {
             .{
                 .vertices_ptr = &.{
                     Vec2.new(-2, -2),
-                    Vec2.new(2, -2),
+                    Vec2.new(3, -2),
                     Vec2.new(-2, 2),
-                    Vec2.new(2, 2),
+                    Vec2.new(3, 2),
                 },
                 .vertices_len_bytes = 4 * @sizeOf(Vec2),
                 .triangles = &.{
@@ -697,18 +649,17 @@ const SdlDrawer = struct {
                     .{ .name = "u_color", .value = .{ .FColor = visuals.color.toFColor() } },
                     .{ .name = "u_color_lighter", .value = .{ .FColor = visuals.color.toFColor().lighter() } },
                     .{ .name = "u_px_per_uv", .value = .{ .f32 = world_point.scale * window_size.y / camera.size.y } },
-                    .{ .name = "u_abs_dist_to_focus_plane", .value = .{ .f32 = @abs(focus_dist * 2.0) } },
+                    .{ .name = "u_abs_dist_to_focus_plane", .value = .{ .f32 = @abs(dist_to_focus) } },
                 },
                 .texture = null,
             },
         );
-        // std.log.debug("{d}", .{0.5 + 0.001 * @abs(focus_dist * 2.0) * world_point.scale * window_size.y / camera.size.y});
     }
 
     pub fn drawAtom(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {
         // if (true or visuals.profile.len == 1 and visuals.color.equals(.from01(0.45, 0.45, 0.45))) {
         {
-            drawNilAtomCool(camera.toRect(), world_point, visuals) catch unreachable;
+            drawNilAtomCool(camera.toRect(), world_point, visuals, math.lerp(-1, 1, mouse.cur.client_pos.y)) catch unreachable;
             return;
         }
         const profile = visuals.profile;
