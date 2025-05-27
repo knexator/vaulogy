@@ -8,6 +8,7 @@ pub const KeyCode = enum(u32) {
     ArrowRight,
     ArrowUp,
     ArrowDown,
+    Space,
 };
 
 pub fn main() !void {

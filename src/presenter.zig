@@ -6,7 +6,7 @@ const std = @import("std");
 
 pub const safeAt = @import("kommon/kommon.zig").safeAt;
 pub const Mouse = @import("kommon/input.zig").Mouse;
-pub const KeyboardButton = enum { left, right, up, down };
+pub const KeyboardButton = enum { left, right, up, down, space };
 pub const Keyboard = @import("kommon/input.zig").CustomKeyboard(KeyboardButton);
 const math = @import("kommon/math.zig");
 pub const Vec2 = math.Vec2;
@@ -529,7 +529,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         const prev_editing = editing.*;
                         self.state = .{ .testing_fnk = .{ .main = try .init(
                             editing.camera,
-                            editing.samples,
+                            try std.mem.concat(self.mem.gpa, TestCase, &.{ editing.samples, editing.custom_tests.items }),
                             editing.fnk_name,
                             editing.cases,
                             try .initFromFnks(self.persistence.fnks, &self.mem),
@@ -666,6 +666,14 @@ const TestCase = struct {
         };
     }
 
+    fn setSexpr(self: *TestCase, which: Part, local: core.SexprAddress, mem: *VeryPermamentGameStuff, value: *const Sexpr) !void {
+        switch (which) {
+            .input => self.input = try self.input.setAt(mem, local, value),
+            .expected => self.expected = try self.expected.?.setAt(mem, local, value),
+            .actual => unreachable,
+        }
+    }
+
     pub fn allSolved(vs: []const TestCase) bool {
         for (vs) |v| {
             if (v.expected) |x| {
@@ -693,6 +701,12 @@ const TutorialState = union(enum) {
     intro_to_list_viewer,
     not_yet_creating_vaus,
     intro_to_create_vaus,
+
+    pub fn allowCustomTests(self: TutorialState) bool {
+        // TODO
+        _ = self;
+        return true;
+    }
 
     pub fn allowPickingVaus(self: TutorialState) bool {
         return switch (self) {
@@ -2007,7 +2021,8 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn draw(self: Self) !void {
-            try self.tests_reel.draw(self.samples);
+            // TODO: custom tests
+            try self.tests_reel.draw(self.samples, &.{});
             switch (self.state) {
                 .starting => |starting| {
                     self.ui_state.draw(drawer);
@@ -2134,6 +2149,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             main_input: if (DESIGN.no_current_data) void else core.SexprAddress,
             main_fnk_name: core.SexprAddress,
             sample: TestCase.Address,
+            custom_test: TestCase.Address,
             external_fnk: fnks_reel.Address,
             fnk_manager,
             meta_converter: core.SexprAddress,
@@ -2149,6 +2165,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .sample => |self_sample| self_sample.index == other.sample.index and
                         self_sample.which == other.sample.which and
                         core.equalSexprAddress(self_sample.local, other.sample.local),
+                    .custom_test => |self_custom_test| self_custom_test.index == other.custom_test.index and
+                        self_custom_test.which == other.custom_test.which and
+                        core.equalSexprAddress(self_custom_test.local, other.custom_test.local),
                     .external_fnk => |self_fnk| self_fnk.index == other.external_fnk.index and
                         core.equalSexprAddress(self_fnk.local, other.external_fnk.local),
                     .toolbar_special_var => true,
@@ -2169,6 +2188,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .main_fnk_name => |local| SexprView.sexprChildView(MAIN_FNK_POS, local),
                     .toolbar_special_var => Camera.remap(UI.cam, toolbar.special_var_point, self.camera),
                     .sample => |sample| SexprView.sexprChildView(self.tests_reel.getWorldPoint(self.camera, sample.index, sample.which), sample.local),
+                    .custom_test => |sample| SexprView.sexprChildView(self.tests_reel.getWorldPoint(self.camera, self.samples.len + sample.index, sample.which), sample.local),
                     .external_fnk => |fnk| SexprView.sexprChildView(fnks_reel.getWorldPoint(self.camera, fnk.index), fnk.local),
                     .fnk_manager => Camera.remap(UI.cam, self.fnk_manager.sexpr_point, self.camera),
                     .meta_converter => |local| SexprView.sexprChildView(meta_converter.sexpr_point, local),
@@ -2195,6 +2215,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .main_fnk_name => |local| self.fnk_name.getAt(local).?,
                     .toolbar_special_var => toolbar.special_var_state.next_value,
                     .sample => |sample| self.samples[sample.index].get(sample.which).?.getAt(sample.local).?,
+                    .custom_test => |sample| self.custom_tests.items[sample.index].get(sample.which).?.getAt(sample.local).?,
                     .external_fnk => |fnk| self.available_fnks[fnk.index].getAt(fnk.local).?,
                     .fnk_manager => return self.fnk_manager.cur,
                     .meta_converter => |local| if (meta_converter.sexpr) |v| v.getAt(local).? else null,
@@ -2219,6 +2240,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         try meta_converter.setSexpr(self.mem, value, local_address);
                     },
                     .list_viewer => |addr| try self.list_viewer.setSexpr(self.mem, value, addr),
+                    .custom_test => |sample| try self.custom_tests.items[sample.index].setSexpr(sample.which, sample.local, self.mem, value),
                     .toolbar, .main_fnk_name, .toolbar_special_var, .sample, .external_fnk => unreachable,
                 }
             }
@@ -2237,6 +2259,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .main_fnk_name => false,
                     .toolbar_special_var => false,
                     .sample => false,
+                    .custom_test => |sample| sample.which != .actual,
                     .external_fnk => false,
                     .full_address => true,
                     .main_input => true,
@@ -2253,6 +2276,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .full_address => |x| x.which != .fnk_name,
                     .main_input => false,
                     .fnk_manager => false,
+                    .custom_test => false,
                     .meta_converter => true,
                     else => unreachable,
                 };
@@ -2373,8 +2397,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         mem: *VeryPermamentGameStuff,
         camera: Camera = DEFAULT_CAM,
         meta_enabled: bool,
-        // TODO: allow user-created TestCases
         samples: []TestCase,
+        custom_tests: std.ArrayList(TestCase),
         fnk_name: *const Sexpr,
         available_fnks: []const *const Sexpr,
         cases: CaseGroup,
@@ -2780,8 +2804,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         const TestsReel = struct {
             reel: Reel,
+            allow_custom_tests: bool,
 
-            pub fn init(top_left: Point) TestsReel {
+            pub fn init(top_left: Point, allow_custom_tests: bool) TestsReel {
                 return .{ .reel = .{
                     .top_left = top_left,
                     .rect = .{
@@ -2789,11 +2814,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         .size = Vec2.new(9.25, 10).scale(top_left.scale),
                     },
                     .n_visible_rows = 4,
-                } };
+                }, .allow_custom_tests = allow_custom_tests };
             }
 
-            pub fn update(self: *TestsReel, samples_len: usize, mouse: *Mouse, delta_seconds: f32) void {
-                self.reel.update(samples_len, mouse, delta_seconds);
+            pub fn update(self: *TestsReel, all_samples_len: usize, mouse: *Mouse, delta_seconds: f32) void {
+                self.reel.update(all_samples_len, mouse, delta_seconds);
             }
 
             /// in UI coords
@@ -2810,41 +2835,55 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 return Camera.remap(UI.cam, self.getUIPoint(k, which), camera);
             }
 
-            pub fn findOverlap(self: TestsReel, mouse_ui_pos: Vec2, samples: []const TestCase) !?TestCase.Address {
-                for (samples, 0..) |sample, k| {
-                    if (try SexprView.overlapsSexpr(
-                        platform.gpa,
-                        sample.input,
-                        self.getUIPoint(k, .input),
-                        mouse_ui_pos,
-                    )) |local| {
-                        return TestCase.Address{ .index = k, .local = local, .which = .input };
-                    }
-                    if (sample.expected) |expected| {
+            pub fn findOverlap(self: TestsReel, mouse_ui_pos: Vec2, samples: []const TestCase, custom_tests: []const TestCase) !?struct {
+                address: TestCase.Address,
+                is_custom: bool,
+            } {
+                inline for (&.{ samples, custom_tests }, &.{ 0, samples.len }, &.{ false, true }) |asdf, offset, is_custom| {
+                    for (asdf, 0..) |sample, k| {
                         if (try SexprView.overlapsSexpr(
                             platform.gpa,
-                            expected,
-                            self.getUIPoint(k, .expected),
+                            sample.input,
+                            self.getUIPoint(k + offset, .input),
                             mouse_ui_pos,
                         )) |local| {
-                            return TestCase.Address{ .index = k, .local = local, .which = .expected };
+                            return .{
+                                .address = TestCase.Address{ .index = k, .local = local, .which = .input },
+                                .is_custom = is_custom,
+                            };
                         }
-                    }
-                    if (sample.get(.actual)) |actual| {
-                        if (try SexprView.overlapsSexpr(
-                            platform.gpa,
-                            actual,
-                            self.getUIPoint(k, .actual),
-                            mouse_ui_pos,
-                        )) |local| {
-                            return TestCase.Address{ .index = k, .local = local, .which = .actual };
+                        if (sample.expected) |expected| {
+                            if (try SexprView.overlapsSexpr(
+                                platform.gpa,
+                                expected,
+                                self.getUIPoint(k + offset, .expected),
+                                mouse_ui_pos,
+                            )) |local| {
+                                return .{
+                                    .address = TestCase.Address{ .index = k, .local = local, .which = .expected },
+                                    .is_custom = is_custom,
+                                };
+                            }
+                        }
+                        if (sample.get(.actual)) |actual| {
+                            if (try SexprView.overlapsSexpr(
+                                platform.gpa,
+                                actual,
+                                self.getUIPoint(k + offset, .actual),
+                                mouse_ui_pos,
+                            )) |local| {
+                                return .{
+                                    .address = TestCase.Address{ .index = k, .local = local, .which = .actual },
+                                    .is_custom = is_custom,
+                                };
+                            }
                         }
                     }
                 }
                 return null;
             }
 
-            pub fn draw(self: TestsReel, samples: []const TestCase) !void {
+            pub fn draw(self: TestsReel, samples: []const TestCase, custom_tests: []const TestCase) !void {
                 const camera = UI.cam;
                 drawer.drawRect(camera, self.reel.rect, .black, null);
                 const p = self.reel.rect.get(.top_center).addY(-0.3);
@@ -2860,47 +2899,51 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .pos = p.addX(2.25),
                     .scale = 0.75,
                 }, "Actual", .black);
-                for (samples, 0..) |sample, k| {
-                    try artist.drawSexpr(
-                        camera,
-                        self.getUIPoint(k, .input),
-                        sample.input,
-                    );
-                    if (sample.expected) |output| {
+                inline for (&.{ samples, custom_tests }, &.{ 0, samples.len }, &.{ false, true }) |asdf, offset, is_custom| {
+                    // TODO: do something
+                    _ = is_custom;
+                    for (asdf, 0..) |sample, k| {
                         try artist.drawSexpr(
                             camera,
-                            self.getUIPoint(k, .expected),
-                            output,
+                            self.getUIPoint(k + offset, .input),
+                            sample.input,
                         );
-                    } else {
-                        return error.TODO;
-                    }
-                    switch (sample.actual) {
-                        .undefined => {
-                            drawer.drawDebugText(camera, self.getUIPoint(k, .actual).applyToLocalPoint(.{ .scale = 2, .pos = .new(0.8, 0) }), "❌", .black);
-                        },
-                        .unknown => {
-                            drawer.drawDebugText(camera, self.getUIPoint(k, .actual).applyToLocalPoint(.{ .scale = 2, .pos = .new(0.8, 0) }), "?", .black);
-                        },
-                        .value => |v| {
+                        if (sample.expected) |output| {
                             try artist.drawSexpr(
                                 camera,
-                                self.getUIPoint(k, .actual),
-                                v,
+                                self.getUIPoint(k + offset, .expected),
+                                output,
                             );
-                        },
-                    }
+                        } else {
+                            return error.TODO;
+                        }
+                        switch (sample.actual) {
+                            .undefined => {
+                                drawer.drawDebugText(camera, self.getUIPoint(k + offset, .actual).applyToLocalPoint(.{ .scale = 2, .pos = .new(0.8, 0) }), "❌", .black);
+                            },
+                            .unknown => {
+                                drawer.drawDebugText(camera, self.getUIPoint(k + offset, .actual).applyToLocalPoint(.{ .scale = 2, .pos = .new(0.8, 0) }), "?", .black);
+                            },
+                            .value => |v| {
+                                try artist.drawSexpr(
+                                    camera,
+                                    self.getUIPoint(k + offset, .actual),
+                                    v,
+                                );
+                            },
+                        }
 
-                    if (std.meta.activeTag(sample.actual) != .unknown) {
-                        drawer.drawDebugText(
-                            camera,
-                            self.getUIPoint(k, .actual).applyToLocalPoint(.{ .scale = 1.5, .pos = .new(-0.5, 0) }),
-                            if (sample.isSolved()) "✔️" else "❌",
-                            .black,
-                        );
+                        if (std.meta.activeTag(sample.actual) != .unknown) {
+                            drawer.drawDebugText(
+                                camera,
+                                self.getUIPoint(k, .actual).applyToLocalPoint(.{ .scale = 1.5, .pos = .new(-0.5, 0) }),
+                                if (sample.isSolved()) "✔️" else "❌",
+                                .black,
+                            );
+                        }
                     }
                 }
-                self.reel.drawScrollBar(samples.len);
+                self.reel.drawScrollBar(samples.len + custom_tests.len);
                 // drawer.drawDebugText(camera, .{ .pos = rect.get(.top_center).addY(-0.35) }, "tests", .black);
             }
 
@@ -3507,7 +3550,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             _ = try cases.updateWildcards(platform.gpa);
             const main_input: *const Sexpr = Sexpr.builtin.nil;
 
-            const tests_reel: TestsReel = .init(.{ .pos = .new(19.5, 0.75), .scale = 0.75 });
+            const tests_reel: TestsReel = .init(.{ .pos = .new(19.5, 0.75), .scale = 0.75 }, tutorial_state.allowCustomTests());
 
             const tests: []TestCase = try mem.gpa.alloc(TestCase, builtin_samples.len);
             for (tests, builtin_samples) |*dst, src| {
@@ -3518,7 +3561,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             try toolbar.special_case_state.next(mem, cases);
 
             if (DESIGN.instant_feedback) {
-                try updateSolvedSamples(.{ .name = fnk_name, .body = fnk_body }, tests, persistence, mem);
+                try updateSolvedSamples(.{ .name = fnk_name, .body = fnk_body }, tests, &.{}, persistence, mem);
             }
 
             const fnk_manager: FnkManager = .init();
@@ -3535,6 +3578,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 // TODO: figure out when to enable the meta features
                 .meta_enabled = false,
                 .tutorial_state = tutorial_state,
+                .custom_tests = .init(platform.gpa),
                 // .tutorial_state = if (fnk_name.equals(builtin_levels[0].fnk_name))
                 //     .first_level
                 // else if (fnk_name.equals(builtin_levels[1].fnk_name))
@@ -3564,7 +3608,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         fn resetSolvedSamples(self: *Self) !void {
             if (DESIGN.instant_feedback) {
-                try updateSolvedSamples(try self.getFnk(), self.samples, self.persistence, self.mem);
+                try updateSolvedSamples(try self.getFnk(), self.samples, self.custom_tests.items, self.persistence, self.mem);
             } else {
                 self.forgetSolvedSamples();
             }
@@ -3574,33 +3618,38 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             for (self.samples) |*sample| {
                 sample.actual = .unknown;
             }
+            for (self.custom_tests.items) |*sample| {
+                sample.actual = .unknown;
+            }
         }
 
         fn updateSolvedSamplesHelper(self: Self) !void {
-            try updateSolvedSamples(try self.getFnk(), self.samples, self.persistence, self.mem);
+            try updateSolvedSamples(try self.getFnk(), self.samples, self.custom_tests.items, self.persistence, self.mem);
         }
 
-        fn updateSolvedSamples(fnk: Fnk, samples: []TestCase, persistence: *PlayerData, mem: *VeryPermamentGameStuff) !void {
+        fn updateSolvedSamples(fnk: Fnk, samples: []TestCase, custom_tests: []TestCase, persistence: *PlayerData, mem: *VeryPermamentGameStuff) !void {
             try persistence.fnks.put(fnk.name, fnk.body);
 
             var score = try core.ScoringRun.initFromFnks(persistence.fnks, mem);
             defer score.deinit(false);
 
-            for (samples) |*sample| {
-                sample.actual = blk: {
-                    var exec = core.ExecutionThread.init(sample.input, fnk.name, &score) catch |err| switch (err) {
-                        error.FnkNotFound => break :blk .undefined,
-                        else => return err,
-                    };
-                    defer exec.deinit();
+            inline for (&.{ samples, custom_tests }) |asdf| {
+                for (asdf) |*sample| {
+                    sample.actual = blk: {
+                        var exec = core.ExecutionThread.init(sample.input, fnk.name, &score) catch |err| switch (err) {
+                            error.FnkNotFound => break :blk .undefined,
+                            else => return err,
+                        };
+                        defer exec.deinit();
 
-                    const actual_output = exec.getFinalResultBounded(&score, 10_000) catch |err| switch (err) {
-                        error.FnkNotFound, error.NoMatchingCase, error.InvalidMetaFnk, error.UsedUndefinedVariable, error.TookTooLong => break :blk .undefined,
-                        error.BAD_INPUT => break :blk .undefined,
-                        error.OutOfMemory => return err,
+                        const actual_output = exec.getFinalResultBounded(&score, 10_000) catch |err| switch (err) {
+                            error.FnkNotFound, error.NoMatchingCase, error.InvalidMetaFnk, error.UsedUndefinedVariable, error.TookTooLong => break :blk .undefined,
+                            error.BAD_INPUT => break :blk .undefined,
+                            error.OutOfMemory => return err,
+                        };
+                        break :blk .{ .value = actual_output };
                     };
-                    break :blk .{ .value = actual_output };
-                };
+                }
             }
         }
 
@@ -3649,13 +3698,22 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             self.ui_state.buttons.getPtr(.check_all).visible = !TestCase.allSolved(self.samples);
 
             inline for (.{&self.tests_reel}) |instance| {
-                instance.update(self.samples.len, &mouse, delta_seconds);
+                instance.update(self.samples.len + self.custom_tests.items.len, &mouse, delta_seconds);
             }
             try self.list_viewer.update(&mouse, delta_seconds);
             fnks_reel.reel.update(fnks_reel.nRows(self.available_fnks.len), &mouse, delta_seconds);
             moveCamera(&self.camera, delta_seconds, platform.getKeyboard(), mouse);
             self.fnk_manager.update(&self.ui_state, self.tutorial_state.allowCreatingVaus());
             self.ui_state.update(delta_seconds, self.focus.getActiveUiLabel(), self.focus.getHotUiLabel());
+
+            // TODO: do with mouse/ui
+            if (self.tutorial_state.allowCustomTests() and platform.getKeyboard().wasPressed(.space)) {
+                try self.custom_tests.append(.{
+                    .input = Sexpr.builtin.nil,
+                    .expected = Sexpr.builtin.nil,
+                    .actual = .unknown,
+                });
+            }
 
             const camera = self.camera;
 
@@ -3681,7 +3739,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     .template => .{ .turns = -0.02, .pos = .new(0.5, 0) },
                                     .fnk_name => .{ .turns = 0.02, .pos = .new(0.5, 0) },
                                 },
-                                .main_input, .meta_converter, .list_viewer => .{ .turns = -0.02, .pos = .new(0.5, 0) },
+                                .main_input, .meta_converter, .list_viewer, .custom_test => .{ .turns = -0.02, .pos = .new(0.5, 0) },
                                 .fnk_manager => .{ .turns = 0.02, .pos = .new(0.5, 0) },
                                 .toolbar, .main_fnk_name, .toolbar_special_var, .sample, .external_fnk => unreachable,
                             })
@@ -3758,8 +3816,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     overlap
                 else if (toolbar.findOverlap(mouse_ui_pos, .from(self.tutorial_state))) |overlap|
                     .{ .sexpr = .{ .toolbar = overlap.index } }
-                else if (try self.tests_reel.findOverlap(mouse_ui_pos, self.samples)) |overlap|
-                    .{ .sexpr = .{ .sample = overlap } }
+                else if (try self.tests_reel.findOverlap(mouse_ui_pos, self.samples, self.custom_tests.items)) |overlap|
+                    if (overlap.is_custom)
+                        .{ .sexpr = .{ .custom_test = overlap.address } }
+                    else
+                        .{ .sexpr = .{ .sample = overlap.address } }
                 else if (if (self.tutorial_state.allowPickingVaus()) try fnks_reel.findOverlap(mouse_ui_pos, self.available_fnks, .from(self.tutorial_state)) else null) |overlap|
                     .{ .sexpr = .{ .external_fnk = overlap } }
                 else if (self.tutorial_state.allowCreatingVaus() and self.fnk_manager.findOverlap(mouse_ui_pos))
@@ -4122,7 +4183,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             //     .hidden => {},
             // }
 
-            try self.tests_reel.draw(self.samples);
+            try self.tests_reel.draw(self.samples, self.custom_tests.items);
             if (TestCase.allSolved(self.samples)) {
                 drawer.drawDebugText(UI.cam, .{ .pos = self.tests_reel.reel.rect.get(.bottom_center).add(.new(0, 1.3)), .scale = 0.75 }, "All Tests passed!", .black);
             }
