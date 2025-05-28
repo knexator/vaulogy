@@ -3,6 +3,7 @@
 // TODO: maybe combine Editing & Executing (they both share Camera and some UI)
 
 const std = @import("std");
+const assert = std.debug.assert;
 
 pub const safeAt = @import("kommon/kommon.zig").safeAt;
 pub const Mouse = @import("kommon/input.zig").Mouse;
@@ -50,16 +51,19 @@ pub const Platform = struct {
 };
 
 // TODO NOW: allow non-ascii sexpr names
+// TODO: join samples & fnks
 pub const PlayerData = struct {
     // TODO: this field should not be here.
     ascii_data: []const u8,
+    ascii_data_for_custom_samples: []const u8,
 
     fnks: FnkCollection,
-    custom_samples: std.ArrayHashMap(*const Sexpr, []const Sample, core.SexprContext, true),
+    custom_samples: SamplesCollection,
     is_builtin_level_solved: [builtin_levels.len]bool,
     first_time: bool = true,
 
     const no_samples: []const Sample = &.{};
+    const SamplesCollection = std.ArrayHashMap(*const Sexpr, []const Sample, core.SexprContext, true);
 
     pub fn allFnkNames(self: PlayerData) []const *const Sexpr {
         return self.fnks.keys();
@@ -69,11 +73,15 @@ pub const PlayerData = struct {
         var asdf: FnkCollection = .init(mem.gpa);
         // TODO: WITHOUT THIS LINE, IT CRASHES WHEN ADDING A 5th FNK
         try asdf.ensureTotalCapacity(1000);
+        var custom_samples: SamplesCollection = .init(mem.gpa);
+        // TODO: WITHOUT THIS LINE, IT CRASHES WHEN ADDING A 5th FNK
+        try custom_samples.ensureTotalCapacity(1000);
         return .{
             .ascii_data = "",
+            .ascii_data_for_custom_samples = "",
             .fnks = asdf,
             // .fnks = FnkCollection.init(mem.gpa),
-            .custom_samples = .init(mem.gpa),
+            .custom_samples = custom_samples,
             .is_builtin_level_solved = @splat(false),
         };
     }
@@ -111,29 +119,58 @@ pub const PlayerData = struct {
         }
     }
 
-    pub fn fromAscii(data: []const u8, mem: *VeryPermamentGameStuff) !PlayerData {
-        const ascii_data = try mem.gpa.dupe(u8, data);
+    pub fn fromAscii(fnks_data: []const u8, custom_samples_data: []const u8, mem: *VeryPermamentGameStuff) !PlayerData {
+        const ascii_data = try mem.gpa.dupe(u8, fnks_data);
         var parser = parsing.Parser{ .remaining_text = ascii_data };
         var fnks = FnkCollection.init(mem.gpa);
         errdefer fnks.deinit();
         // TODO: WITHOUT THIS LINE, IT CRASHES WHEN ADDING A 5th FNK
         try fnks.ensureTotalCapacity(1000);
         try parser.parseFnkCollection(&fnks, &mem.pool_for_sexprs, mem.arena_for_cases.allocator());
+
+        const ascii_data_for_custom_samples = try mem.gpa.dupe(u8, custom_samples_data);
+        var parser2 = parsing.Parser{ .remaining_text = ascii_data_for_custom_samples };
+        var fnks2 = FnkCollection.init(mem.gpa);
+        errdefer fnks2.deinit();
+        // TODO: WITHOUT THIS LINE, IT CRASHES WHEN ADDING A 5th FNK
+        try fnks2.ensureTotalCapacity(1000);
+        try parser2.parseFnkCollection(&fnks2, &mem.pool_for_sexprs, mem.arena_for_cases.allocator());
+        var custom_samples: SamplesCollection = .init(mem.gpa);
+        // TODO: WITHOUT THIS LINE, IT CRASHES WHEN ADDING A 5th FNK
+        try custom_samples.ensureTotalCapacity(1000);
+        var it = fnks2.iterator();
+        while (it.next()) |entry| {
+            const cases = entry.value_ptr.cases.items;
+            const samples = try mem.gpa.alloc(Sample, cases.len);
+            for (cases, samples) |case, *dst| {
+                assert(case.next == null);
+                assert(case.fnk_name.equals(Sexpr.builtin.identity));
+                dst.* = .{
+                    .input = case.pattern,
+                    .output = case.template,
+                };
+            }
+            try custom_samples.putNoClobber(entry.key_ptr.*, samples);
+        }
+
         var is_builtin_level_solved: [builtin_levels.len]bool = undefined;
         for (builtin_levels, &is_builtin_level_solved) |level, *target| {
             target.* = try isSolved(level, fnks, mem);
         }
         return PlayerData{
             .fnks = fnks,
-            .custom_samples = .init(mem.gpa),
+            .custom_samples = custom_samples,
             .ascii_data = ascii_data,
             .is_builtin_level_solved = is_builtin_level_solved,
+            .ascii_data_for_custom_samples = ascii_data_for_custom_samples,
         };
     }
 
-    pub fn toAscii(this: PlayerData, alloc: std.mem.Allocator) ![]const u8 {
+    pub fn toAscii(this: PlayerData, alloc: std.mem.Allocator) !struct {
+        fnks: []const u8,
+        samples: []const u8,
+    } {
         var result = std.ArrayList(u8).init(alloc);
-
         var it = this.fnks.iterator();
         while (it.next()) |x| {
             const fnk = Fnk{ .name = x.key_ptr.*, .body = x.value_ptr.* };
@@ -142,7 +179,19 @@ pub const PlayerData = struct {
             try result.appendSlice(str);
         }
 
-        return result.toOwnedSlice();
+        var result2 = std.ArrayList(u8).init(alloc);
+        var it2 = this.custom_samples.iterator();
+        const writer2 = result2.writer();
+        while (it2.next()) |x| {
+            try writer2.print("{any}", .{x.key_ptr.*});
+            try writer2.writeAll(" {\n");
+            for (x.value_ptr.*) |sample| {
+                try writer2.print("\t{any} -> {any};\n", .{ sample.input, sample.output });
+            }
+            try writer2.writeAll("}\n\n");
+        }
+
+        return .{ .fnks = try result.toOwnedSlice(), .samples = try result2.toOwnedSlice() };
     }
 
     pub fn deinit(this: *PlayerData, mem: *VeryPermamentGameStuff) void {
@@ -477,13 +526,13 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             }
             const fnk_body = res.value_ptr.*;
 
-            // TODO: include both the builtin & the user created samples
-            // const samples = self.persistence.custom_samples.get(fnk_name) orelse PlayerData.no_samples;
+            const custom_samples = self.persistence.custom_samples.get(fnk_name) orelse PlayerData.no_samples;
 
             self.state = .{
                 .editing_fnk = try .init(
                     fnk_name,
                     builtin_samples orelse PlayerData.no_samples,
+                    custom_samples,
                     self.persistence.allFnkNames(),
                     fnk_body,
                     &self.mem,
@@ -510,10 +559,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 .editing_fnk => |*editing| switch (try editing.update(delta_seconds)) {
                     .nothing => {},
                     .back_to_level_select => {
-                        const fnk = try editing.getFnk();
-                        try self.persistence.fnks.put(fnk.name, fnk.body);
-                        try self.persistence.updateSolvedStatusOfAll(&self.mem);
-                        try platform.setPlayerData(self.persistence, &self.mem);
+                        try editing.persist(&self.persistence);
                         if (self.prev_editing_names.pop()) |prev| {
                             try self.initEditingAndMaybeFindLevel(prev);
                         } else {
@@ -521,10 +567,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         }
                     },
                     .launch_test => {
-                        const fnk = try editing.getFnk();
-                        try self.persistence.fnks.put(fnk.name, fnk.body);
-                        try self.persistence.updateSolvedStatusOfAll(&self.mem);
-                        try platform.setPlayerData(self.persistence, &self.mem);
+                        try editing.persist(&self.persistence);
                         try editing.resetSolvedSamples();
                         const prev_editing = editing.*;
                         self.state = .{ .testing_fnk = .{ .main = try .init(
@@ -537,10 +580,8 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         ), .prev_editing = prev_editing } };
                     },
                     .launch_execution => |input| {
-                        // todo
                         const fnk = try editing.getFnk();
-                        try self.persistence.fnks.put(fnk.name, fnk.body);
-                        try platform.setPlayerData(self.persistence, &self.mem);
+                        try editing.persist(&self.persistence);
                         self.scoring_run = try core.ScoringRun.initFromFnks(
                             self.persistence.fnks,
                             &self.mem,
@@ -556,9 +597,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                     },
                     .change_to => |foo| {
                         try self.prev_editing_names.append(platform.gpa, editing.fnk_name);
-                        const fnk = try editing.getFnk();
-                        try self.persistence.fnks.put(fnk.name, fnk.body);
-                        try platform.setPlayerData(self.persistence, &self.mem);
+                        try editing.persist(&self.persistence);
                         self.state = .{
                             .loading_editing_fnk = .initFromPoint(foo.fnk_name, Camera.remap(
                                 UI.cam,
@@ -742,6 +781,7 @@ const TutorialState = union(enum) {
     }
 };
 
+// TODO: move most of this and have it be a general level (since custom levels should allow custom description)
 pub const BuiltinLevel = struct {
     // TODO: remove fnk_name, making it a key in a hashmap?
     fnk_name: *const Sexpr,
@@ -3510,11 +3550,26 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             return .{ .cases = result, .unfolded = 0 };
         }
 
+        pub fn persist(editing: Self, persistence: *PlayerData) !void {
+            const fnk = try editing.getFnk();
+            try persistence.fnks.put(fnk.name, fnk.body);
+            try persistence.custom_samples.put(fnk.name, try editing.getCustomSamples());
+            try platform.setPlayerData(persistence.*, editing.mem);
+        }
+
         pub fn getFnk(self: Self) !Fnk {
             return Fnk{
                 .name = self.fnk_name,
                 .body = .{ .cases = try getMatchCases(self.mem, self.cases) },
             };
+        }
+
+        pub fn getCustomSamples(self: Self) ![]const Sample {
+            const result = try self.mem.gpa.alloc(Sample, self.custom_tests.items.len);
+            for (self.custom_tests.items, result) |t, *dst| {
+                dst.* = .{ .input = t.input, .output = t.expected };
+            }
+            return result;
         }
 
         fn makeCaseVirtual(mem: *VeryPermamentGameStuff, case: CaseState) !core.MatchCaseDefinition {
@@ -3540,6 +3595,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         pub fn init(
             fnk_name: *const Sexpr,
             builtin_samples: []const Sample,
+            custom_samples: []const Sample,
             available_fnks: []const *const Sexpr,
             fnk_body: core.FnkBody,
             mem: *VeryPermamentGameStuff,
@@ -3560,8 +3616,17 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             try toolbar.special_var_state.next(mem, cases);
             try toolbar.special_case_state.next(mem, cases);
 
+            var custom_tests: std.ArrayList(TestCase) = try .initCapacity(platform.gpa, custom_samples.len);
+            for (custom_samples) |sample| {
+                try custom_tests.append(.{
+                    .input = sample.input,
+                    .expected = sample.output,
+                    .actual = .unknown,
+                });
+            }
+
             if (DESIGN.instant_feedback) {
-                try updateSolvedSamples(.{ .name = fnk_name, .body = fnk_body }, tests, &.{}, persistence, mem);
+                try updateSolvedSamples(.{ .name = fnk_name, .body = fnk_body }, tests, custom_tests.items, persistence, mem);
             }
 
             const fnk_manager: FnkManager = .init();
@@ -3578,7 +3643,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 // TODO: figure out when to enable the meta features
                 .meta_enabled = false,
                 .tutorial_state = tutorial_state,
-                .custom_tests = .init(platform.gpa),
+                .custom_tests = custom_tests,
                 // .tutorial_state = if (fnk_name.equals(builtin_levels[0].fnk_name))
                 //     .first_level
                 // else if (fnk_name.equals(builtin_levels[1].fnk_name))
