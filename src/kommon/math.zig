@@ -722,6 +722,14 @@ pub const Rect = struct {
                     },
                 }
             },
+            .bottom_left => |bottom_left| {
+                switch (measures[1]) {
+                    else => @panic("TODO"),
+                    .size => |size| {
+                        return .{ .size = size, .top_left = bottom_left.sub(size.mul(.new(0, 1))) };
+                    },
+                }
+            },
         }
     }
 

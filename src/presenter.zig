@@ -774,6 +774,8 @@ const TutorialState = union(enum) {
     }
 
     pub fn allowPickingVaus(self: TutorialState) bool {
+        // TODO: hardcode to true so the player can save the first vau
+        if (true) return true;
         return switch (self) {
             .first_level, .second_level => false,
             else => true,
@@ -2361,6 +2363,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 back_to_menu,
 
                 fnk_manager_load,
+                toggle_cur_fnk_is_fav,
             };
             const ButtonState = struct {
                 pos: Rect,
@@ -2403,6 +2406,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             .pos = fnk_manager_load,
                             .text = "Load",
                             .visible = false,
+                        },
+                        .toggle_cur_fnk_is_fav = .{
+                            .pos = undefined,
+                            .text = "+-",
+                            .visible = true,
+                            .enabled = true,
                         },
                     }),
                 };
@@ -3405,6 +3414,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             fn nRows(fnks_len: usize) usize {
                 return std.math.divCeil(usize, fnks_len, N_FNKS_PER_ROW) catch unreachable;
             }
+
+            pub fn update(ui: *UI_State, enabled: bool) void {
+                ui.buttons.getPtr(.toggle_cur_fnk_is_fav).pos = .from(.{ .{ .bottom_left = reel.top_left.pos }, .{ .size = .one } });
+                ui.buttons.getPtr(.toggle_cur_fnk_is_fav).enabled = enabled;
+                ui.buttons.getPtr(.toggle_cur_fnk_is_fav).visible = enabled;
+            }
         };
 
         /// create/edit/delete fnks
@@ -3787,6 +3802,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             self.ui_state.buttons.getPtr(.back_to_menu).visible = TestCase.allSolved(self.samples);
             self.ui_state.buttons.getPtr(.check_all).visible = !TestCase.allSolved(self.samples);
+            fnks_reel.update(&self.ui_state, self.tutorial_state.allowPickingVaus());
 
             inline for (.{&self.tests_reel}) |instance| {
                 instance.update(self.samples.len + self.custom_tests.items.len, &mouse, delta_seconds);
@@ -3804,11 +3820,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .expected = Sexpr.builtin.nil,
                     .actual = .unknown,
                 });
-            }
-
-            // TODO: do with mouse/ui
-            if (platform.getKeyboard().wasPressed(.space)) {
-                try self.favorite_fnks.append(self.fnk_name);
             }
 
             const camera = self.camera;
@@ -4208,6 +4219,16 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 .check_all => return .launch_test,
                                 .back_to_menu => return .back_to_level_select,
                                 .fnk_manager_load => return .{ .change_to = .{ .fnk_name = self.fnk_manager.cur.?, .ui_point = self.fnk_manager.sexpr_point } },
+                                .toggle_cur_fnk_is_fav => {
+                                    for (self.favorite_fnks.items, 0..) |name, k| {
+                                        if (name.equals(self.fnk_name)) {
+                                            _ = self.favorite_fnks.orderedRemove(k);
+                                            break;
+                                        }
+                                    } else {
+                                        try self.favorite_fnks.insert(0, self.fnk_name);
+                                    }
+                                },
                             }
                         },
                     },
@@ -4422,7 +4443,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         // drawer.drawDebugText(camera, .{ .pos = .new(6, -1.85), .scale = 0.75 }, "↓ That gray thing is the current Data;\nfeel free to change it by\ndropping some other Data on it.", .black);
                         drawer.drawDebugText(camera, .{ .pos = .new(3.5, -4), .scale = 0.75 }, "← Click Play to see the Vau applied to the current Data.", .black);
                     }
-                    drawer.drawDebugText(camera, .{ .pos = .new(-3, 7), .scale = 0.75 }, "Left click to\npick/drop Data", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(-3, 4), .scale = 0.75 }, "Left click to\npick/drop Data", .black);
                     // drawer.drawDebugText(camera, .{ .pos = .new(10, 1), .scale = 0.75 }, "↓ These are the Cases that make up the Vau.", .black);
                     if (!(TestCase.allSolved(self.samples))) {
                         drawer.drawDebugText(UI.cam, .{ .pos = self.tests_reel.reel.rect.get(.bottom_center).add(.new(0, 2)), .scale = 1.25 }, "Click to check ↑\nif your Vau works", .black);
