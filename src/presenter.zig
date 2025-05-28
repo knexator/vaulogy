@@ -63,7 +63,7 @@ pub const PlayerData = struct {
     first_time: bool = true,
 
     const no_samples: []const Sample = &.{};
-    const SamplesCollection = std.ArrayHashMap(*const Sexpr, []const Sample, core.SexprContext, true);
+    pub const SamplesCollection = std.ArrayHashMap(*const Sexpr, []const Sample, core.SexprContext, true);
 
     pub fn allFnkNames(self: PlayerData) []const *const Sexpr {
         return self.fnks.keys();
@@ -630,6 +630,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             drawer.asdfBackground();
             try switch (self.state) {
                 inline .testing_fnk, .executing_fnk => |x| x.main.draw(),
+                .editing_fnk => |x| x.draw(self.persistence.custom_samples),
                 inline else => |x| x.draw(),
             };
         }
@@ -4212,7 +4213,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             };
         }
 
-        pub fn draw(self: Self) !void {
+        pub fn draw(self: Self, custom_samples: PlayerData.SamplesCollection) !void {
             const camera = self.camera;
             {
                 artist.drawOffscreenCableTo(camera, MAIN_INPUT_POS);
@@ -4295,6 +4296,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                         drawer.setTransparency(0.5);
                                         defer drawer.setTransparency(1);
                                         try asdf.draw(level.manual_samples, foo, 0);
+                                    } else if (custom_samples.get(value)) |samples| {
+                                        const asdf: SamplesReel = .init();
+                                        const foo: []bool = try platform.gpa.alloc(bool, samples.len);
+                                        defer platform.gpa.free(foo);
+                                        drawer.setTransparency(0.5);
+                                        defer drawer.setTransparency(1);
+                                        try asdf.draw(samples, foo, 0);
                                     }
                                 },
                             }
