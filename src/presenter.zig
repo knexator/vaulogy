@@ -56,11 +56,14 @@ pub const PlayerData = struct {
     // TODO: this field should not be here.
     ascii_data: []const u8,
     ascii_data_for_custom_samples: []const u8,
+    ascii_data_for_fav_fnks: []const u8,
 
     fnks: FnkCollection,
     custom_samples: SamplesCollection,
     is_builtin_level_solved: [builtin_levels.len]bool,
     first_time: bool = true,
+    // hacky as hell lol
+    favorite_fnk_names: std.ArrayList(*const Sexpr),
 
     const no_samples: []const Sample = &.{};
     pub const SamplesCollection = std.ArrayHashMap(*const Sexpr, []const Sample, core.SexprContext, true);
@@ -79,10 +82,12 @@ pub const PlayerData = struct {
         return .{
             .ascii_data = "",
             .ascii_data_for_custom_samples = "",
+            .ascii_data_for_fav_fnks = "",
             .fnks = asdf,
             // .fnks = FnkCollection.init(mem.gpa),
             .custom_samples = custom_samples,
             .is_builtin_level_solved = @splat(false),
+            .favorite_fnk_names = .init(mem.gpa),
         };
     }
 
@@ -119,7 +124,7 @@ pub const PlayerData = struct {
         }
     }
 
-    pub fn fromAscii(fnks_data: []const u8, custom_samples_data: []const u8, mem: *VeryPermamentGameStuff) !PlayerData {
+    pub fn fromAscii(fnks_data: []const u8, custom_samples_data: []const u8, favorite_fnks_data: []const u8, mem: *VeryPermamentGameStuff) !PlayerData {
         const ascii_data = try mem.gpa.dupe(u8, fnks_data);
         var parser = parsing.Parser{ .remaining_text = ascii_data };
         var fnks = FnkCollection.init(mem.gpa);
@@ -153,6 +158,13 @@ pub const PlayerData = struct {
             try custom_samples.putNoClobber(entry.key_ptr.*, samples);
         }
 
+        const ascii_data_for_fav_fnks = try mem.gpa.dupe(u8, favorite_fnks_data);
+        var parser3 = parsing.Parser{ .remaining_text = ascii_data_for_fav_fnks };
+        var fav_fnks: std.ArrayList(*const Sexpr) = .init(mem.gpa);
+        while (try parser3.maybeParseSexpr(&mem.pool_for_sexprs)) |name| {
+            try fav_fnks.append(name);
+        }
+
         var is_builtin_level_solved: [builtin_levels.len]bool = undefined;
         for (builtin_levels, &is_builtin_level_solved) |level, *target| {
             target.* = try isSolved(level, fnks, mem);
@@ -163,12 +175,15 @@ pub const PlayerData = struct {
             .ascii_data = ascii_data,
             .is_builtin_level_solved = is_builtin_level_solved,
             .ascii_data_for_custom_samples = ascii_data_for_custom_samples,
+            .ascii_data_for_fav_fnks = ascii_data_for_fav_fnks,
+            .favorite_fnk_names = fav_fnks,
         };
     }
 
     pub fn toAscii(this: PlayerData, alloc: std.mem.Allocator) !struct {
         fnks: []const u8,
         samples: []const u8,
+        fav_fnks: []const u8,
     } {
         var result = std.ArrayList(u8).init(alloc);
         var it = this.fnks.iterator();
@@ -191,7 +206,17 @@ pub const PlayerData = struct {
             try writer2.writeAll("}\n\n");
         }
 
-        return .{ .fnks = try result.toOwnedSlice(), .samples = try result2.toOwnedSlice() };
+        var result3 = std.ArrayList(u8).init(alloc);
+        const writer3 = result3.writer();
+        for (this.favorite_fnk_names.items) |name| {
+            try writer3.print("{any}\n", .{name});
+        }
+
+        return .{
+            .fnks = try result.toOwnedSlice(),
+            .samples = try result2.toOwnedSlice(),
+            .fav_fnks = try result3.toOwnedSlice(),
+        };
     }
 
     pub fn deinit(this: *PlayerData, mem: *VeryPermamentGameStuff) void {
@@ -533,7 +558,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                     fnk_name,
                     builtin_samples orelse PlayerData.no_samples,
                     custom_samples,
-                    self.persistence.allFnkNames(),
+                    &self.persistence.favorite_fnk_names,
                     fnk_body,
                     &self.mem,
                     &self.persistence,
@@ -2257,7 +2282,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .toolbar_special_var => toolbar.special_var_state.next_value,
                     .sample => |sample| self.samples[sample.index].get(sample.which).?.getAt(sample.local).?,
                     .custom_test => |sample| self.custom_tests.items[sample.index].get(sample.which).?.getAt(sample.local).?,
-                    .external_fnk => |fnk| self.available_fnks[fnk.index].getAt(fnk.local).?,
+                    .external_fnk => |fnk| self.favorite_fnks.items[fnk.index].getAt(fnk.local).?,
                     .fnk_manager => return self.fnk_manager.cur,
                     .meta_converter => |local| if (meta_converter.sexpr) |v| v.getAt(local).? else null,
                     .list_viewer => |addr| if (self.list_viewer.getSexpr(addr.which)) |v| v.getAt(addr.local).? else null,
@@ -2441,7 +2466,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         samples: []TestCase,
         custom_tests: std.ArrayList(TestCase),
         fnk_name: *const Sexpr,
-        available_fnks: []const *const Sexpr,
+        favorite_fnks: *std.ArrayList(*const Sexpr),
         cases: CaseGroup,
         main_input: if (DESIGN.no_current_data) enum { invalid_field } else *const Sexpr,
 
@@ -3597,7 +3622,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             fnk_name: *const Sexpr,
             builtin_samples: []const Sample,
             custom_samples: []const Sample,
-            available_fnks: []const *const Sexpr,
+            favorite_fnks: *std.ArrayList(*const Sexpr),
             fnk_body: core.FnkBody,
             mem: *VeryPermamentGameStuff,
             persistence: *PlayerData,
@@ -3640,7 +3665,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .cases = cases,
                 .main_input = if (DESIGN.no_current_data) .invalid_field else main_input,
                 .ui_state = .init(tests_reel.reel.rect, fnk_manager.getButtonRect(.load)),
-                .available_fnks = available_fnks,
+                .favorite_fnks = favorite_fnks,
                 // TODO: figure out when to enable the meta features
                 .meta_enabled = false,
                 .tutorial_state = tutorial_state,
@@ -3767,7 +3792,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 instance.update(self.samples.len + self.custom_tests.items.len, &mouse, delta_seconds);
             }
             try self.list_viewer.update(&mouse, delta_seconds);
-            fnks_reel.reel.update(fnks_reel.nRows(self.available_fnks.len), &mouse, delta_seconds);
+            fnks_reel.reel.update(fnks_reel.nRows(self.favorite_fnks.items.len), &mouse, delta_seconds);
             moveCamera(&self.camera, delta_seconds, platform.getKeyboard(), mouse);
             self.fnk_manager.update(&self.ui_state, self.tutorial_state.allowCreatingVaus());
             self.ui_state.update(delta_seconds, self.focus.getActiveUiLabel(), self.focus.getHotUiLabel());
@@ -3779,6 +3804,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .expected = Sexpr.builtin.nil,
                     .actual = .unknown,
                 });
+            }
+
+            // TODO: do with mouse/ui
+            if (platform.getKeyboard().wasPressed(.space)) {
+                try self.favorite_fnks.append(self.fnk_name);
             }
 
             const camera = self.camera;
@@ -3887,7 +3917,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         .{ .sexpr = .{ .custom_test = overlap.address } }
                     else
                         .{ .sexpr = .{ .sample = overlap.address } }
-                else if (if (self.tutorial_state.allowPickingVaus()) try fnks_reel.findOverlap(mouse_ui_pos, self.available_fnks, .from(self.tutorial_state)) else null) |overlap|
+                else if (if (self.tutorial_state.allowPickingVaus()) try fnks_reel.findOverlap(mouse_ui_pos, self.favorite_fnks.items, .from(self.tutorial_state)) else null) |overlap|
                     .{ .sexpr = .{ .external_fnk = overlap } }
                 else if (self.tutorial_state.allowCreatingVaus() and self.fnk_manager.findOverlap(mouse_ui_pos))
                     .{ .sexpr = .fnk_manager }
@@ -4253,7 +4283,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             if (TestCase.allSolved(self.samples)) {
                 drawer.drawDebugText(UI.cam, .{ .pos = self.tests_reel.reel.rect.get(.bottom_center).add(.new(0, 1.3)), .scale = 0.75 }, "All Tests passed!", .black);
             }
-            if (self.tutorial_state.allowPickingVaus()) try fnks_reel.draw(self.available_fnks, .from(self.tutorial_state));
+            if (self.tutorial_state.allowPickingVaus()) try fnks_reel.draw(self.favorite_fnks.items, .from(self.tutorial_state));
             if (self.tutorial_state.allowCreatingVaus()) try self.fnk_manager.draw();
             if (self.meta_enabled) try meta_converter.draw(camera);
             if (self.tutorial_state.hasListViewer()) try self.list_viewer.draw();

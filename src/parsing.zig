@@ -172,6 +172,14 @@ pub const Parser = struct {
         skipWhitespace(&this.remaining_text);
     }
 
+    pub fn maybeParseSexpr(this: *Parser, pool: *MemoryPool(Sexpr)) !?*const Sexpr {
+        this.skipWhitespaceNew();
+        if (this.remaining_text.len == 0) return null;
+        const name = try parseSexpr(&this.remaining_text, pool);
+        this.skipWhitespaceNew();
+        return name;
+    }
+
     pub fn parseFnkNew(this: *Parser, pool: *MemoryPool(Sexpr), allocator_for_cases: std.mem.Allocator) !Fnk {
         this.skipWhitespaceNew();
         const name = try parseSexpr(&this.remaining_text, pool);

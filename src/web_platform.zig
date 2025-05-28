@@ -159,6 +159,7 @@ const WebPlatform = struct {
             return presenter.PlayerData.fromAscii(
                 ascii,
                 try js_better.storage.getItemAlloc("vaulogy_player_data_custom_samples", mem.gpa) orelse "",
+                try js_better.storage.getItemAlloc("vaulogy_player_data_fav_fnks", mem.gpa) orelse "",
                 mem,
             ) catch |err| switch (err) {
                 error.OutOfMemory => |e| return e,
@@ -173,8 +174,10 @@ const WebPlatform = struct {
         const ascii = try player_data.toAscii(mem.gpa);
         defer mem.gpa.free(ascii.fnks);
         defer mem.gpa.free(ascii.samples);
+        defer mem.gpa.free(ascii.fav_fnks);
         js_better.storage.setItem("vaulogy_player_data", ascii.fnks);
         js_better.storage.setItem("vaulogy_player_data_custom_samples", ascii.samples);
+        js_better.storage.setItem("vaulogy_player_data_fav_fnks", ascii.fav_fnks);
     }
 
     pub fn getMouse() presenter.Mouse {
