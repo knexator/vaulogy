@@ -2356,7 +2356,24 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 std.debug.assert(DESIGN.no_current_data);
             }
 
-            const Label = enum {
+            const Label = union(enum) {
+                fixed: FixedLabel,
+                temp: TempLabel,
+
+                pub fn equalsFixed(label: ?Label, fixed: FixedLabel) bool {
+                    if (label == null) return false;
+                    if (std.meta.activeTag(label.?) != .fixed) return false;
+                    return label.?.fixed == fixed;
+                }
+
+                pub fn equalsTemp(label: ?Label, temp: TempLabel) bool {
+                    if (label == null) return false;
+                    if (std.meta.activeTag(label.?) != .temp) return false;
+                    return std.meta.eql(label.?.temp, temp);
+                }
+            };
+
+            const FixedLabel = enum {
                 back,
                 reset_view,
                 check_all,
@@ -2365,6 +2382,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 fnk_manager_load,
                 toggle_cur_fnk_is_fav,
             };
+            const TempLabel = union(enum) {
+                delete_custom_test: usize,
+            };
+
             const ButtonState = struct {
                 pos: Rect,
                 hot_t: f32 = 0,
@@ -2372,12 +2393,33 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 text: ?[:0]const u8 = null,
                 enabled: bool = true,
                 visible: bool = true,
+
+                pub fn draw(button: ButtonState) void {
+                    if (!button.visible) return;
+                    if (!button.enabled) drawer.setTransparency(0.5);
+                    defer if (!button.enabled) drawer.setTransparency(1);
+
+                    drawer.drawRect(UI.cam, button.pos.plusMargin(
+                        clamp01(button.hot_t - button.active_t) * 0.1,
+                    ), .black, .white);
+                    if (button.text) |text| {
+                        drawer.drawDebugText(UI.cam, .{
+                            .pos = button.pos.getCenter(),
+                            .scale = button.pos.size.y / (1.5 + tof32(std.mem.count(u8, text, "\n"))),
+                        }, text, Color.black);
+                    }
+                }
             };
 
-            buttons: std.EnumArray(Label, ButtonState),
+            buttons: std.EnumArray(FixedLabel, ButtonState),
+            temp_buttons: std.AutoArrayHashMap(TempLabel, ButtonState),
 
-            pub fn init(tests_reel_rect: Rect, fnk_manager_load: Rect) @This() {
+            temp_buttons_not_seen_this_frame: std.AutoArrayHashMap(TempLabel, void),
+
+            pub fn init(tests_reel_rect: Rect, fnk_manager_load: Rect, gpa: std.mem.Allocator) @This() {
                 return .{
+                    .temp_buttons_not_seen_this_frame = .init(gpa),
+                    .temp_buttons = .init(gpa),
                     .buttons = .init(.{
                         .back = .{
                             .pos = .{ .top_left = .zero, .size = .one },
@@ -2418,50 +2460,103 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             pub fn draw(self: @This()) void {
-                for (self.buttons.values) |button| {
-                    if (!button.visible) continue;
-                    if (!button.enabled) drawer.setTransparency(0.5);
-                    defer if (!button.enabled) drawer.setTransparency(1);
+                for (self.buttons.values) |button| button.draw();
+                var it = self.temp_buttons.iterator();
+                while (it.next()) |entry| entry.value_ptr.draw();
+            }
 
-                    drawer.drawRect(UI.cam, button.pos.plusMargin(
-                        clamp01(button.hot_t - button.active_t) * 0.1,
-                    ), .black, .white);
-                    if (button.text) |text| {
-                        drawer.drawDebugText(UI.cam, .{
-                            .pos = button.pos.getCenter(),
-                            .scale = button.pos.size.y / (1.5 + tof32(std.mem.count(u8, text, "\n"))),
-                        }, text, Color.black);
-                    }
+            pub fn tempButton(self: *@This(), label: TempLabel, pos: Rect, enabled: bool, text: ?[:0]const u8) !void {
+                _ = self.temp_buttons_not_seen_this_frame.swapRemove(label);
+                const gop = try self.temp_buttons.getOrPut(label);
+                if (gop.found_existing) {
+                    gop.value_ptr.pos = pos;
+                    gop.value_ptr.enabled = enabled;
+                    gop.value_ptr.text = text;
+                } else {
+                    gop.value_ptr.* = .{
+                        .pos = pos,
+                        .enabled = enabled,
+                        .text = text,
+                    };
+                }
+            }
+
+            pub fn beginFrame(self: *@This()) !void {
+                self.temp_buttons_not_seen_this_frame.clearRetainingCapacity();
+                var it = self.temp_buttons.iterator();
+                while (it.next()) |e| {
+                    try self.temp_buttons_not_seen_this_frame.putNoClobber(e.key_ptr.*, {});
+                }
+            }
+
+            pub fn endFrame(self: *@This()) void {
+                var it = self.temp_buttons_not_seen_this_frame.iterator();
+                while (it.next()) |l| {
+                    assert(self.temp_buttons.swapRemove(l.key_ptr.*));
                 }
             }
 
             pub fn update(self: *@This(), delta_seconds: f32, active: ?Label, hot: ?Label) void {
-                var it = self.buttons.iterator();
-                while (it.next()) |entry| {
-                    const button = entry.value;
-                    const label = entry.key;
-                    math.lerp_towards(
-                        &button.hot_t,
-                        if (label == hot) 1 else 0,
-                        0.6,
-                        delta_seconds,
-                    );
-                    math.lerp_towards(
-                        &button.active_t,
-                        if (label == active) 1 else 0,
-                        0.6,
-                        delta_seconds,
-                    );
+                {
+                    var it = self.buttons.iterator();
+                    while (it.next()) |entry| {
+                        const button = entry.value;
+                        const label = entry.key;
+                        math.lerp_towards(
+                            &button.hot_t,
+                            if (Label.equalsFixed(hot, label)) 1 else 0,
+                            0.6,
+                            delta_seconds,
+                        );
+                        math.lerp_towards(
+                            &button.active_t,
+                            if (Label.equalsFixed(active, label)) 1 else 0,
+                            0.6,
+                            delta_seconds,
+                        );
+                    }
+                }
+
+                {
+                    var it = self.temp_buttons.iterator();
+                    while (it.next()) |entry| {
+                        const button = entry.value_ptr;
+                        const label = entry.key_ptr.*;
+                        math.lerp_towards(
+                            &button.hot_t,
+                            if (Label.equalsTemp(hot, label)) 1 else 0,
+                            0.6,
+                            delta_seconds,
+                        );
+                        math.lerp_towards(
+                            &button.active_t,
+                            if (Label.equalsTemp(active, label)) 1 else 0,
+                            0.6,
+                            delta_seconds,
+                        );
+                    }
                 }
             }
 
             pub fn getOverlap(self: *@This(), mouse_ui_pos: Vec2) ?Label {
-                var it = self.buttons.iterator();
-                while (it.next()) |entry| {
-                    const button = entry.value;
-                    const label = entry.key;
-                    if (button.enabled and button.visible and button.pos.contains(mouse_ui_pos)) {
-                        return label;
+                {
+                    var it = self.buttons.iterator();
+                    while (it.next()) |entry| {
+                        const button = entry.value;
+                        const label = entry.key;
+                        if (button.enabled and button.visible and button.pos.contains(mouse_ui_pos)) {
+                            return .{ .fixed = label };
+                        }
+                    }
+                }
+                {
+                    var it = self.temp_buttons.iterator();
+                    while (it.next()) |entry| {
+                        const button = entry.value_ptr.*;
+                        const label = entry.key_ptr.*;
+                        if (button.enabled and button.visible and button.pos.contains(mouse_ui_pos)) {
+                            return .{ .temp = label };
+                        }
                     }
                 }
                 return null;
@@ -2531,7 +2626,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         .sexpr => |sexpr| std.meta.activeTag(cur_hover) == .sexpr and cur_hover.sexpr.address.equals(sexpr.address),
                         .list_viewer_handle => std.meta.activeTag(cur_hover) == .list_viewer_handle,
                         .fnk_manager_handle => std.meta.activeTag(cur_hover) == .fnk_manager_handle,
-                        .ui => |button| std.meta.activeTag(cur_hover) == .ui and cur_hover.ui == button,
+                        .ui => |button| std.meta.activeTag(cur_hover) == .ui and std.meta.eql(cur_hover.ui, button),
                     },
                 };
             }
@@ -2892,8 +2987,17 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }, .allow_custom_tests = allow_custom_tests };
             }
 
-            pub fn update(self: *TestsReel, all_samples_len: usize, mouse: *Mouse, delta_seconds: f32) void {
-                self.reel.update(all_samples_len, mouse, delta_seconds);
+            pub fn update(self: *TestsReel, samples_len: usize, custom_tests_len: usize, mouse: *Mouse, delta_seconds: f32, ui: *UI_State) !void {
+                self.reel.update(samples_len + custom_tests_len, mouse, delta_seconds);
+                for (0..custom_tests_len) |k| {
+                    const point = self.getUIPoint(samples_len + k, .input).applyToLocalPoint(.{ .pos = .new(-1, 0) });
+                    try ui.tempButton(
+                        .{ .delete_custom_test = 0 },
+                        .fromPoint(point, .center, .one),
+                        true,
+                        "x",
+                    );
+                }
             }
 
             /// in UI coords
@@ -3679,7 +3783,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .persistence = persistence,
                 .cases = cases,
                 .main_input = if (DESIGN.no_current_data) .invalid_field else main_input,
-                .ui_state = .init(tests_reel.reel.rect, fnk_manager.getButtonRect(.load)),
+                .ui_state = .init(tests_reel.reel.rect, fnk_manager.getButtonRect(.load), mem.gpa),
                 .favorite_fnks = favorite_fnks,
                 // TODO: figure out when to enable the meta features
                 .meta_enabled = false,
@@ -3786,6 +3890,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         } {
             var mouse = platform.getMouse();
 
+            try self.ui_state.beginFrame();
+            defer self.ui_state.endFrame();
+
             // assumes that changing cursor is free
             defer platform.setCursor(switch (self.focus) {
                 .grabbing => |x| switch (x) {
@@ -3804,9 +3911,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             self.ui_state.buttons.getPtr(.check_all).visible = !TestCase.allSolved(self.samples);
             fnks_reel.update(&self.ui_state, self.tutorial_state.allowPickingVaus());
 
-            inline for (.{&self.tests_reel}) |instance| {
-                instance.update(self.samples.len + self.custom_tests.items.len, &mouse, delta_seconds);
-            }
+            try self.tests_reel.update(self.samples.len, self.custom_tests.items.len, &mouse, delta_seconds, &self.ui_state);
             try self.list_viewer.update(&mouse, delta_seconds);
             fnks_reel.reel.update(fnks_reel.nRows(self.favorite_fnks.items.len), &mouse, delta_seconds);
             moveCamera(&self.camera, delta_seconds, platform.getKeyboard(), mouse);
@@ -4213,21 +4318,26 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         .ui => |button| {
                             self.focus = .{ .hovering = .{ .ui = button } };
                             switch (button) {
-                                .back => return .back_to_level_select,
-                                .reset_view => self.camera = DEFAULT_CAM,
-                                // .play => if (DESIGN.no_current_data) unreachable else return .launch_execution,
-                                .check_all => return .launch_test,
-                                .back_to_menu => return .back_to_level_select,
-                                .fnk_manager_load => return .{ .change_to = .{ .fnk_name = self.fnk_manager.cur.?, .ui_point = self.fnk_manager.sexpr_point } },
-                                .toggle_cur_fnk_is_fav => {
-                                    for (self.favorite_fnks.items, 0..) |name, k| {
-                                        if (name.equals(self.fnk_name)) {
-                                            _ = self.favorite_fnks.orderedRemove(k);
-                                            break;
+                                .fixed => |fixed| switch (fixed) {
+                                    .back => return .back_to_level_select,
+                                    .reset_view => self.camera = DEFAULT_CAM,
+                                    // .play => if (DESIGN.no_current_data) unreachable else return .launch_execution,
+                                    .check_all => return .launch_test,
+                                    .back_to_menu => return .back_to_level_select,
+                                    .fnk_manager_load => return .{ .change_to = .{ .fnk_name = self.fnk_manager.cur.?, .ui_point = self.fnk_manager.sexpr_point } },
+                                    .toggle_cur_fnk_is_fav => {
+                                        for (self.favorite_fnks.items, 0..) |name, k| {
+                                            if (name.equals(self.fnk_name)) {
+                                                _ = self.favorite_fnks.orderedRemove(k);
+                                                break;
+                                            }
+                                        } else {
+                                            try self.favorite_fnks.insert(0, self.fnk_name);
                                         }
-                                    } else {
-                                        try self.favorite_fnks.insert(0, self.fnk_name);
-                                    }
+                                    },
+                                },
+                                .temp => |temp| switch (temp) {
+                                    .delete_custom_test => |k| _ = self.custom_tests.orderedRemove(k),
                                 },
                             }
                         },

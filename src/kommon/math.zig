@@ -743,6 +743,16 @@ pub const Rect = struct {
         };
     }
 
+    pub fn fromPoint(point: Point, which: MeasureKind, base_size: Vec2) Rect {
+        assert(point.turns == 0.0);
+        const size = base_size.scale(point.scale);
+        const top_left: Vec2 = point.pos.sub(switch (which) {
+            .center => size.scale(0.5),
+            else => @panic("TODO"),
+        });
+        return .{ .top_left = top_left, .size = size };
+    }
+
     pub fn withAspectRatio(original: Rect, target_ratio: f32, mode: GrowOrShrink, keep: MeasureKind) Rect {
         const new_size = original.size.withAspectRatio(target_ratio, mode);
         return original.with(.{ .size = new_size }, keep);
