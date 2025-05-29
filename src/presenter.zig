@@ -768,9 +768,16 @@ const TutorialState = union(enum) {
     intro_to_create_vaus,
 
     pub fn allowCustomTests(self: TutorialState) bool {
-        // TODO
-        _ = self;
-        return true;
+        // TODO: tutorial text
+        return switch (self) {
+            .first_level,
+            .second_level,
+            .third_level,
+            .fourth_level,
+            .fifth_level,
+            => false,
+            else => true,
+        };
     }
 
     pub fn allowPickingVaus(self: TutorialState) bool {
@@ -2384,6 +2391,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             };
             const TempLabel = union(enum) {
                 delete_custom_test: usize,
+                add_custom_test,
             };
 
             const ButtonState = struct {
@@ -2988,14 +2996,23 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             pub fn update(self: *TestsReel, samples_len: usize, custom_tests_len: usize, mouse: *Mouse, delta_seconds: f32, ui: *UI_State) !void {
-                self.reel.update(samples_len + custom_tests_len, mouse, delta_seconds);
+                self.reel.update(samples_len + custom_tests_len + if (self.allow_custom_tests) 1 else @as(usize, 0), mouse, delta_seconds);
                 for (0..custom_tests_len) |k| {
                     const point = self.getUIPoint(samples_len + k, .input).applyToLocalPoint(.{ .pos = .new(-1, 0) });
                     try ui.tempButton(
-                        .{ .delete_custom_test = 0 },
+                        .{ .delete_custom_test = k },
                         .fromPoint(point, .center, .one),
                         true,
                         "x",
+                    );
+                }
+                if (self.allow_custom_tests) {
+                    const point = self.getUIPoint(samples_len + custom_tests_len, .expected).applyToLocalPoint(.{ .pos = .new(1, 0) });
+                    try ui.tempButton(
+                        .add_custom_test,
+                        .fromPoint(point, .center, .both(1.5)),
+                        true,
+                        "+",
                     );
                 }
             }
@@ -3122,7 +3139,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         }
                     }
                 }
-                self.reel.drawScrollBar(samples.len + custom_tests.len);
+                self.reel.drawScrollBar(samples.len + custom_tests.len + if (self.allow_custom_tests) 1 else @as(usize, 0));
                 // drawer.drawDebugText(camera, .{ .pos = rect.get(.top_center).addY(-0.35) }, "tests", .black);
             }
 
@@ -3918,15 +3935,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             self.fnk_manager.update(&self.ui_state, self.tutorial_state.allowCreatingVaus());
             self.ui_state.update(delta_seconds, self.focus.getActiveUiLabel(), self.focus.getHotUiLabel());
 
-            // TODO: do with mouse/ui
-            if (self.tutorial_state.allowCustomTests() and platform.getKeyboard().wasPressed(.space)) {
-                try self.custom_tests.append(.{
-                    .input = Sexpr.builtin.nil,
-                    .expected = Sexpr.builtin.nil,
-                    .actual = .unknown,
-                });
-            }
-
             const camera = self.camera;
 
             // focus-specific updates
@@ -4338,6 +4346,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 },
                                 .temp => |temp| switch (temp) {
                                     .delete_custom_test => |k| _ = self.custom_tests.orderedRemove(k),
+                                    .add_custom_test => try self.custom_tests.append(.{
+                                        .input = Sexpr.builtin.nil,
+                                        .expected = Sexpr.builtin.nil,
+                                        .actual = .unknown,
+                                    }),
                                 },
                             }
                         },
