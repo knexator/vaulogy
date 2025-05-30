@@ -20,13 +20,19 @@ pub fn Grid2D(T: type) type {
             return .{ .width = size.x, .height = size.y, .data = try allocator.alloc(T, size.x * size.y) };
         }
 
+        pub fn initFill(allocator: std.mem.Allocator, size: UVec2, fill: T) !Self {
+            const result: Self = .{ .width = size.x, .height = size.y, .data = try allocator.alloc(T, size.x * size.y) };
+            @memset(result.data, fill);
+            return result;
+        }
+
         pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
             allocator.free(self.data);
         }
 
         // TODO: remove this method
         pub fn at(self: Self, i: usize, j: usize) !T {
-            return self.data[j * self.width + i];
+            return self.data[try self.indexOf(.new(i, j))];
         }
 
         pub fn at2(self: Self, pos: UVec2) !T {
