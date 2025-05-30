@@ -50,6 +50,14 @@ pub const Platform = struct {
     pub const Cursor = enum(u8) { default, could_grab, grabbing, pointer };
 };
 
+/// Stuff that doesn't change when changing which fnk is being edited, etc
+fn SessionPersistent(platform: Platform, drawer: Drawer) type {
+    const Editing = EditingFnk(platform, drawer);
+    return struct {
+        list_viewer: Editing.ListViewer,
+    };
+}
+
 // TODO NOW: allow non-ascii sexpr names
 // TODO: join samples & fnks
 pub const PlayerData = struct {
@@ -494,6 +502,8 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
 
         camera: Camera,
 
+        session_persistent: SessionPersistent(platform, drawer),
+
         state: union(enum) {
             /// not used for now
             intro: IntroSequence(platform, drawer),
@@ -519,6 +529,8 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             };
 
             try Artist(platform, drawer).init();
+
+            result.session_persistent = .{ .list_viewer = .init() };
         }
 
         fn initEditingAndMaybeFindLevel(self: *Self, fnk_name: *const Sexpr) !void {
@@ -561,6 +573,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                     fnk_body,
                     &self.mem,
                     &self.persistence,
+                    &self.session_persistent,
                     tutorial_state orelse .none,
                 ),
             };
@@ -2266,7 +2279,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .external_fnk => |fnk| SexprView.sexprChildView(fnks_reel.getWorldPoint(self.camera, fnk.index), fnk.local),
                     .fnk_manager => Camera.remap(UI.cam, self.fnk_manager.sexpr_point, self.camera),
                     .meta_converter => |local| SexprView.sexprChildView(meta_converter.sexpr_point, local),
-                    .list_viewer => |list| SexprView.sexprChildView(self.list_viewer.getWorldPoint(self.camera, list.which), list.local),
+                    .list_viewer => |list| SexprView.sexprChildView(self.session_persistent.list_viewer.getWorldPoint(self.camera, list.which), list.local),
                 };
             }
 
@@ -2293,7 +2306,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .external_fnk => |fnk| self.favorite_fnks.items[fnk.index].getAt(fnk.local).?,
                     .fnk_manager => return self.fnk_manager.cur,
                     .meta_converter => |local| if (meta_converter.sexpr) |v| v.getAt(local).? else null,
-                    .list_viewer => |addr| if (self.list_viewer.getSexpr(addr.which)) |v| v.getAt(addr.local).? else null,
+                    .list_viewer => |addr| if (self.session_persistent.list_viewer.getSexpr(addr.which)) |v| v.getAt(addr.local).? else null,
                     // examples_reel.getPoint(sample.index, sample.which), sample.local),
                     // .main_input => |local| self.main_input.getAt(local).?,
                 };
@@ -2313,7 +2326,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .meta_converter => |local_address| {
                         try meta_converter.setSexpr(self.mem, value, local_address);
                     },
-                    .list_viewer => |addr| try self.list_viewer.setSexpr(self.mem, value, addr),
+                    .list_viewer => |addr| try self.session_persistent.list_viewer.setSexpr(self.mem, value, addr),
                     .custom_test => |sample| try self.custom_tests.items[sample.index].setSexpr(sample.which, sample.local, self.mem, value),
                     .toolbar, .main_fnk_name, .toolbar_special_var, .sample, .external_fnk => unreachable,
                 }
@@ -2660,8 +2673,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         } = .nothing,
 
         tests_reel: TestsReel,
-        list_viewer: ListViewer,
         fnk_manager: FnkManager,
+        session_persistent: *SessionPersistent(platform, drawer),
 
         // TODO: abstract
         particles: std.ArrayList(ParticleState),
@@ -3262,19 +3275,24 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 return null;
             }
 
-            pub fn init(intro_level: bool) ListViewer {
+            pub fn onEnterLevel(self: *ListViewer, is_intro: bool) void {
+                const top_left: Vec2 = if (is_intro) .new(24.5, 9.75) else .new(30, 13);
+                self.reel.rect.top_left = top_left;
+                self.reel.top_left.pos = top_left;
+            }
+
+            pub fn init() ListViewer {
                 const rect_size: Vec2 = .new(1.7, 5);
-                const top_left_pos: Vec2 = if (intro_level) .new(24.5, 9.75) else .new(30, 13);
                 return .{
                     .value = null,
                     .reel = .{
                         .top_left = .{
-                            .pos = top_left_pos,
+                            .pos = undefined,
                             .scale = 0.5,
                         },
                         .n_visible_rows = 4,
                         .rect = .{
-                            .top_left = top_left_pos,
+                            .top_left = undefined,
                             .size = rect_size,
                         },
                     },
@@ -3760,6 +3778,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             fnk_body: core.FnkBody,
             mem: *VeryPermamentGameStuff,
             persistence: *PlayerData,
+            session_persistent: *SessionPersistent(platform, drawer),
             tutorial_state: TutorialState,
         ) !Self {
             var cases = try makeCasesPhysical(mem.gpa, fnk_body.cases);
@@ -3789,6 +3808,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 try updateSolvedSamples(.{ .name = fnk_name, .body = fnk_body }, tests, custom_tests.items, persistence, mem);
             }
 
+            session_persistent.list_viewer.onEnterLevel(tutorial_state == .intro_to_list_viewer);
+
             const fnk_manager: FnkManager = .init();
             return .{
                 .tests_reel = tests_reel,
@@ -3804,6 +3825,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .meta_enabled = false,
                 .tutorial_state = tutorial_state,
                 .custom_tests = custom_tests,
+                .session_persistent = session_persistent,
                 // .tutorial_state = if (fnk_name.equals(builtin_levels[0].fnk_name))
                 //     .first_level
                 // else if (fnk_name.equals(builtin_levels[1].fnk_name))
@@ -3820,7 +3842,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 //     .not_yet_creating_vaus,
                 .particles = .init(platform.gpa),
                 .particles_cases = .init(platform.gpa),
-                .list_viewer = .init(tutorial_state == .intro_to_list_viewer),
                 .fnk_manager = fnk_manager,
             };
         }
@@ -3927,7 +3948,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             fnks_reel.update(&self.ui_state, self.tutorial_state.allowPickingVaus());
 
             try self.tests_reel.update(self.samples.len, self.custom_tests.items.len, &mouse, delta_seconds, &self.ui_state);
-            try self.list_viewer.update(&mouse, delta_seconds);
+            try self.session_persistent.list_viewer.update(&mouse, delta_seconds);
             fnks_reel.reel.update(fnks_reel.nRows(self.favorite_fnks.items.len), &mouse, delta_seconds);
             moveCamera(&self.camera, delta_seconds, platform.getKeyboard(), mouse);
             self.fnk_manager.update(&self.ui_state, self.tutorial_state.allowCreatingVaus());
@@ -3939,7 +3960,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             switch (self.focus) {
                 .grabbing => |*x| switch (x.*) {
                     .ui => {},
-                    .list_viewer_handle => self.list_viewer.move(platform.getMouse()),
+                    .list_viewer_handle => self.session_persistent.list_viewer.move(platform.getMouse()),
                     .fnk_manager_handle => self.fnk_manager.move(platform.getMouse(), &self.ui_state),
                     .case => |*grabbing| {
                         // grabbing case parent is the nothing!
@@ -4058,9 +4079,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .{ .main_fnk_name = overlap } }
                 else if (toolbar.overlapsWithSpecialCase(mouse_ui_pos, .from(self.tutorial_state)))
                     .{ .case = .toolbar_special_case }
-                else if (if (self.tutorial_state.hasListViewer()) try self.list_viewer.findOverlap(mouse_ui_pos, std.meta.activeTag(self.focus) == .grabbing and std.meta.activeTag(self.focus.grabbing) == .sexpr) else null) |overlap|
+                else if (if (self.tutorial_state.hasListViewer()) try self.session_persistent.list_viewer.findOverlap(mouse_ui_pos, std.meta.activeTag(self.focus) == .grabbing and std.meta.activeTag(self.focus.grabbing) == .sexpr) else null) |overlap|
                     .{ .sexpr = .{ .list_viewer = overlap } }
-                else if (self.tutorial_state.hasListViewer() and self.list_viewer.handlePoint().inverseApplyGetLocalPosition(mouse_ui_pos).magSq() < 1)
+                else if (self.tutorial_state.hasListViewer() and self.session_persistent.list_viewer.handlePoint().inverseApplyGetLocalPosition(mouse_ui_pos).magSq() < 1)
                     .list_viewer_handle
                 else if (self.ui_state.getOverlap(mouse_ui_pos)) |label|
                     .{ .ui = label }
@@ -4292,9 +4313,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     .list_viewer => |list| switch (list.which) {
                                         else => {},
                                         .main => if (list.local.len == 0) {
-                                            self.list_viewer.value = null;
+                                            self.session_persistent.list_viewer.value = null;
                                         },
-                                        .element => |k| try self.list_viewer.removeElement(k, self.mem),
+                                        .element => |k| try self.session_persistent.list_viewer.removeElement(k, self.mem),
                                     },
                                     else => {},
                                 }
@@ -4428,7 +4449,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             if (self.tutorial_state.allowPickingVaus()) try fnks_reel.draw(self.favorite_fnks.items, .from(self.tutorial_state));
             if (self.tutorial_state.allowCreatingVaus()) try self.fnk_manager.draw();
             if (self.meta_enabled) try meta_converter.draw(camera);
-            if (self.tutorial_state.hasListViewer()) try self.list_viewer.draw();
+            if (self.tutorial_state.hasListViewer()) try self.session_persistent.list_viewer.draw();
 
             if (self.tutorial_state == .third_level and self.cases.cases.items.len > 0) {
                 const address_to_place_vau_name: core.FullAddress = .{
@@ -4444,7 +4465,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .nothing => {},
                 .hovering => |x| switch (x) {
                     .ui => {},
-                    .list_viewer_handle => drawer.drawCircle(UI.cam, self.list_viewer.handlePoint(), .black, .gray(160)),
+                    .list_viewer_handle => drawer.drawCircle(UI.cam, self.session_persistent.list_viewer.handlePoint(), .black, .gray(160)),
                     .fnk_manager_handle => drawer.drawCircle(UI.cam, self.fnk_manager.handlePoint(), .black, .gray(160)),
                     .sexpr => |hovering| {
                         if (try hovering.address.getSexpr(self)) |value| {
@@ -4498,7 +4519,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .grabbing => |x| switch (x) {
                     .ui => {},
-                    .list_viewer_handle => drawer.drawCircle(UI.cam, self.list_viewer.handlePoint(), .black, .gray(192)),
+                    .list_viewer_handle => drawer.drawCircle(UI.cam, self.session_persistent.list_viewer.handlePoint(), .black, .gray(192)),
                     .fnk_manager_handle => drawer.drawCircle(UI.cam, self.fnk_manager.handlePoint(), .black, .gray(192)),
                     .sexpr => |grabbing| {
                         try artist.drawBothSexpr(
@@ -4594,7 +4615,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .intro_to_list_viewer => {
                     drawer.drawDebugText(
                         UI.cam,
-                        self.list_viewer.mainPoint().applyToLocalPoint(.{ .pos = .new(-2.5, 0.2) }).applyToLocalPoint(.{ .scale = 0.5 }),
+                        self.session_persistent.list_viewer.mainPoint().applyToLocalPoint(.{ .pos = .new(-2.5, 0.2) }).applyToLocalPoint(.{ .scale = 0.5 }),
                         "Here's a helper tool\nto work with lists →",
                         .black,
                     );
