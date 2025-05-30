@@ -797,6 +797,7 @@ pub const FColor = extern struct {
     pub const white = UColor.white.toFColor();
     pub const black = UColor.black.toFColor();
     pub const cyan = UColor.cyan.toFColor();
+    pub const green = UColor.green.toFColor();
 
     pub fn new(r: f32, g: f32, b: f32) FColor {
         return .{ .r = r, .g = g, .b = b };
@@ -920,6 +921,7 @@ pub const UColor = extern struct {
     pub const white = new(255, 255, 255);
     pub const black = new(0, 0, 0);
     pub const cyan = new(0, 255, 255);
+    pub const green = new(0, 255, 0);
 
     pub fn new(r: u8, g: u8, b: u8) UColor {
         return .{ .r = r, .g = g, .b = b };

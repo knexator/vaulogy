@@ -265,4 +265,21 @@ pub const builtin_levels: []const BuiltinLevel = &.{
         .premade_solution = null,
         .tutorial_state = .intro_to_create_vaus,
     },
+    .{
+        .fnk_name = &Sexpr.doLit("modeOrNil"),
+        .manual_samples = &funk.map(struct {
+            pub fn anon(comptime values: struct { in: []const *const Sexpr, out: ?*const Sexpr }) Sample {
+                return .{ .input = Vals.toList(values.in), .output = values.out orelse Sexpr.builtin.nil };
+            }
+        }.anon, &.{
+            .{ .in = &.{ Vals.Hermes, Vals.Aphrodite, Vals.Hermes }, .out = Vals.Hermes },
+            .{ .in = &.{ Vals.Hermes, Vals.Ares, Vals.Aphrodite, Vals.Ares, Vals.Ares, Vals.Mercury }, .out = Vals.Ares },
+            .{ .in = &.{ Vals.Zeus, Vals.Aphrodite, Vals.Ares }, .out = null },
+            .{ .in = &.{ Vals.Zeus, Vals.Zeus, Vals.Zeus, Vals.Aphrodite, Vals.Zeus }, .out = Vals.Zeus },
+            .{ .in = &.{ Vals.Hermes, Vals.Aphrodite, Vals.Ares, Vals.Zeus, Vals.Aphrodite }, .out = Vals.Aphrodite },
+        }),
+        .description = "Return the most common element,\nor Nil if there's a tie.",
+        .premade_solution = null,
+        .tutorial_state = .none,
+    },
 };
