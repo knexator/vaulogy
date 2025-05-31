@@ -779,6 +779,12 @@ const TutorialState = union(enum) {
     not_yet_creating_vaus,
     intro_to_create_vaus,
 
+    pub fn allowMeta(self: TutorialState) bool {
+        // TODO
+        _ = self;
+        return false;
+    }
+
     pub fn allowCustomTests(self: TutorialState) bool {
         // TODO: tutorial text
         return switch (self) {
@@ -1001,7 +1007,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                     return lhs.x < rhs.x;
                 }
             }.lessThanFn);
-            std.log.debug("new profile for {s}:\n{any}", .{ name, profile });
+            // std.log.debug("new profile for {s}:\n{any}", .{ name, profile });
             return profile;
         }
 
@@ -2586,7 +2592,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         persistence: *PlayerData,
         mem: *VeryPermamentGameStuff,
         camera: Camera = DEFAULT_CAM,
-        meta_enabled: bool,
         samples: []TestCase,
         custom_tests: std.ArrayList(TestCase),
         fnk_name: *const Sexpr,
@@ -2753,8 +2758,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         // TODO: cooler, by taking a 'hot' param
-        fn drawTinyCase(case_point: Point, pattern: *const Sexpr, template: *const Sexpr) !void {
-            const camera = UI.cam;
+        fn drawTinyCase(camera: Camera, case_point: Point, pattern: *const Sexpr, template: *const Sexpr) !void {
             try artist.drawPatternSexpr(camera, case_point
                 .applyToLocalPoint(.{ .pos = .new(-1, 0) }), pattern);
             try artist.drawSexpr(camera, case_point
@@ -2919,7 +2923,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
 
                 if (modifier.specialCaseEnabled()) {
-                    try drawTinyCase(special_case_point, special_case_state.value(undefined).pattern, special_case_state.value(undefined).template);
+                    try drawTinyCase(UI.cam, special_case_point, special_case_state.value(undefined).pattern, special_case_state.value(undefined).template);
                 }
             }
         };
@@ -3656,6 +3660,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             pub fn setCase(mem: *VeryPermamentGameStuff, new_case: core.MatchCaseDefinition) !void {
                 case = new_case;
                 sexpr = try core.sexprFromCase(case.?, &mem.pool_for_sexprs);
+                std.log.debug("set case", .{});
             }
 
             pub fn findOverlap(mouse_pos: Vec2) !?Overlap {
@@ -3697,7 +3702,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
                 if (case) |c| {
                     // TODO: case fnk_name and "has_next"
-                    try drawTinyCase(case_point, c.pattern, c.template);
+                    try drawTinyCase(camera, case_point, c.pattern, c.template);
+                    std.log.debug("drawing tiny case", .{});
                 } else {
                     drawer.drawRect(
                         camera,
@@ -3821,8 +3827,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .main_input = if (DESIGN.no_current_data) .invalid_field else main_input,
                 .ui_state = .init(tests_reel.reel.rect, fnk_manager.getButtonRect(.load), mem.gpa),
                 .favorite_fnks = &persistence.favorite_fnk_names,
-                // TODO: figure out when to enable the meta features
-                .meta_enabled = false,
                 .tutorial_state = tutorial_state,
                 .custom_tests = custom_tests,
                 .session_persistent = session_persistent,
@@ -4066,7 +4070,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .fnk_manager }
                 else if (self.tutorial_state.allowCreatingVaus() and self.fnk_manager.handlePoint().inverseApplyGetLocalPosition(mouse_ui_pos).magSq() < 1)
                     .fnk_manager_handle
-                else if (if (self.meta_enabled) try meta_converter.findOverlap(mouse_pos) else null) |overlap| switch (overlap) {
+                else if (if (self.tutorial_state.allowMeta()) try meta_converter.findOverlap(mouse_pos) else null) |overlap| switch (overlap) {
                     .sexpr => |local| .{ .sexpr = .{ .meta_converter = local } },
                     .case => .{ .case = .meta_converter },
                 } else if (toolbar.overlapsWithSpecialVar(mouse_ui_pos, .from(self.tutorial_state), self.cases.anyWildcardInPlay()))
@@ -4448,7 +4452,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
             if (self.tutorial_state.allowPickingVaus()) try fnks_reel.draw(self.favorite_fnks.items, .from(self.tutorial_state));
             if (self.tutorial_state.allowCreatingVaus()) try self.fnk_manager.draw();
-            if (self.meta_enabled) try meta_converter.draw(camera);
+            if (self.tutorial_state.allowMeta()) try meta_converter.draw(camera);
             if (self.tutorial_state.hasListViewer()) try self.session_persistent.list_viewer.draw();
 
             if (self.tutorial_state == .third_level and self.cases.cases.items.len > 0) {
