@@ -43,6 +43,10 @@ pub fn Grid2D(T: type) type {
             return self.data[try self.indexOfSigned(pos)];
         }
 
+        pub fn getPtr(self: Self, pos: UVec2) !*T {
+            return &self.data[try self.indexOf(pos)];
+        }
+
         pub fn set(self: Self, pos: UVec2, value: T) !void {
             self.data[try self.indexOf(pos)] = value;
         }
@@ -57,42 +61,86 @@ pub fn Grid2D(T: type) type {
             return self.indexOf(pos.cast(usize)) catch unreachable;
         }
 
-        const GridIterator = struct {
-            grid: Self,
-            i: kommon.itertools.Iterator(usize),
-            j: kommon.itertools.Iterator(usize),
+        fn GridIterator(ptrs: bool) type {
+            return struct {
+                grid: Self,
+                i: kommon.itertools.Iterator(usize),
+                j: kommon.itertools.Iterator(usize),
 
-            pub fn init(grid: Self) GridIterator {
-                return .{
-                    .grid = grid,
-                    .i = .init(0, grid.width - 1),
-                    .j = .init(0, grid.height - 1),
-                };
-            }
-
-            pub fn next(self: *GridIterator) ?struct { row: usize, col: usize, value: T, pos: UVec2 } {
-                // ideal:
-                // for (0..self.grid.height) |j| {
-                //     for (0..self.grid.width) |i| {
-                //         yield ...;
-                //     }
-                // }
-
-                if (self.j.cur()) |j| {
-                    if (self.i.next()) |i| {
-                        return .{ .row = j, .col = i, .value = try self.grid.at(i, j), .pos = .new(i, j) };
-                    } else {
-                        self.j.advance();
-                        self.i.reset();
-                        return self.next();
-                    }
-                } else {
-                    return null;
+                pub fn init(grid: Self) GridIterator(ptrs) {
+                    return .{
+                        .grid = grid,
+                        .i = .init(0, grid.width - 1),
+                        .j = .init(0, grid.height - 1),
+                    };
                 }
+
+                pub fn reset(self: *GridIterator(ptrs)) void {
+                    self.i.reset();
+                    self.j.reset();
+                }
+
+                pub fn next(self: *GridIterator(ptrs)) ?struct { row: usize, col: usize, value: if (ptrs) *T else T, pos: UVec2 } {
+                    // ideal:
+                    // for (0..self.grid.height) |j| {
+                    //     for (0..self.grid.width) |i| {
+                    //         yield ...;
+                    //     }
+                    // }
+
+                    if (self.j.cur()) |j| {
+                        if (self.i.next()) |i| {
+                            return .{
+                                .row = j,
+                                .col = i,
+                                .value = if (ptrs)
+                                    self.grid.getPtr(.new(i, j)) catch unreachable
+                                else
+                                    self.grid.at(i, j) catch unreachable,
+                                .pos = .new(i, j),
+                            };
+                        } else {
+                            self.j.advance();
+                            self.i.reset();
+                            return self.next();
+                        }
+                    } else {
+                        return null;
+                    }
+                }
+            };
+        }
+
+        pub fn iterator(self: Self, comptime ptrs: bool) GridIterator(ptrs) {
+            return .init(self);
+        }
+
+        const RayIterator = struct {
+            grid: Self,
+            pos: ?UVec2,
+            dir: IVec2,
+
+            pub fn next(self: *RayIterator) ?UVec2 {
+                if (self.pos) |pos| {
+                    const new_pos = pos.cast(isize).add(self.dir);
+                    if (self.grid.inBoundsSigned(new_pos)) {
+                        self.pos = new_pos.cast(usize);
+                    } else {
+                        self.pos = null;
+                    }
+                    return pos;
+                } else return null;
             }
         };
-        pub fn iterator(self: Self) GridIterator {
-            return .init(self);
+
+        pub fn rayIterator(self: Self, pos: UVec2, dir: IVec2) RayIterator {
+            return .{ .grid = self, .pos = pos, .dir = dir };
+        }
+
+        pub fn fromAsciiAndMap(allocator: std.mem.Allocator, ascii: []const u8, comptime map_fn: fn (v: u8) T) !Self {
+            const ascii_grid: Grid2D(u8) = try .fromAscii(allocator, ascii);
+            defer ascii_grid.deinit(allocator);
+            return try ascii_grid.map(allocator, T, map_fn);
         }
 
         pub fn fromAscii(allocator: std.mem.Allocator, ascii: []const u8) !Self {

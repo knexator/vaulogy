@@ -651,7 +651,7 @@ pub const TextRenderer = struct {
                 \\  float transition_pixels = 1.0;
                 \\  float alpha = clamp(inverseLerp(-transition_pixels / 2.0, transition_pixels / 2.0, distance_in_pixels), 0.0, 1.0);
                 \\  // TODO: premultiply alpha?
-                \\  out_color = mix(vec4(0), u_color, alpha);
+                \\  out_color = mix(vec4(u_color.rgb, 0), u_color, alpha);
                 \\}
             ,
                 .{ .attribs = &.{
@@ -675,6 +675,33 @@ pub const TextRenderer = struct {
 
     // TODO: kerning
     // TODO: single draw call, maybe
+    pub fn drawLine(
+        self: TextRenderer,
+        gl: Gl,
+        camera: Rect,
+        pos: Rect.Measure,
+        text: []const u8,
+        em: f32,
+        color: FColor,
+        scratch: std.mem.Allocator,
+    ) !void {
+        var quads: std.ArrayList(Quad) = try .initCapacity(scratch, text.len);
+        defer quads.deinit();
+        var cursor: Vec2 = .zero;
+        for (text) |char| {
+            cursor, const quad = self.addLetter(cursor, char, em, color);
+            if (quad) |q| quads.appendAssumeCapacity(q);
+        }
+        if (quads.items.len == 0) return;
+        var bounds = quads.items[0].pos;
+        for (quads.items[1..]) |q| bounds = Rect.bounding(&.{ bounds, q.pos });
+        const delta = bounds.with(pos, .size).top_left.sub(bounds.top_left);
+        for (quads.items) |q| self.drawQuad(gl, camera.move(delta.neg()), q);
+    }
+
+    // TODO: kerning
+    // TODO: single draw call, maybe
+    /// deprecated, call drawLine
     pub fn drawText(
         self: TextRenderer,
         gl: Gl,
@@ -684,6 +711,7 @@ pub const TextRenderer = struct {
         em: f32,
         color: FColor,
     ) void {
+        // self.drawText(gl, camera, .{.bottom_left = bottom_left}, text, em, color)
         var cursor: Vec2 = bottom_left;
         for (text) |char| {
             cursor = self.drawLetter(
@@ -697,7 +725,87 @@ pub const TextRenderer = struct {
         }
     }
 
-    // TODO: use a map
+    const Quad = struct {
+        pos: Rect,
+        tex: Rect,
+        color: FColor,
+    };
+
+    pub fn drawQuad(self: TextRenderer, gl: Gl, camera: Rect, quad: Quad) void {
+        // TODO: use a better api
+        const VertexData = extern struct { position: Vec2, texcoord: Vec2 };
+        gl.useRenderable(
+            self.renderable,
+            &[4]VertexData{
+                .{
+                    .position = camera.localFromWorldPosition(quad.pos.get(.bottom_left)),
+                    .texcoord = quad.tex.get(.bottom_left),
+                },
+                .{
+                    .position = camera.localFromWorldPosition(quad.pos.get(.bottom_right)),
+                    .texcoord = quad.tex.get(.bottom_right),
+                },
+                .{
+                    .position = camera.localFromWorldPosition(quad.pos.get(.top_left)),
+                    .texcoord = quad.tex.get(.top_left),
+                },
+                .{
+                    .position = camera.localFromWorldPosition(quad.pos.get(.top_right)),
+                    .texcoord = quad.tex.get(.top_right),
+                },
+            },
+            4 * @sizeOf(VertexData),
+            &.{ .{ 0, 1, 2 }, .{ 3, 2, 1 } },
+            &.{
+                .{ .name = "u_color", .value = .{ .FColor = quad.color } },
+            },
+            self.atlas_texture,
+        );
+    }
+
+    pub fn addLetter(
+        self: TextRenderer,
+        bottom_left: Vec2,
+        letter: u8,
+        em: f32,
+        color: FColor,
+    ) std.meta.Tuple(&.{ Vec2, ?Quad }) {
+        const default_glyph_info = blk: {
+            for (self.font_info.value.glyphs) |glyph| {
+                if (glyph.unicode == '?') break :blk glyph;
+            } else unreachable;
+        };
+        // TODO: use a map
+        const glyph_info = blk: {
+            for (self.font_info.value.glyphs) |glyph| {
+                if (glyph.unicode == letter) break :blk glyph;
+            } else break :blk default_glyph_info;
+        };
+        const quad: ?Quad = if (glyph_info.atlasBounds) |b| blk: {
+            const s = UVec2.new(
+                self.font_info.value.atlas.width,
+                self.font_info.value.atlas.height,
+            ).tof32();
+            const p = glyph_info.planeBounds orelse unreachable;
+
+            const quad: Quad = .{
+                .color = color,
+                .pos = .from(.{
+                    .{ .top_left = bottom_left.add(Vec2.new(p.left, p.top).scale(em)) },
+                    .{ .bottom_right = bottom_left.add(Vec2.new(p.right, p.bottom).scale(em)) },
+                }),
+                .tex = .from(.{
+                    .{ .top_left = Vec2.new(b.left, b.top).div(s) },
+                    .{ .bottom_right = Vec2.new(b.right, b.bottom).div(s) },
+                }),
+            };
+
+            break :blk quad;
+        } else null;
+
+        return .{ bottom_left.addX(em * glyph_info.advance), quad };
+    }
+
     pub fn drawLetter(
         self: TextRenderer,
         gl: Gl,
@@ -707,59 +815,9 @@ pub const TextRenderer = struct {
         em: f32,
         color: FColor,
     ) Vec2 {
-        const default_glyph_info = blk: {
-            for (self.font_info.value.glyphs) |glyph| {
-                if (glyph.unicode == '?') break :blk glyph;
-            } else unreachable;
-        };
-        const glyph_info = blk: {
-            for (self.font_info.value.glyphs) |glyph| {
-                if (glyph.unicode == letter) break :blk glyph;
-            } else break :blk default_glyph_info;
-        };
-        if (glyph_info.atlasBounds) |b| {
-            const s = UVec2.new(
-                self.font_info.value.atlas.width,
-                self.font_info.value.atlas.height,
-            ).tof32();
-            const p = glyph_info.planeBounds orelse unreachable;
-
-            // TODO: use a better api
-            const VertexData = extern struct { position: Vec2, texcoord: Vec2 };
-            gl.useRenderable(
-                self.renderable,
-                &[4]VertexData{
-                    .{
-                        .position = camera.localFromWorldPosition(bottom_left
-                            .add(Vec2.new(p.left, p.bottom).scale(em))),
-                        .texcoord = Vec2.new(b.left, b.bottom).div(s),
-                    },
-                    .{
-                        .position = camera.localFromWorldPosition(bottom_left
-                            .add(Vec2.new(p.right, p.bottom).scale(em))),
-                        .texcoord = Vec2.new(b.right, b.bottom).div(s),
-                    },
-                    .{
-                        .position = camera.localFromWorldPosition(bottom_left
-                            .add(Vec2.new(p.left, p.top).scale(em))),
-                        .texcoord = Vec2.new(b.left, b.top).div(s),
-                    },
-                    .{
-                        .position = camera.localFromWorldPosition(bottom_left
-                            .add(Vec2.new(p.right, p.top).scale(em))),
-                        .texcoord = Vec2.new(b.right, b.top).div(s),
-                    },
-                },
-                4 * @sizeOf(VertexData),
-                &.{ .{ 0, 1, 2 }, .{ 3, 2, 1 } },
-                &.{
-                    .{ .name = "u_color", .value = .{ .FColor = color } },
-                },
-                self.atlas_texture,
-            );
-        }
-
-        return bottom_left.addX(em * glyph_info.advance);
+        const new_cursor, const quad = self.addLetter(bottom_left, letter, em, color);
+        if (quad) |q| self.drawQuad(gl, camera, q);
+        return new_cursor;
     }
 };
 

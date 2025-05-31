@@ -665,10 +665,11 @@ pub const Rect = struct {
         return self.top_left.add(self.size.scale(0.5));
     }
 
-    const MeasureKind = enum { top_center, top_right, bottom_center, bottom_left, bottom_right, center, size };
+    const MeasureKind = enum { top_left, top_center, top_right, bottom_center, bottom_left, bottom_right, center, size };
     // TODO: autogen from enum
     /// They are all Vec2 since otherwise .get wouldn't know what to return
-    const Measure = union(MeasureKind) {
+    pub const Measure = union(MeasureKind) {
+        top_left: Vec2,
         top_center: Vec2,
         top_right: Vec2,
         bottom_center: Vec2,
@@ -680,6 +681,7 @@ pub const Rect = struct {
 
     pub fn get(self: Rect, which: MeasureKind) Vec2 {
         return switch (which) {
+            .top_left => self.top_left,
             .top_center => self.top_left.addX(self.size.x / 2),
             .top_right => self.top_left.addX(self.size.x),
             .size => self.size,
@@ -705,7 +707,23 @@ pub const Rect = struct {
 
     pub fn from(measures: [2]Measure) Rect {
         switch (measures[0]) {
-            else => @panic("TODO"),
+            else => std.debug.panic("TODO: measure[0] {s}", .{@tagName(measures[0])}),
+            .center => |center| {
+                switch (measures[1]) {
+                    else => @panic("TODO"),
+                    .size => |size| {
+                        return .{ .size = size, .top_left = center.sub(size.scale(0.5)) };
+                    },
+                }
+            },
+            .top_left => |top_left| {
+                switch (measures[1]) {
+                    else => @panic("TODO"),
+                    .bottom_right => |bottom_right| {
+                        return .{ .size = bottom_right.sub(top_left), .top_left = top_left };
+                    },
+                }
+            },
             .top_center => |top_center| {
                 switch (measures[1]) {
                     else => @panic("TODO"),
@@ -735,12 +753,63 @@ pub const Rect = struct {
 
     pub fn with(original: Rect, change: Measure, keep: MeasureKind) Rect {
         return switch (change) {
-            else => @panic("TODO"),
+            else => std.debug.panic("TODO: change {s}", .{@tagName(change)}),
+            .center => |center| switch (keep) {
+                else => @panic("TODO"),
+                .size => .from(.{ .{ .center = center }, .{ .size = original.get(.size) } }),
+            },
+            .bottom_left => |bottom_left| switch (keep) {
+                else => @panic("TODO"),
+                .size => .from(.{ .{ .bottom_left = bottom_left }, .{ .size = original.get(.size) } }),
+            },
             .size => |size| switch (keep) {
                 else => @panic("TODO"),
                 .center => .fromCenterAndSize(original.get(.center), size),
             },
         };
+    }
+
+    pub fn resizeRel(original: Rect, scale: f32, keep: MeasureKind) Rect {
+        return original.with(.{ .size = original.size.scale(scale) }, keep);
+    }
+
+    pub fn move(original: Rect, delta: Vec2) Rect {
+        return .{
+            .top_left = original.top_left.add(delta),
+            .size = original.size,
+        };
+    }
+
+    pub fn bounding(rects: []const Rect) Rect {
+        assert(rects.len > 0);
+        var top_left = rects[0].get(.top_left);
+        var bottom_right = rects[0].get(.bottom_right);
+        for (rects[1..]) |r| {
+            top_left.x = @min(top_left.x, r.get(.top_left).x);
+            top_left.y = @min(top_left.y, r.get(.top_left).y);
+            bottom_right.x = @max(bottom_right.x, r.get(.bottom_right).x);
+            bottom_right.y = @max(bottom_right.y, r.get(.bottom_right).y);
+        }
+        return .from(.{
+            .{ .top_left = top_left },
+            .{ .bottom_right = bottom_right },
+        });
+    }
+
+    pub fn boundingPoints(points: []const Vec2) Rect {
+        assert(points.len > 0);
+        var top_left = points[0];
+        var bottom_right = points[0];
+        for (points[1..]) |p| {
+            top_left.x = @min(top_left.x, p.x);
+            top_left.y = @min(top_left.y, p.y);
+            bottom_right.x = @max(bottom_right.x, p.x);
+            bottom_right.y = @max(bottom_right.y, p.y);
+        }
+        return .from(.{
+            .{ .top_left = top_left },
+            .{ .bottom_right = bottom_right },
+        });
     }
 
     pub fn fromPoint(point: Point, which: MeasureKind, base_size: Vec2) Rect {
