@@ -751,7 +751,7 @@ const TestCase = struct {
         }
     }
 
-    pub fn allSolved(vs: []const TestCase) bool {
+    pub fn allSolvedBase(vs: []const TestCase) bool {
         for (vs) |v| {
             if (v.expected) |x| {
                 if (v.get(.actual)) |y| {
@@ -3968,8 +3968,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .nothing => .default,
             });
 
-            self.ui_state.buttons.getPtr(.back_to_menu).visible = TestCase.allSolved(self.samples);
-            self.ui_state.buttons.getPtr(.check_all).visible = !TestCase.allSolved(self.samples);
+            self.ui_state.buttons.getPtr(.back_to_menu).visible = self.allSolved();
+            self.ui_state.buttons.getPtr(.check_all).visible = !self.allSolved();
             fnks_reel.update(&self.ui_state, self.tutorial_state.allowPickingVaus());
 
             try self.tests_reel.update(self.samples.len, self.custom_tests.items.len, &mouse, delta_seconds, &self.ui_state);
@@ -4431,6 +4431,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             };
         }
 
+        fn allSolved(self: Self) bool {
+            return TestCase.allSolvedBase(self.samples) and TestCase.allSolvedBase(self.custom_tests.items);
+        }
+
         pub fn draw(self: Self, custom_samples: PlayerData.SamplesCollection) !void {
             const camera = self.camera;
             {
@@ -4468,7 +4472,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             // }
 
             try self.tests_reel.draw(self.samples, self.custom_tests.items);
-            if (TestCase.allSolved(self.samples)) {
+            if (self.allSolved()) {
                 drawer.drawDebugText(UI.cam, .{ .pos = self.tests_reel.reel.rect.get(.bottom_center).add(.new(0, 1.3)), .scale = 0.75 }, "All Tests passed!", .black);
             }
             if (self.tutorial_state.allowPickingVaus()) try fnks_reel.draw(self.favorite_fnks.items, .from(self.tutorial_state));
@@ -4612,7 +4616,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     }
                     drawer.drawDebugText(camera, .{ .pos = .new(-3, 4), .scale = 0.75 }, "Left click to\npick/drop Data", .black);
                     // drawer.drawDebugText(camera, .{ .pos = .new(10, 1), .scale = 0.75 }, "↓ These are the Cases that make up the Vau.", .black);
-                    if (!(TestCase.allSolved(self.samples))) {
+                    if (!self.allSolved()) {
                         drawer.drawDebugText(UI.cam, .{ .pos = self.tests_reel.reel.rect.get(.bottom_center).add(.new(0, 2)), .scale = 1.25 }, "Click to check ↑\nif your Vau works", .black);
                         // drawer.drawDebugText(UI.cam, .{ .pos = self.samples_reel.top_left.pos.add(.new(2.75, 6.75)), .scale = 0.75 }, "↑\nThese Tests are the Data\ntransformations your Vau\nmust achieve.", .black);
                     }

@@ -12,14 +12,37 @@ const DESIGN = presenter.DESIGN;
 const IndexType = Gl.IndexType;
 
 const SdlPlatform = struct {
+    // TODO: improve
     pub fn getPlayerData(mem: *model.VeryPermamentGameStuff) !?presenter.PlayerData {
-        _ = mem;
-        return null;
+        return presenter.PlayerData.fromAscii(
+            std.fs.cwd().readFileAlloc(
+                mem.gpa,
+                "ungit/my_save/vaulogy_player_data",
+                std.math.maxInt(usize),
+            ) catch return null,
+            std.fs.cwd().readFileAlloc(
+                mem.gpa,
+                "ungit/my_save/vaulogy_player_data_custom_samples",
+                std.math.maxInt(usize),
+            ) catch return null,
+            std.fs.cwd().readFileAlloc(
+                mem.gpa,
+                "ungit/my_save/vaulogy_player_data_fav_fnks",
+                std.math.maxInt(usize),
+            ) catch return null,
+            mem,
+        ) catch return null;
     }
 
     pub fn setPlayerData(player_data: presenter.PlayerData, mem: *model.VeryPermamentGameStuff) !void {
-        _ = player_data;
-        _ = mem;
+        std.fs.cwd().makePath("ungit/my_save") catch unreachable;
+        const ascii = try player_data.toAscii(mem.gpa);
+        defer mem.gpa.free(ascii.fnks);
+        defer mem.gpa.free(ascii.samples);
+        defer mem.gpa.free(ascii.fav_fnks);
+        std.fs.cwd().writeFile(.{ .sub_path = "ungit/my_save/vaulogy_player_data", .data = ascii.fnks }) catch unreachable;
+        std.fs.cwd().writeFile(.{ .sub_path = "ungit/my_save/vaulogy_player_data_custom_samples", .data = ascii.samples }) catch unreachable;
+        std.fs.cwd().writeFile(.{ .sub_path = "ungit/my_save/vaulogy_player_data_fav_fnks", .data = ascii.fav_fnks }) catch unreachable;
     }
 
     pub fn getMouse() presenter.Mouse {
@@ -658,7 +681,7 @@ const SdlDrawer = struct {
 
     pub fn drawAtom(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {
         // if (true or visuals.profile.len == 1 and visuals.color.equals(.from01(0.45, 0.45, 0.45))) {
-        {
+        if (false) {
             drawNilAtomCool(camera.toRect(), world_point, visuals, math.lerp(-1, 1, mouse.cur.client_pos.y)) catch unreachable;
             return;
         }

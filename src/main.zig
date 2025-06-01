@@ -132,6 +132,22 @@ pub const Sexpr = union(enum) {
         };
     }
 
+    pub fn hash(s: *const Sexpr) u32 {
+        return switch (s.*) {
+            .atom_lit => |a| std.array_hash_map.hashString(a.value),
+            .atom_var => |a| std.hash.uint32(std.array_hash_map.hashString(a.value)),
+            .pair => |p| {
+                // return std.hash.uint32(hash(self, p.left.*)) ^ hash(self, p.right.*);
+                var hasher = std.hash.Wyhash.init(0);
+                std.hash.autoHash(&hasher, struct {
+                    left: u32,
+                    right: u32,
+                }{ .left = hash(p.left), .right = hash(p.right) });
+                return @truncate(hasher.final());
+            },
+        };
+    }
+
     pub fn isLit(this: *const Sexpr) bool {
         return switch (this.*) {
             .atom_lit => true,
@@ -302,19 +318,8 @@ const Bindings = std.ArrayList(Binding);
 
 pub const SexprContext = struct {
     pub fn hash(self: @This(), s: *const Sexpr) u32 {
-        return switch (s.*) {
-            .atom_lit => |a| std.array_hash_map.hashString(a.value),
-            .atom_var => |a| std.hash.uint32(std.array_hash_map.hashString(a.value)),
-            .pair => |p| {
-                // return std.hash.uint32(hash(self, p.left.*)) ^ hash(self, p.right.*);
-                var hasher = std.hash.Wyhash.init(0);
-                std.hash.autoHash(&hasher, struct {
-                    left: u32,
-                    right: u32,
-                }{ .left = hash(self, p.left), .right = hash(self, p.right) });
-                return @truncate(hasher.final());
-            },
-        };
+        _ = self;
+        return s.hash();
     }
     pub fn eql(self: @This(), a: *const Sexpr, b: *const Sexpr, b_index: usize) bool {
         _ = self;
@@ -323,7 +328,18 @@ pub const SexprContext = struct {
     }
 };
 const FnkSet = std.ArrayHashMap(*const Sexpr, void, SexprContext, true);
-pub const FnkCollection = std.ArrayHashMap(*const Sexpr, FnkBody, SexprContext, true);
+
+// TODO(zig): weird bug when this is a ArrayHashMap
+pub const FnkCollection = std.HashMap(*const Sexpr, FnkBody, struct {
+    pub fn hash(self: @This(), s: *const Sexpr) u32 {
+        _ = self;
+        return s.hash();
+    }
+    pub fn eql(self: @This(), a: *const Sexpr, b: *const Sexpr) bool {
+        _ = self;
+        return Sexpr.equals(a, b);
+    }
+}, std.hash_map.default_max_load_percentage);
 
 const builtin_fnks = [_]struct { name: *const Sexpr, fnk: fn (v: *const Sexpr) *const Sexpr }{
     .{ .name = Sexpr.builtin.identity, .fnk = builtin_fnk_identity },
@@ -651,6 +667,7 @@ pub const ExecutionThread = struct {
                         .old_active_value = old_active_value,
                         .old_fnk_name = old_fnk_name,
                     } };
+                    std.log.debug("vau execution error: {s}", .{@errorName(err)});
                     return .{ .missing_or_uncompilable_fnk = case.fnk_name };
                 },
                 else => |e| return e,
