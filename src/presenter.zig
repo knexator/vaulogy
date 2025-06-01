@@ -782,7 +782,7 @@ const TutorialState = union(enum) {
     pub fn allowMeta(self: TutorialState) bool {
         // TODO
         _ = self;
-        return false;
+        return true;
     }
 
     pub fn allowCustomTests(self: TutorialState) bool {
@@ -2284,7 +2284,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .custom_test => |sample| SexprView.sexprChildView(self.tests_reel.getWorldPoint(self.camera, self.samples.len + sample.index, sample.which), sample.local),
                     .external_fnk => |fnk| SexprView.sexprChildView(fnks_reel.getWorldPoint(self.camera, fnk.index), fnk.local),
                     .fnk_manager => Camera.remap(UI.cam, self.fnk_manager.sexpr_point, self.camera),
-                    .meta_converter => |local| SexprView.sexprChildView(meta_converter.sexpr_point, local),
+                    .meta_converter => |local| SexprView.sexprChildView(meta_converter.sexprWorldPoint(self.camera), local),
                     .list_viewer => |list| SexprView.sexprChildView(self.session_persistent.list_viewer.getWorldPoint(self.camera, list.which), list.local),
                 };
             }
@@ -3629,10 +3629,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         /// sexprs to cases and vice versa
         const meta_converter = struct {
-            const sexpr_point: Point = .{ .pos = .new(16, -3), .scale = 0.75 };
-            const case_point: Point = sexpr_point.applyToLocalPoint(.{ .pos = .new(0, 2.5) });
+            const parent_point: Point = Camera.remap(DEFAULT_CAM, .{ .pos = .new(10, -3), .scale = 0.75 }, UI.cam);
+            const relative_sexpr_point: Point = .{};
+            const relative_case_point: Point = .{ .pos = .new(0, 2.5) };
 
             pub const Overlap = union(enum) {
+                // TODO: detailed case overlap
                 case,
                 sexpr: core.SexprAddress,
             };
@@ -3663,32 +3665,50 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 std.log.debug("set case", .{});
             }
 
-            pub fn findOverlap(mouse_pos: Vec2) !?Overlap {
+            pub fn findOverlap(asdf_mouse_pos: Vec2) !?Overlap {
+                const mouse_pos = parent_point.inverseApplyGetLocalPosition(asdf_mouse_pos);
                 if (sexpr) |s| {
                     if (try SexprView.overlapsSexpr(
                         platform.gpa,
                         s,
-                        sexpr_point,
+                        relative_sexpr_point,
                         mouse_pos,
                     )) |local| {
                         return .{ .sexpr = local };
                     }
                 } else if (SexprView.overlapsAtom(
-                    sexpr_point,
+                    relative_sexpr_point,
                     mouse_pos,
                     .atom,
                 )) {
                     return .{ .sexpr = core.emptySexprAddress };
                 }
 
-                if (overlapsWithTinyCase(mouse_pos, case_point)) {
+                if (overlapsWithTinyCase(mouse_pos, relative_case_point)) {
                     return .case;
                 }
 
                 return null;
             }
 
+            pub fn sexprUiPoint() Point {
+                return parent_point.applyToLocalPoint(relative_sexpr_point);
+            }
+
+            pub fn caseUiPoint() Point {
+                return parent_point.applyToLocalPoint(relative_case_point);
+            }
+
+            pub fn sexprWorldPoint(camera: Camera) Point {
+                return Camera.remap(UI.cam, sexprUiPoint(), camera);
+            }
+
+            pub fn caseWorldPoint(camera: Camera) Point {
+                return Camera.remap(UI.cam, caseUiPoint(), camera);
+            }
+
             pub fn draw(camera: Camera) !void {
+                const sexpr_point = sexprUiPoint();
                 if (sexpr) |s| {
                     try artist.drawSexpr(camera, sexpr_point, s);
                 } else {
@@ -3700,6 +3720,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     );
                 }
 
+                const case_point = caseUiPoint();
                 if (case) |c| {
                     // TODO: case fnk_name and "has_next"
                     try drawTinyCase(camera, case_point, c.pattern, c.template);
@@ -4070,7 +4091,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .sexpr = .fnk_manager }
                 else if (self.tutorial_state.allowCreatingVaus() and self.fnk_manager.handlePoint().inverseApplyGetLocalPosition(mouse_ui_pos).magSq() < 1)
                     .fnk_manager_handle
-                else if (if (self.tutorial_state.allowMeta()) try meta_converter.findOverlap(mouse_pos) else null) |overlap| switch (overlap) {
+                else if (if (self.tutorial_state.allowMeta()) try meta_converter.findOverlap(mouse_ui_pos) else null) |overlap| switch (overlap) {
                     .sexpr => |local| .{ .sexpr = .{ .meta_converter = local } },
                     .case => .{ .case = .meta_converter },
                 } else if (toolbar.overlapsWithSpecialVar(mouse_ui_pos, .from(self.tutorial_state), self.cases.anyWildcardInPlay()))
@@ -4276,7 +4297,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     if (meta_converter.case) |case| {
                                         self.focus = .{ .grabbing = .{
                                             .case = .{
-                                                .case = try makeCasePhysical(self.mem.gpa, case, meta_converter.case_point),
+                                                .case = try makeCasePhysical(self.mem.gpa, case, meta_converter.caseWorldPoint(self.camera)),
                                                 .address_if_released = hovering.address,
                                             },
                                         } };
@@ -4452,7 +4473,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
             if (self.tutorial_state.allowPickingVaus()) try fnks_reel.draw(self.favorite_fnks.items, .from(self.tutorial_state));
             if (self.tutorial_state.allowCreatingVaus()) try self.fnk_manager.draw();
-            if (self.tutorial_state.allowMeta()) try meta_converter.draw(camera);
+            if (self.tutorial_state.allowMeta()) try meta_converter.draw(UI.cam);
             if (self.tutorial_state.hasListViewer()) try self.session_persistent.list_viewer.draw();
 
             if (self.tutorial_state == .third_level and self.cases.cases.items.len > 0) {
@@ -4514,7 +4535,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             }, self.tutorial_state != .first_level);
                         },
                         .meta_converter => if (meta_converter.case != null) {
-                            drawTinyCaseHolder(meta_converter.case_point, hovering.hot);
+                            drawTinyCaseHolder(meta_converter.caseUiPoint(), hovering.hot);
                         },
                         .toolbar_special_case => {
                             drawTinyCaseHolder(toolbar.special_case_point, hovering.hot);
