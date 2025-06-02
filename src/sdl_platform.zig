@@ -14,27 +14,37 @@ const IndexType = Gl.IndexType;
 const SdlPlatform = struct {
     // TODO: improve
     pub fn getPlayerData(mem: *model.VeryPermamentGameStuff) !?presenter.PlayerData {
-        return presenter.PlayerData.fromAscii(
-            std.fs.cwd().readFileAlloc(
-                mem.gpa,
-                "ungit/my_save/vaulogy_player_data",
-                std.math.maxInt(usize),
-            ) catch return null,
-            std.fs.cwd().readFileAlloc(
-                mem.gpa,
-                "ungit/my_save/vaulogy_player_data_custom_samples",
-                std.math.maxInt(usize),
-            ) catch return null,
-            std.fs.cwd().readFileAlloc(
-                mem.gpa,
-                "ungit/my_save/vaulogy_player_data_fav_fnks",
-                std.math.maxInt(usize),
-            ) catch return null,
-            mem,
-        ) catch return null;
+        if (false) {
+            return presenter.PlayerData.fromAscii(
+                @embedFile("./my_save/vaulogy_player_data"),
+                @embedFile("./my_save/vaulogy_player_data_custom_samples"),
+                @embedFile("./my_save/vaulogy_player_data_fav_fnks"),
+                mem,
+            ) catch return null;
+        } else {
+            return presenter.PlayerData.fromAscii(
+                std.fs.cwd().readFileAlloc(
+                    mem.gpa,
+                    "ungit/my_save/vaulogy_player_data",
+                    std.math.maxInt(usize),
+                ) catch return null,
+                std.fs.cwd().readFileAlloc(
+                    mem.gpa,
+                    "ungit/my_save/vaulogy_player_data_custom_samples",
+                    std.math.maxInt(usize),
+                ) catch return null,
+                std.fs.cwd().readFileAlloc(
+                    mem.gpa,
+                    "ungit/my_save/vaulogy_player_data_fav_fnks",
+                    std.math.maxInt(usize),
+                ) catch return null,
+                mem,
+            ) catch return null;
+        }
     }
 
     pub fn setPlayerData(player_data: presenter.PlayerData, mem: *model.VeryPermamentGameStuff) !void {
+        if (true) return;
         std.fs.cwd().makePath("ungit/my_save") catch unreachable;
         const ascii = try player_data.toAscii(mem.gpa);
         defer mem.gpa.free(ascii.fnks);

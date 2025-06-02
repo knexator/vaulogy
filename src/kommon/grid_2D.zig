@@ -1,8 +1,10 @@
 const std = @import("std");
+const assert = std.debug.assert;
 
 const kommon = @import("kommon.zig");
 const UVec2 = kommon.math.UVec2;
 const IVec2 = kommon.math.IVec2;
+const Rect = kommon.math.Rect;
 
 pub fn Grid2D(T: type) type {
     // 0 1 2
@@ -13,6 +15,10 @@ pub fn Grid2D(T: type) type {
         width: usize,
         height: usize,
         data: []T,
+
+        fn sizeVec(self: Self) UVec2 {
+            return .new(self.width, self.height);
+        }
 
         const Self = @This();
 
@@ -259,6 +265,15 @@ pub fn Grid2D(T: type) type {
             }
 
             return result;
+        }
+
+        pub fn getTileRect(self: Self, whole_rect: Rect, tile: UVec2) Rect {
+            assert(self.inBoundsUnsigned(tile));
+            const tile_size = whole_rect.size.div(self.sizeVec().tof32());
+            return .{
+                .top_left = whole_rect.top_left.add(tile_size.mul(tile.tof32())),
+                .size = tile_size,
+            };
         }
 
         pub fn inBoundsSigned(self: Self, pos: IVec2) bool {

@@ -533,9 +533,9 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             result.session_persistent = .{ .list_viewer = .init() };
         }
 
-        fn initEditingAndMaybeFindLevel(self: *Self, fnk_name: *const Sexpr) !void {
+        fn initEditingAndMaybeFindBuiltinLevel(self: *Self, fnk_name: *const Sexpr) !void {
             const level = findBuiltinLevel(fnk_name);
-            try self.initEditing(
+            try self.initEditingAndMaybeCompile(
                 fnk_name,
                 if (level) |l| l.manual_samples else null,
                 if (level) |l| l.premade_solution else null,
@@ -543,25 +543,34 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             );
         }
 
-        fn initEditing(
+        fn initEditingAndMaybeCompile(
             self: *Self,
             fnk_name: *const Sexpr,
             builtin_samples: ?[]const Sample,
             premade_solution: ?[]const u8,
             tutorial_state: ?TutorialState,
         ) !void {
-            const res = try self.persistence.fnks.getOrPut(fnk_name);
-            if (!res.found_existing) {
+            // TODO: always try to compile first, and/or avoid the player storing fnks with a compilable name
+            const fnk_body: core.FnkBody = if (self.persistence.fnks.get(fnk_name)) |fnk_body| fnk_body else blk: {
                 if (premade_solution) |raw_fnk| {
                     var parser = parsing.Parser{ .remaining_text = raw_fnk };
                     const fnk = try parser.parseFnkNew(&self.mem.pool_for_sexprs, self.mem.arena_for_cases.allocator());
                     std.debug.assert(fnk.name.equals(fnk_name));
-                    res.value_ptr.* = fnk.body;
+                    try self.persistence.fnks.putNoClobber(fnk_name, fnk.body);
                 } else {
-                    res.value_ptr.* = defaultFnkBody(&self.mem);
+                    // Try to compile it
+                    var asdf: core.ScoringRun = try .initFromFnks(self.persistence.fnks, &self.mem);
+                    const maybe_compiled: ?*const FnkBody = asdf.findFunktion(fnk_name) catch null;
+                    if (maybe_compiled) |body| {
+                        _ = body;
+                        // findFunktion already stores the compiled fnk
+                        // try self.persistence.fnks.putNoClobber(fnk_name, body.*);
+                    } else {
+                        try self.persistence.fnks.putNoClobber(fnk_name, defaultFnkBody(&self.mem));
+                    }
                 }
-            }
-            const fnk_body = res.value_ptr.*;
+                break :blk self.persistence.fnks.get(fnk_name).?;
+            };
 
             const custom_samples = self.persistence.custom_samples.get(fnk_name) orelse PlayerData.no_samples;
 
@@ -591,14 +600,14 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                     };
                 },
                 .loading_editing_fnk => |*anim| if (anim.update(delta_seconds)) {
-                    try self.initEditingAndMaybeFindLevel(anim.fnk_name);
+                    try self.initEditingAndMaybeFindBuiltinLevel(anim.fnk_name);
                 },
                 .editing_fnk => |*editing| switch (try editing.update(delta_seconds)) {
                     .nothing => {},
                     .back_to_level_select => {
                         try editing.persist(&self.persistence);
                         if (self.prev_editing_names.pop()) |prev| {
-                            try self.initEditingAndMaybeFindLevel(prev);
+                            try self.initEditingAndMaybeFindBuiltinLevel(prev);
                         } else {
                             self.state = .{ .level_select = try .init(&self.persistence) };
                         }

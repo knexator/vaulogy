@@ -447,7 +447,7 @@ pub const ScoringRun = struct {
         if (owns_fnks) this.all_fnks.deinit();
     }
 
-    fn findFunktion(this: *ScoringRun, name: *const Sexpr) error{
+    pub fn findFunktion(this: *ScoringRun, name: *const Sexpr) error{
         OutOfMemory,
         BAD_INPUT,
         FnkNotFound,
