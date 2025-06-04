@@ -612,12 +612,13 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                             self.state = .{ .level_select = try .init(&self.persistence) };
                         }
                     },
-                    .launch_test => {
+                    .launch_test => |which| {
                         try editing.persist(&self.persistence);
-                        try editing.resetSolvedSamples();
+                        try editing.resetSolvedSamples(which);
                         const prev_editing = editing.*;
                         self.state = .{ .testing_fnk = .{ .main = try .init(
                             editing.camera,
+                            which,
                             try std.mem.concat(self.mem.gpa, TestCase, &.{ editing.samples, editing.custom_tests.items }),
                             editing.fnk_name,
                             editing.cases,
@@ -663,7 +664,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                     .nothing => {},
                     .back_to_editing => {
                         testing.prev_editing.tests_reel = testing.main.tests_reel;
-                        try testing.prev_editing.updateSolvedSamplesHelper();
+                        try testing.prev_editing.updateSolvedSamplesHelper(testing.main.which);
                         self.state = .{ .editing_fnk = testing.prev_editing };
                     },
                 },
@@ -2033,9 +2034,13 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
         fast: bool,
         tests_reel: Editing.TestsReel,
         ui_state: UI.State,
+        which: Which,
+
+        pub const Which = union(enum) { all, only: usize };
 
         pub fn init(
             camera: Camera,
+            which: Which,
             samples: []TestCase,
             fnk_name: *const Sexpr,
             fnk_cases: CaseGroup,
@@ -2045,7 +2050,11 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
             var cases = fnk_cases;
             cases.setAllUnfoldedToZero();
             return .{
-                .cur_sample_index = 0,
+                .which = which,
+                .cur_sample_index = switch (which) {
+                    .all => 0,
+                    .only => |k| k,
+                },
                 .state = .{ .starting = .{ .t = 0 } },
                 .camera = camera,
                 .samples = samples,
@@ -2109,7 +2118,7 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
                             .result => |v| .{ .value = v },
                         };
                         self.fast = executing.fast;
-                        if (self.cur_sample_index + 1 < self.samples.len) {
+                        if (self.cur_sample_index + 1 < self.samples.len and self.which == .all) {
                             self.cur_sample_index += 1;
                             self.state = .{ .starting = .{ .t = 0 } };
                         } else {
@@ -2417,6 +2426,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 toggle_cur_fnk_is_fav,
             };
             const TempLabel = union(enum) {
+                run_test: usize,
                 delete_custom_test: usize,
                 add_custom_test,
             };
@@ -3022,8 +3032,17 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             pub fn update(self: *TestsReel, samples_len: usize, custom_tests_len: usize, mouse: *Mouse, delta_seconds: f32, ui: *UI_State) !void {
                 self.reel.update(samples_len + custom_tests_len + if (self.allow_custom_tests) 1 else @as(usize, 0), mouse, delta_seconds);
+                for (0..samples_len + custom_tests_len) |k| {
+                    const point = self.getUIPoint(k, .input).applyToLocalPoint(.{ .pos = .new(-1, 0) });
+                    try ui.tempButton(
+                        .{ .run_test = k },
+                        .fromPoint(point, .center, .one),
+                        true,
+                        ">",
+                    );
+                }
                 for (0..custom_tests_len) |k| {
-                    const point = self.getUIPoint(samples_len + k, .input).applyToLocalPoint(.{ .pos = .new(-1, 0) });
+                    const point = self.getUIPoint(samples_len + k, .input).applyToLocalPoint(.{ .pos = .new(-1, 1) });
                     try ui.tempButton(
                         .{ .delete_custom_test = k },
                         .fromPoint(point, .center, .one),
@@ -3120,9 +3139,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .pos = p.addX(2.25),
                     .scale = 0.75,
                 }, "Actual", .black);
-                inline for (&.{ samples, custom_tests }, &.{ 0, samples.len }, &.{ false, true }) |asdf, offset, is_custom| {
-                    // TODO: do something
-                    _ = is_custom;
+                inline for (&.{ samples, custom_tests }, &.{ 0, samples.len }) |asdf, offset| {
                     for (asdf, 0..) |sample, k| {
                         try artist.drawSexpr(
                             camera,
@@ -3157,7 +3174,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         if (std.meta.activeTag(sample.actual) != .unknown) {
                             drawer.drawDebugText(
                                 camera,
-                                self.getUIPoint(k, .actual).applyToLocalPoint(.{ .scale = 1.5, .pos = .new(-0.5, 0) }),
+                                self.getUIPoint(k + offset, .actual).applyToLocalPoint(.{ .scale = 1.5, .pos = .new(-0.5, 0) }),
                                 if (sample.isSolved()) "✔️" else "❌",
                                 .black,
                             );
@@ -3882,32 +3899,69 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         // TODO: don't call this if nothing actually changed
         fn onChangedSomething(self: *Self) !void {
-            try self.resetSolvedSamples();
+            try self.resetSolvedSamples(.all);
             _ = try self.cases.updateWildcards(platform.gpa);
         }
 
-        fn resetSolvedSamples(self: *Self) !void {
+        fn resetSolvedSamples(self: *Self, which: TestingFnk(platform, drawer).Which) !void {
             if (DESIGN.instant_feedback) {
                 try updateSolvedSamples(try self.getFnk(), self.samples, self.custom_tests.items, self.persistence, self.mem);
             } else {
-                self.forgetSolvedSamples();
+                self.forgetSolvedSamples(which);
             }
         }
 
-        fn forgetSolvedSamples(self: Self) void {
-            for (self.samples) |*sample| {
-                sample.actual = .unknown;
-            }
-            for (self.custom_tests.items) |*sample| {
-                sample.actual = .unknown;
+        fn forgetSolvedSamples(self: Self, which: TestingFnk(platform, drawer).Which) void {
+            switch (which) {
+                .all => {
+                    for (self.samples) |*sample| {
+                        sample.actual = .unknown;
+                    }
+                    for (self.custom_tests.items) |*sample| {
+                        sample.actual = .unknown;
+                    }
+                },
+                .only => |k| {
+                    const sample: *TestCase = self.sampleAt(k);
+                    sample.actual = .unknown;
+                },
             }
         }
 
-        fn updateSolvedSamplesHelper(self: Self) !void {
-            try updateSolvedSamples(try self.getFnk(), self.samples, self.custom_tests.items, self.persistence, self.mem);
+        fn sampleAt(self: Self, k: usize) *TestCase {
+            return if (k < self.samples.len) &self.samples[k] else &self.custom_tests.items[k - self.samples.len];
+        }
+
+        fn updateSolvedSamplesHelper(self: Self, which: TestingFnk(platform, drawer).Which) !void {
+            switch (which) {
+                .all => try updateSolvedSamples(try self.getFnk(), self.samples, self.custom_tests.items, self.persistence, self.mem),
+                .only => |k| {
+                    const fnk = try self.getFnk();
+                    // TODO: move this elsewhere
+                    try self.persistence.fnks.put(fnk.name, fnk.body);
+                    var score = try core.ScoringRun.initFromFnks(self.persistence.fnks, self.mem);
+                    defer score.deinit(false);
+                    const sample = self.sampleAt(k);
+                    sample.actual = blk: {
+                        var exec = core.ExecutionThread.init(sample.input, fnk.name, &score) catch |err| switch (err) {
+                            error.FnkNotFound => break :blk .undefined,
+                            else => return err,
+                        };
+                        defer exec.deinit();
+
+                        const actual_output = exec.getFinalResultBounded(&score, 10_000) catch |err| switch (err) {
+                            error.FnkNotFound, error.NoMatchingCase, error.InvalidMetaFnk, error.UsedUndefinedVariable, error.TookTooLong => break :blk .undefined,
+                            error.BAD_INPUT => break :blk .undefined,
+                            error.OutOfMemory => return err,
+                        };
+                        break :blk .{ .value = actual_output };
+                    };
+                },
+            }
         }
 
         fn updateSolvedSamples(fnk: Fnk, samples: []TestCase, custom_tests: []TestCase, persistence: *PlayerData, mem: *VeryPermamentGameStuff) !void {
+            // TODO: move this elsewhere
             try persistence.fnks.put(fnk.name, fnk.body);
 
             var score = try core.ScoringRun.initFromFnks(persistence.fnks, mem);
@@ -3951,7 +4005,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         pub fn update(self: *Self, delta_seconds: f32) !union(enum) {
             nothing,
             back_to_level_select,
-            launch_test,
+            launch_test: TestingFnk(platform, drawer).Which,
             launch_execution: if (DESIGN.no_current_data) PhysicalSexpr else void,
             change_to: struct {
                 fnk_name: *const Sexpr,
@@ -4383,7 +4437,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     .back => return .back_to_level_select,
                                     .reset_view => self.camera = DEFAULT_CAM,
                                     // .play => if (DESIGN.no_current_data) unreachable else return .launch_execution,
-                                    .check_all => return .launch_test,
+                                    .check_all => return .{ .launch_test = .all },
                                     .back_to_menu => return .back_to_level_select,
                                     .fnk_manager_load => return .{ .change_to = .{ .fnk_name = self.fnk_manager.cur.?, .ui_point = self.fnk_manager.sexpr_point } },
                                     .toggle_cur_fnk_is_fav => {
@@ -4398,6 +4452,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     },
                                 },
                                 .temp => |temp| switch (temp) {
+                                    .run_test => |k| return .{ .launch_test = .{ .only = k } },
                                     .delete_custom_test => |k| _ = self.custom_tests.orderedRemove(k),
                                     .add_custom_test => try self.custom_tests.append(.{
                                         .input = Sexpr.builtin.nil,
