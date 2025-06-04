@@ -55,6 +55,7 @@ fn SessionPersistent(platform: Platform, drawer: Drawer) type {
     const Editing = EditingFnk(platform, drawer);
     return struct {
         list_viewer: Editing.ListViewer,
+        sexpr_holders: [3]Editing.SexprHolder,
     };
 }
 
@@ -530,7 +531,11 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
 
             try Artist(platform, drawer).init();
 
-            result.session_persistent = .{ .list_viewer = .init() };
+            result.session_persistent = .{ .list_viewer = .init(), .sexpr_holders = .{
+                .{ .point = .{ .pos = .new(10, 11) } },
+                .{ .point = .{ .pos = .new(14, 15) } },
+                .{ .point = .{ .pos = .new(15, 15) } },
+            } };
         }
 
         fn initEditingAndMaybeFindBuiltinLevel(self: *Self, fnk_name: *const Sexpr) !void {
@@ -841,6 +846,12 @@ const TutorialState = union(enum) {
             => true,
             else => false,
         };
+    }
+
+    pub fn hasSexprHolders(self: TutorialState) bool {
+        // TODO
+        _ = self;
+        return true;
     }
 };
 
@@ -2265,6 +2276,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             fnk_manager,
             meta_converter: core.SexprAddress,
             list_viewer: ListViewer.Address,
+            sexpr_holder: SexprHolder.FullAddress,
 
             pub fn equals(self: @This(), other: @This()) bool {
                 if (std.meta.activeTag(self) != std.meta.activeTag(other)) return false;
@@ -2285,6 +2297,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .fnk_manager => true,
                     .meta_converter => |self_local| core.equalSexprAddress(self_local, other.meta_converter),
                     .list_viewer => |self_list| core.equalSexprAddress(self_list.local, other.list_viewer.local) and self_list.which.equals(other.list_viewer.which),
+                    .sexpr_holder => |self_holder| self_holder.index == other.sexpr_holder.index and core.equalSexprAddress(self_holder.address, other.sexpr_holder.address),
                 };
             }
 
@@ -2304,6 +2317,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .fnk_manager => Camera.remap(UI.cam, self.fnk_manager.sexpr_point, self.camera),
                     .meta_converter => |local| SexprView.sexprChildView(meta_converter.sexprWorldPoint(self.camera), local),
                     .list_viewer => |list| SexprView.sexprChildView(self.session_persistent.list_viewer.getWorldPoint(self.camera, list.which), list.local),
+                    .sexpr_holder => |addr| self.session_persistent.sexpr_holders[addr.index].getWorldPoint(self.camera, addr.address),
                 };
             }
 
@@ -2331,6 +2345,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .fnk_manager => return self.fnk_manager.cur,
                     .meta_converter => |local| if (meta_converter.sexpr) |v| v.getAt(local).? else null,
                     .list_viewer => |addr| if (self.session_persistent.list_viewer.getSexpr(addr.which)) |v| v.getAt(addr.local).? else null,
+                    .sexpr_holder => |addr| if (self.session_persistent.sexpr_holders[addr.index].value) |v| v.getAt(addr.address).? else null,
                     // examples_reel.getPoint(sample.index, sample.which), sample.local),
                     // .main_input => |local| self.main_input.getAt(local).?,
                 };
@@ -2351,6 +2366,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         try meta_converter.setSexpr(self.mem, value, local_address);
                     },
                     .list_viewer => |addr| try self.session_persistent.list_viewer.setSexpr(self.mem, value, addr),
+                    .sexpr_holder => |addr| try self.session_persistent.sexpr_holders[addr.index].setSexpr(self.mem, value, addr.address),
                     .custom_test => |sample| try self.custom_tests.items[sample.index].setSexpr(sample.which, sample.local, self.mem, value),
                     .toolbar, .main_fnk_name, .toolbar_special_var, .sample, .external_fnk => unreachable,
                 }
@@ -2377,6 +2393,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .fnk_manager => true,
                     .meta_converter => true,
                     .list_viewer => true,
+                    .sexpr_holder => true,
                 };
             }
 
@@ -2643,6 +2660,19 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         //     action: enum()
         // },
         focus: union(enum) {
+            const Handle = union(enum) {
+                list_viewer,
+                fnk_manager,
+                // TODO NEXT: sexpr holder
+
+                pub fn point(handle: Handle, self: Self) Point {
+                    return switch (handle) {
+                        .list_viewer => self.session_persistent.list_viewer.handlePoint(),
+                        .fnk_manager => self.fnk_manager.handlePoint(),
+                    };
+                }
+            };
+
             nothing,
             hovering: union(enum) {
                 case: struct {
@@ -2653,10 +2683,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     address: SexprPlace,
                     global_point: Point,
                 },
+
                 // TODO: hotness
-                list_viewer_handle,
-                // TODO: hotness
-                fnk_manager_handle,
+                handle: Handle,
+
                 ui: UI_State.Label,
             },
             grabbing: union(enum) {
@@ -2671,8 +2701,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     is_pattern: f32,
                     limitation: enum { none, pattern, template },
                 },
-                list_viewer_handle,
-                fnk_manager_handle,
+                handle: Handle,
                 ui: UI_State.Label,
             },
             // TODO: remove duplication
@@ -2683,8 +2712,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .hovering => |cur_hover| switch (hovering) {
                         .case => |case| std.meta.activeTag(cur_hover) == .case and cur_hover.case.address.equals(case.address),
                         .sexpr => |sexpr| std.meta.activeTag(cur_hover) == .sexpr and cur_hover.sexpr.address.equals(sexpr.address),
-                        .list_viewer_handle => std.meta.activeTag(cur_hover) == .list_viewer_handle,
-                        .fnk_manager_handle => std.meta.activeTag(cur_hover) == .fnk_manager_handle,
+                        .handle => |handle| std.meta.activeTag(cur_hover) == .handle and std.meta.eql(cur_hover.handle, handle),
                         .ui => |button| std.meta.activeTag(cur_hover) == .ui and std.meta.eql(cur_hover.ui, button),
                     },
                 };
@@ -3207,6 +3235,72 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .new(self.reel.rect.size.x - 0.05, 1.75),
                 );
             }
+        };
+
+        const SexprHolder = struct {
+            value: ?*const Sexpr = null,
+            point: Point,
+
+            pub fn sexprPoint(self: SexprHolder) Point {
+                return self.point;
+            }
+
+            pub fn handlePoint(self: SexprHolder) Point {
+                return self.point.applyToLocalPoint(.{ .pos = .new(-0.5, -1), .scale = 0.4 });
+            }
+
+            pub fn move(self: *SexprHolder, mouse: Mouse) void {
+                self.point.pos.addInPlace(mouse.cur.pos(UI.cam)
+                    .sub(mouse.prev.pos(UI.cam)));
+            }
+
+            pub fn getWorldPoint(self: SexprHolder, camera: Camera, address: core.SexprAddress) Point {
+                return Camera.remap(UI.cam, self.getUIPoint(address), camera);
+            }
+
+            pub fn getUIPoint(self: SexprHolder, address: core.SexprAddress) Point {
+                return SexprView.sexprChildView(self.sexprPoint(), address);
+            }
+
+            pub fn setSexpr(self: *SexprHolder, mem: *VeryPermamentGameStuff, new_sexpr: *const Sexpr, address: core.SexprAddress) !void {
+                if (self.value) |existing| {
+                    self.value = try existing.setAt(mem, address, new_sexpr);
+                } else {
+                    assert(address.len == 0);
+                    self.value = new_sexpr;
+                }
+            }
+
+            pub fn findOverlap(self: SexprHolder, mouse_ui_pos: Vec2) !?core.SexprAddress {
+                if (self.value) |v| {
+                    return try SexprView.overlapsSexpr(platform.gpa, v, self.sexprPoint(), mouse_ui_pos);
+                } else if (SexprView.overlapsAtom(self.sexprPoint(), mouse_ui_pos, .atom)) {
+                    return &.{};
+                } else return null;
+            }
+
+            pub fn draw(self: SexprHolder) !void {
+                const camera = UI.cam;
+                drawer.drawLineV2(camera, self.point, &([1]Vec2{.new(2, -1.1)} ++
+                    funk.fromCount(32, struct {
+                        pub fn anon(k: usize) Vec2 {
+                            // TODO: center the circle actually on the sexprPoint
+                            return Vec2.fromTurns(math.lerp(0.75, 0.25, math.tof32(k) / 32)).scale(1.1).addX(0.5);
+                        }
+                    }.anon) ++
+                    [1]Vec2{.new(2, 1.1)}), .black);
+                drawer.drawCircle(
+                    camera,
+                    self.handlePoint(),
+                    .black,
+                    null,
+                );
+                if (self.value) |v| {
+                    try artist.drawSexpr(camera, self.sexprPoint(), v);
+                }
+            }
+
+            pub const FullAddress = struct { index: usize, address: core.SexprAddress };
         };
 
         // TODO: user can add/remove elements from list
@@ -4063,8 +4157,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             switch (self.focus) {
                 .grabbing => |*x| switch (x.*) {
                     .ui => {},
-                    .list_viewer_handle => self.session_persistent.list_viewer.move(platform.getMouse()),
-                    .fnk_manager_handle => self.fnk_manager.move(platform.getMouse(), &self.ui_state),
+                    .handle => |handle| switch (handle) {
+                        .list_viewer => self.session_persistent.list_viewer.move(platform.getMouse()),
+                        .fnk_manager => self.fnk_manager.move(platform.getMouse(), &self.ui_state),
+                    },
                     .case => |*grabbing| {
                         // grabbing case parent is the nothing!
                         grabbing.case.pattern_point_relative_to_parent.lerp_towards((Point{
@@ -4081,7 +4177,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     .template => .{ .turns = -0.02, .pos = .new(0.5, 0) },
                                     .fnk_name => .{ .turns = 0.02, .pos = .new(0.5, 0) },
                                 },
-                                .main_input, .meta_converter, .list_viewer, .custom_test => .{ .turns = -0.02, .pos = .new(0.5, 0) },
+                                .main_input, .meta_converter, .list_viewer, .custom_test, .sexpr_holder => .{ .turns = -0.02, .pos = .new(0.5, 0) },
                                 .fnk_manager => .{ .turns = 0.02, .pos = .new(0.5, 0) },
                                 .toolbar, .main_fnk_name, .toolbar_special_var, .sample, .external_fnk => unreachable,
                             })
@@ -4121,7 +4217,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         }
                         math.lerp_towards(&hovering.hot, 1, 0.6, delta_seconds);
                     },
-                    .list_viewer_handle, .fnk_manager_handle => {},
+                    .handle => {},
                 },
             }
 
@@ -4184,6 +4280,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .{ .case = .toolbar_special_case }
                 else if (if (self.tutorial_state.hasListViewer()) try self.session_persistent.list_viewer.findOverlap(mouse_ui_pos, std.meta.activeTag(self.focus) == .grabbing and std.meta.activeTag(self.focus.grabbing) == .sexpr) else null) |overlap|
                     .{ .sexpr = .{ .list_viewer = overlap } }
+                else if (if (self.tutorial_state.hasSexprHolders()) blk: {
+                    for (self.session_persistent.sexpr_holders, 0..) |holder, k| {
+                        if (try holder.findOverlap(mouse_ui_pos)) |v| {
+                            break :blk @as(SexprHolder.FullAddress, .{ .index = k, .address = v });
+                        }
+                    } else break :blk null;
+                } else null) |overlap|
+                    .{ .sexpr = .{ .sexpr_holder = overlap } }
                 else if (self.tutorial_state.hasListViewer() and self.session_persistent.list_viewer.handlePoint().inverseApplyGetLocalPosition(mouse_ui_pos).magSq() < 1)
                     .list_viewer_handle
                 else if (self.ui_state.getOverlap(mouse_ui_pos)) |label|
@@ -4193,7 +4297,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
                 switch (self.focus) {
                     .grabbing => |*x| switch (x.*) {
-                        .list_viewer_handle, .fnk_manager_handle, .ui => {},
+                        .handle, .ui => {},
                         .case => |*grabbing| if (maybe_overlapped) |overlapped|
                             switch (overlapped) {
                                 .case => |place| {
@@ -4239,8 +4343,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 .address = place,
                                 .global_point = try place.getGlobalPoint(self.*),
                             } },
-                            .list_viewer_handle => .list_viewer_handle,
-                            .fnk_manager_handle => .fnk_manager_handle,
+                            .list_viewer_handle => .{ .handle = .list_viewer },
+                            .fnk_manager_handle => .{ .handle = .fnk_manager },
                             .ui => |label| .{ .ui = label },
                         };
 
@@ -4352,7 +4456,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 self.focus = .{ .nothing = {} };
                             }
                         },
-                        .list_viewer_handle, .fnk_manager_handle, .ui => unreachable,
+                        .handle, .ui => unreachable,
                     },
                     .hovering => |*x| switch (x.*) {
                         .case => |hovering| if (self.tutorial_state.allowGrabbingCases()) {
@@ -4424,12 +4528,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 }
                             }
                         },
-                        .list_viewer_handle => {
-                            self.focus = .{ .grabbing = .list_viewer_handle };
-                        },
-                        .fnk_manager_handle => {
-                            self.focus = .{ .grabbing = .fnk_manager_handle };
-                        },
+                        .handle => |handle| self.focus = .{ .grabbing = .{ .handle = handle } },
                         .ui => |button| {
                             self.focus = .{ .grabbing = .{ .ui = button } };
                         },
@@ -4439,12 +4538,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 switch (self.focus) {
                     .grabbing => |x| switch (x) {
                         else => {},
-                        .list_viewer_handle => {
-                            self.focus = .{ .hovering = .list_viewer_handle };
-                        },
-                        .fnk_manager_handle => {
-                            self.focus = .{ .hovering = .fnk_manager_handle };
-                        },
+                        .handle => |handle| self.focus = .{ .hovering = .{ .handle = handle } },
                         .ui => |button| {
                             self.focus = .{ .hovering = .{ .ui = button } };
                             switch (button) {
@@ -4564,6 +4658,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             if (self.tutorial_state.allowCreatingVaus()) try self.fnk_manager.draw();
             if (self.tutorial_state.allowMeta()) try meta_converter.draw(UI.cam);
             if (self.tutorial_state.hasListViewer()) try self.session_persistent.list_viewer.draw();
+            if (self.tutorial_state.hasSexprHolders()) for (self.session_persistent.sexpr_holders) |h| try h.draw();
 
             if (self.tutorial_state == .third_level and self.cases.cases.items.len > 0) {
                 const address_to_place_vau_name: core.FullAddress = .{
@@ -4579,8 +4674,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .nothing => {},
                 .hovering => |x| switch (x) {
                     .ui => {},
-                    .list_viewer_handle => drawer.drawCircle(UI.cam, self.session_persistent.list_viewer.handlePoint(), .black, .gray(160)),
-                    .fnk_manager_handle => drawer.drawCircle(UI.cam, self.fnk_manager.handlePoint(), .black, .gray(160)),
+                    .handle => |handle| drawer.drawCircle(UI.cam, handle.point(self), .black, .gray(160)),
                     .sexpr => |hovering| {
                         if (try hovering.address.getSexpr(self)) |value| {
                             try artist.drawBothSexpr(
@@ -4633,8 +4727,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .grabbing => |x| switch (x) {
                     .ui => {},
-                    .list_viewer_handle => drawer.drawCircle(UI.cam, self.session_persistent.list_viewer.handlePoint(), .black, .gray(192)),
-                    .fnk_manager_handle => drawer.drawCircle(UI.cam, self.fnk_manager.handlePoint(), .black, .gray(192)),
+                    .handle => |handle| drawer.drawCircle(UI.cam, handle.point(self), .black, .gray(192)),
                     .sexpr => |grabbing| {
                         try artist.drawBothSexpr(
                             camera,
