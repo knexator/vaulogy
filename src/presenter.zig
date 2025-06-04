@@ -2394,6 +2394,21 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         };
 
+        fn freshVarName(self: Self) !*const Sexpr {
+            const S = struct {
+                var random_instance: std.Random.DefaultPrng = std.Random.DefaultPrng.init(0);
+            };
+
+            const new_name = try self.mem.gpa.alloc(u8, 10);
+            while (true) {
+                Random.init(S.random_instance.random()).alphanumeric_bytes(new_name);
+
+                if (!self.cases.usesWildcardAnywhere(new_name)) {
+                    return try self.mem.storeSexpr(Sexpr.doVar(new_name));
+                }
+            }
+        }
+
         const UI_State = struct {
             comptime {
                 std.debug.assert(DESIGN.no_current_data);
@@ -4475,7 +4490,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         .sexpr => |hovering| {
                             if (hovering.address.acceptsDrop()) {
                                 if (try hovering.address.getSexpr(self.*)) |old_value| {
-                                    const new_value = try self.mem.storeSexpr(Sexpr.doPair(old_value, Sexpr.builtin.nil));
+                                    const new_value = try self.mem.storeSexpr(Sexpr.doPair(
+                                        old_value,
+                                        if (hovering.address.isPattern())
+                                            try self.freshVarName()
+                                        else
+                                            Sexpr.builtin.nil,
+                                    ));
                                     try hovering.address.setSexpr(self, new_value);
                                     try self.onChangedSomething();
                                 }
