@@ -317,4 +317,30 @@ pub const builtin_levels: []const BuiltinLevel = &.{
         .premade_solution = null,
         .tutorial_state = .none,
     },
+    .{
+        // TODO: allow '.' as an atom name
+        .fnk_name = &Sexpr.doLit("brainfuck"),
+        .manual_samples = &funk.map(struct {
+            pub fn anon(comptime values: struct { src: []const u8, input: []const usize, output: []const usize }) Sample {
+                return .{
+                    .input = &Sexpr.doPair(
+                        Vals.toList(&funk.map(charToSexpr, values.src)),
+                        Vals.toList(&funk.map(Vals.toPeano, values.input)),
+                    ),
+                    .output = Vals.toList(&funk.map(Vals.toPeano, values.output)),
+                };
+            }
+            fn charToSexpr(comptime c: u8) *const Sexpr {
+                return &Sexpr.doLit(&.{c});
+            }
+        }.anon, &.{
+            .{ .src = ",,!,!", .input = &.{ 's', 'h', 'i', 't' }, .output = &.{ 'h', 'i' } },
+            .{ .src = "++!+++!----!", .input = &.{}, .output = &.{ 2, 5, 1 } },
+            .{ .src = "+>><<!", .input = &.{}, .output = &.{1} },
+            .{ .src = "+++[->++<]>!", .input = &.{}, .output = &.{6} },
+        }),
+        .description = "Brainf*ck",
+        .premade_solution = null,
+        .tutorial_state = .none,
+    },
 };

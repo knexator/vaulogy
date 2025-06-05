@@ -532,7 +532,7 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             try Artist(platform, drawer).init();
 
             result.session_persistent = .{ .list_viewer = .init(), .sexpr_holders = .{
-                .{ .point = .{ .pos = .new(10, 11) } },
+                .{ .point = .{ .pos = .new(13, 15) } },
                 .{ .point = .{ .pos = .new(14, 15) } },
                 .{ .point = .{ .pos = .new(15, 15) } },
             } };
@@ -1242,6 +1242,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                 pattern_point.applyToLocalPosition(.new(1, 0)),
             }, names.items);
 
+            // TODO: draws duplicated wildcard names!
             if (DESIGN.round_data) {
                 try drawWildcardsCable(camera, &([1]Vec2{
                     // this -3 assumes not gen0
@@ -2399,13 +2400,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             // TODO: some visual feedback
             pub fn acceptsWildcards(address: @This()) bool {
-                if (!address.acceptsDrop()) unreachable;
+                assert(address.acceptsDrop());
                 return switch (address) {
                     .full_address => |x| x.which != .fnk_name,
                     .main_input => false,
                     .fnk_manager => false,
                     .custom_test => false,
                     .meta_converter => true,
+                    .sexpr_holder => true,
                     else => unreachable,
                 };
             }
@@ -2420,7 +2422,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             while (true) {
                 Random.init(S.random_instance.random()).alphanumeric_bytes(new_name);
 
-                if (!self.cases.usesWildcardAnywhere(new_name)) {
+                if (!self.cases.usesWildcardAnywhere(new_name) and
+                    !std.mem.eql(u8, new_name, toolbar.special_var_state.next_value.atom_var.value) and
+                    !std.mem.eql(u8, new_name, toolbar.special_case_state.next_var.atom_var.value))
+                {
                     return try self.mem.storeSexpr(Sexpr.doVar(new_name));
                 }
             }
@@ -3897,6 +3902,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             try persistence.fnks.put(fnk.name, fnk.body);
             try persistence.custom_samples.put(fnk.name, try editing.getCustomSamples());
             try platform.setPlayerData(persistence.*, editing.mem);
+            try persistence.updateSolvedStatusOfAll(editing.mem);
         }
 
         pub fn getFnk(self: Self) !Fnk {
@@ -4593,11 +4599,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             if (hovering.address.acceptsDrop()) {
                                 if (try hovering.address.getSexpr(self.*)) |old_value| {
                                     const new_value = try self.mem.storeSexpr(Sexpr.doPair(
-                                        old_value,
                                         if (hovering.address.isPattern())
                                             try self.freshVarName()
                                         else
                                             Sexpr.builtin.nil,
+                                        old_value,
                                     ));
                                     try hovering.address.setSexpr(self, new_value);
                                     try self.onChangedSomething();
@@ -4873,7 +4879,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 var asdf: std.ArrayList([]const u8) = .init(platform.gpa);
                 defer asdf.deinit();
                 for (group.cases.items[k..]) |next_case| {
-                    try asdf.appendSlice(next_case.incoming_wildcards);
+                    try appendUniqueNames(&asdf, next_case.incoming_wildcards);
                 }
                 try artist.drawWildcardsCable(camera, &.{ prev_point, cur_point }, asdf.items);
             }
@@ -5995,7 +6001,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 for (cases[k..]) |next_case| {
                     const incoming_wildcards = (try getWildcards(next_case, bindings)).incoming;
                     defer platform.gpa.free(incoming_wildcards);
-                    try asdf.appendSlice(incoming_wildcards);
+                    try appendUniqueNames(&asdf, incoming_wildcards);
                 }
                 try artist.drawWildcardsCable(camera, &.{ prev_point, cur_point }, asdf.items);
             }
@@ -6256,7 +6262,8 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
             for (res, 0..) |*b, k| {
                 b.* = .{
                     .pos = Rect{ .top_left = .new(2 + 2.5 * tof32(@divFloor(k, 5)), 2.5 + 2.5 * @as(f32, @floatFromInt(@mod(k, 5)))), .size = .one },
-                    .enabled = if (k == 0) true else persistence.is_builtin_level_solved[k - 1],
+                    // locked levels
+                    .enabled = if (DESIGN.all_levels_unlocked) true else if (k == 0) true else persistence.is_builtin_level_solved[k - 1],
                 };
             }
             return Self{

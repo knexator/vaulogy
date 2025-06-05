@@ -6,6 +6,7 @@ const DESIGN = struct {
     round_data: bool = true,
     allow_zoom: bool = false,
     instant_feedback: bool = false,
+    all_levels_unlocked: bool = true,
 
     pub const default: @This() = .{};
     pub const variants: []const struct {

@@ -198,7 +198,7 @@ const Point = presenter.Point;
 const Vec2 = presenter.Vec2;
 const Color = presenter.Color;
 const Rect = presenter.Rect;
-const optimization_dont_draw_tiny = false;
+const optimization_dont_draw_tiny = true;
 const WebDrawer = struct {
     pub fn asdfBackground() void {}
 
