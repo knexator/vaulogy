@@ -1054,6 +1054,8 @@ fn Artist(platform: Platform, drawer: Drawer) type {
     };
 
     return struct {
+        var highlighted_var: ?[]const u8 = null;
+
         pub fn init() !void {
             return AtomVisualCache.init();
         }
@@ -1413,12 +1415,20 @@ fn Artist(platform: Platform, drawer: Drawer) type {
 
         pub fn drawVariable(camera: Camera, world_point: Point, name: []const u8) !void {
             const visuals = try AtomVisualCache.getAtomVisuals(name);
-            drawer.drawVariable(camera, world_point, visuals);
+            if (highlighted_var != null and std.mem.eql(u8, name, highlighted_var.?)) {
+                drawer.drawVariable(camera, world_point.applyToLocalPoint(.{ .scale = 1.1 }), visuals);
+            } else {
+                drawer.drawVariable(camera, world_point, visuals);
+            }
         }
 
         pub fn drawPatternVariable(camera: Camera, world_point: Point, name: []const u8) !void {
             const visuals = try AtomVisualCache.getAtomVisuals(name);
-            drawer.drawPatternVariable(camera, world_point, visuals);
+            if (highlighted_var != null and std.mem.eql(u8, name, highlighted_var.?)) {
+                drawer.drawPatternVariable(camera, world_point.applyToLocalPoint(.{ .scale = 1.1 }), visuals);
+            } else {
+                drawer.drawPatternVariable(camera, world_point, visuals);
+            }
         }
 
         pub fn drawAtom(camera: Camera, world_point: Point, name: []const u8) !void {
@@ -4629,6 +4639,17 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn draw(self: Self, custom_samples: PlayerData.SamplesCollection) !void {
+            artist.highlighted_var = switch (self.focus) {
+                else => null,
+                .hovering => |x| switch (x) {
+                    else => null,
+                    .sexpr => |hovering| if (try hovering.address.getSexpr(self)) |value|
+                        if (value.isVar()) value.atom_var.value else null
+                    else
+                        null,
+                },
+            };
+
             const camera = self.camera;
             {
                 artist.drawOffscreenCableTo(camera, MAIN_INPUT_POS);
@@ -4701,6 +4722,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             //     case.pattern_point,
                             //     full_address.sexpr_address,
                             // ));
+                            if (value.isVar()) {}
                             switch (hovering.address) {
                                 else => {},
                                 .external_fnk => |address| if (address.local.len == 0) {

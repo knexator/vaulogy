@@ -148,6 +148,13 @@ pub const Sexpr = union(enum) {
         };
     }
 
+    pub fn isVar(this: *const Sexpr) bool {
+        return switch (this.*) {
+            .atom_var => true,
+            else => false,
+        };
+    }
+
     pub fn isLit(this: *const Sexpr) bool {
         return switch (this.*) {
             .atom_lit => true,
