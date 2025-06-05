@@ -2660,19 +2660,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         //     action: enum()
         // },
         focus: union(enum) {
-            const Handle = union(enum) {
-                list_viewer,
-                fnk_manager,
-                // TODO NEXT: sexpr holder
-
-                pub fn point(handle: Handle, self: Self) Point {
-                    return switch (handle) {
-                        .list_viewer => self.session_persistent.list_viewer.handlePoint(),
-                        .fnk_manager => self.fnk_manager.handlePoint(),
-                    };
-                }
-            };
-
             nothing,
             hovering: union(enum) {
                 case: struct {
@@ -2746,6 +2733,20 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         // TODO: abstract
         particles: std.ArrayList(ParticleState),
         particles_cases: std.ArrayList(CaseParticleState),
+
+        const Handle = union(enum) {
+            list_viewer,
+            fnk_manager,
+            sexpr_holder: usize,
+
+            pub fn point(handle: Handle, self: Self) Point {
+                return switch (handle) {
+                    .list_viewer => self.session_persistent.list_viewer.handlePoint(),
+                    .fnk_manager => self.fnk_manager.handlePoint(),
+                    .sexpr_holder => |k| self.session_persistent.sexpr_holders[k].handlePoint(),
+                };
+            }
+        };
 
         const CaseParticleState = struct {
             main: CaseState,
@@ -4160,6 +4161,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     .handle => |handle| switch (handle) {
                         .list_viewer => self.session_persistent.list_viewer.move(platform.getMouse()),
                         .fnk_manager => self.fnk_manager.move(platform.getMouse(), &self.ui_state),
+                        .sexpr_holder => |k| self.session_persistent.sexpr_holders[k].move(platform.getMouse()),
                     },
                     .case => |*grabbing| {
                         // grabbing case parent is the nothing!
@@ -4228,8 +4230,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 const Overlapped = union(enum) {
                     case: CasePlace,
                     sexpr: SexprPlace,
-                    list_viewer_handle,
-                    fnk_manager_handle,
+                    handle: Handle,
                     ui: UI_State.Label,
                 };
                 const maybe_overlapped: ?Overlapped = if (blk: {
@@ -4264,7 +4265,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 else if (self.tutorial_state.allowCreatingVaus() and self.fnk_manager.findOverlap(mouse_ui_pos))
                     .{ .sexpr = .fnk_manager }
                 else if (self.tutorial_state.allowCreatingVaus() and self.fnk_manager.handlePoint().inverseApplyGetLocalPosition(mouse_ui_pos).magSq() < 1)
-                    .fnk_manager_handle
+                    .{ .handle = .fnk_manager }
                 else if (if (self.tutorial_state.allowMeta()) try meta_converter.findOverlap(mouse_ui_pos) else null) |overlap| switch (overlap) {
                     .sexpr => |local| .{ .sexpr = .{ .meta_converter = local } },
                     .case => .{ .case = .meta_converter },
@@ -4288,8 +4289,16 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     } else break :blk null;
                 } else null) |overlap|
                     .{ .sexpr = .{ .sexpr_holder = overlap } }
+                else if (if (self.tutorial_state.hasSexprHolders()) blk: {
+                    for (self.session_persistent.sexpr_holders, 0..) |holder, k| {
+                        if (holder.handlePoint().inverseApplyGetLocalPosition(mouse_ui_pos).magSq() < 1) {
+                            break :blk @as(Handle, .{ .sexpr_holder = k });
+                        }
+                    } else break :blk null;
+                } else null) |overlap|
+                    .{ .handle = overlap }
                 else if (self.tutorial_state.hasListViewer() and self.session_persistent.list_viewer.handlePoint().inverseApplyGetLocalPosition(mouse_ui_pos).magSq() < 1)
-                    .list_viewer_handle
+                    .{ .handle = .list_viewer }
                 else if (self.ui_state.getOverlap(mouse_ui_pos)) |label|
                     .{ .ui = label }
                 else
@@ -4303,7 +4312,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 .case => |place| {
                                     grabbing.address_if_released = if (place.acceptsDrop()) place else null;
                                 },
-                                .sexpr, .list_viewer_handle, .fnk_manager_handle, .ui => {
+                                .sexpr, .ui, .handle => {
                                     grabbing.address_if_released = null;
                                 },
                             }
@@ -4318,7 +4327,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     }
                                     grabbing.address_if_released = null;
                                 },
-                                .list_viewer_handle, .fnk_manager_handle, .ui => {
+                                .ui, .handle => {
                                     grabbing.address_if_released = null;
                                 },
                                 .sexpr => |place| {
@@ -4343,8 +4352,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 .address = place,
                                 .global_point = try place.getGlobalPoint(self.*),
                             } },
-                            .list_viewer_handle => .{ .handle = .list_viewer },
-                            .fnk_manager_handle => .{ .handle = .fnk_manager },
+                            .handle => |handle| .{ .handle = handle },
                             .ui => |label| .{ .ui = label },
                         };
 
