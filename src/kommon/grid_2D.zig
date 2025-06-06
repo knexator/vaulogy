@@ -11,23 +11,17 @@ pub fn Grid2D(T: type) type {
     // 3 4 5
     // 6 7 8
     return struct {
-        // TODO: UVec2
-        width: usize,
-        height: usize,
+        size: UVec2,
         data: []T,
-
-        fn sizeVec(self: Self) UVec2 {
-            return .new(self.width, self.height);
-        }
 
         const Self = @This();
 
         pub fn initUndefined(allocator: std.mem.Allocator, size: UVec2) !Self {
-            return .{ .width = size.x, .height = size.y, .data = try allocator.alloc(T, size.x * size.y) };
+            return .{ .size = size, .data = try allocator.alloc(T, size.x * size.y) };
         }
 
         pub fn initFill(allocator: std.mem.Allocator, size: UVec2, fill: T) !Self {
-            const result: Self = .{ .width = size.x, .height = size.y, .data = try allocator.alloc(T, size.x * size.y) };
+            const result: Self = .{ .size = size, .data = try allocator.alloc(T, size.x * size.y) };
             @memset(result.data, fill);
             return result;
         }
@@ -37,87 +31,77 @@ pub fn Grid2D(T: type) type {
         }
 
         // TODO: remove this method
-        pub fn at(self: Self, i: usize, j: usize) !T {
-            return self.data[try self.indexOf(.new(i, j))];
+        pub fn at(self: Self, i: usize, j: usize) T {
+            return self.data[self.indexOf(.new(i, j))];
         }
 
-        pub fn at2(self: Self, pos: UVec2) !T {
-            return self.data[try self.indexOf(pos)];
+        pub fn at2(self: Self, pos: UVec2) T {
+            return self.data[self.indexOf(pos)];
         }
 
-        pub fn atSigned(self: Self, pos: IVec2) !T {
-            return self.data[try self.indexOfSigned(pos)];
+        pub fn atSigned(self: Self, pos: IVec2) T {
+            return self.data[self.indexOfSigned(pos)];
         }
 
-        pub fn getPtr(self: Self, pos: UVec2) !*T {
-            return &self.data[try self.indexOf(pos)];
+        pub fn getPtr(self: Self, pos: UVec2) *T {
+            return &self.data[self.indexOf(pos)];
         }
 
-        pub fn set(self: Self, pos: UVec2, value: T) !void {
-            self.data[try self.indexOf(pos)] = value;
+        pub fn set(self: Self, pos: UVec2, value: T) void {
+            self.data[self.indexOf(pos)] = value;
         }
 
-        fn indexOf(self: Self, pos: UVec2) !usize {
-            if (!self.inBoundsUnsigned(pos)) return error.OutOfGridBounds;
-            return pos.y * self.width + pos.x;
+        fn indexOf(self: Self, pos: UVec2) usize {
+            if (!self.inBoundsUnsigned(pos)) std.debug.panic("OoB: Grid2D of size {any} accessed at position {any}", .{ self.size, pos });
+            return pos.y * self.size.x + pos.x;
         }
 
-        fn indexOfSigned(self: Self, pos: IVec2) !usize {
-            if (!self.inBoundsSigned(pos)) return error.OutOfGridBounds;
-            return self.indexOf(pos.cast(usize)) catch unreachable;
+        fn indexOfSigned(self: Self, pos: IVec2) usize {
+            if (!self.inBoundsSigned(pos)) std.debug.panic("OoB: Grid2D of size {any} accessed at position {any}", .{ self.size, pos });
+            return self.indexOf(pos.cast(usize));
         }
 
-        fn GridIterator(ptrs: bool) type {
-            return struct {
-                grid: Self,
-                i: kommon.itertools.Iterator(usize),
-                j: kommon.itertools.Iterator(usize),
+        const GridIterator = struct {
+            grid: Self,
+            i: kommon.itertools.Iterator(usize),
+            j: kommon.itertools.Iterator(usize),
 
-                pub fn init(grid: Self) GridIterator(ptrs) {
-                    return .{
-                        .grid = grid,
-                        .i = .init(0, grid.width - 1),
-                        .j = .init(0, grid.height - 1),
-                    };
-                }
+            pub fn init(grid: Self) GridIterator {
+                return .{
+                    .grid = grid,
+                    .i = .init(0, grid.size.x - 1),
+                    .j = .init(0, grid.size.y - 1),
+                };
+            }
 
-                pub fn reset(self: *GridIterator(ptrs)) void {
-                    self.i.reset();
-                    self.j.reset();
-                }
+            pub fn reset(self: *GridIterator) void {
+                self.i.reset();
+                self.j.reset();
+            }
 
-                pub fn next(self: *GridIterator(ptrs)) ?struct { row: usize, col: usize, value: if (ptrs) *T else T, pos: UVec2 } {
-                    // ideal:
-                    // for (0..self.grid.height) |j| {
-                    //     for (0..self.grid.width) |i| {
-                    //         yield ...;
-                    //     }
-                    // }
+            pub fn next(self: *GridIterator) ?UVec2 {
+                // ideal:
+                // for (0..self.grid.height) |j| {
+                //     for (0..self.grid.width) |i| {
+                //         yield .new(i, j);
+                //     }
+                // }
 
-                    if (self.j.cur()) |j| {
-                        if (self.i.next()) |i| {
-                            return .{
-                                .row = j,
-                                .col = i,
-                                .value = if (ptrs)
-                                    self.grid.getPtr(.new(i, j)) catch unreachable
-                                else
-                                    self.grid.at(i, j) catch unreachable,
-                                .pos = .new(i, j),
-                            };
-                        } else {
-                            self.j.advance();
-                            self.i.reset();
-                            return self.next();
-                        }
+                if (self.j.cur()) |j| {
+                    if (self.i.next()) |i| {
+                        return .new(i, j);
                     } else {
-                        return null;
+                        self.j.advance();
+                        self.i.reset();
+                        return self.next();
                     }
+                } else {
+                    return null;
                 }
-            };
-        }
+            }
+        };
 
-        pub fn iterator(self: Self, comptime ptrs: bool) GridIterator(ptrs) {
+        pub fn iterator(self: Self) GridIterator {
             return .init(self);
         }
 
@@ -163,22 +147,20 @@ pub fn Grid2D(T: type) type {
                 j += 1;
             }
             return .{
-                .width = width,
-                .height = height,
+                .size = .new(width, height),
                 .data = data,
             };
         }
 
         pub fn map(self: Self, allocator: std.mem.Allocator, comptime NewType: type, comptime map_fn: fn (v: T) NewType) !Grid2D(NewType) {
             const new_data = try allocator.alloc(NewType, self.data.len);
-            for (0..self.height) |j| {
-                for (0..self.width) |i| {
-                    new_data[j * self.width + i] = map_fn(self.at(i, j) catch unreachable);
+            for (0..self.size.y) |j| {
+                for (0..self.size.x) |i| {
+                    new_data[j * self.size.x + i] = map_fn(self.at(i, j));
                 }
             }
             return .{
-                .height = self.height,
-                .width = self.width,
+                .size = self.size,
                 .data = new_data,
             };
         }
@@ -187,12 +169,11 @@ pub fn Grid2D(T: type) type {
             const new_data = try allocator.alloc(NewType, self.data.len);
             for (0..self.height) |j| {
                 for (0..self.width) |i| {
-                    new_data[j * self.width + i] = map_fn(self.at(i, j) catch unreachable, ctx);
+                    new_data[j * self.width + i] = map_fn(self.at(i, j), ctx);
                 }
             }
             return .{
-                .height = self.height,
-                .width = self.width,
+                .size = self.size,
                 .data = new_data,
             };
         }
@@ -201,9 +182,9 @@ pub fn Grid2D(T: type) type {
             if (T != bool) @compileError("crop only works on Grid2D(bool)");
 
             const left: usize = blk: {
-                for (0..self.width) |i| {
-                    for (0..self.height) |j| {
-                        if (self.at(i, j) catch unreachable) {
+                for (0..self.size.x) |i| {
+                    for (0..self.size.y) |j| {
+                        if (self.at(i, j)) {
                             break :blk i;
                         }
                     }
@@ -211,10 +192,10 @@ pub fn Grid2D(T: type) type {
             };
 
             const right: usize = blk: {
-                for (0..self.width) |n_i| {
-                    const i = self.width - 1 - n_i;
-                    for (0..self.height) |j| {
-                        if (self.at(i, j) catch unreachable) {
+                for (0..self.size.x) |n_i| {
+                    const i = self.size.x - 1 - n_i;
+                    for (0..self.size.y) |j| {
+                        if (self.at(i, j)) {
                             break :blk i;
                         }
                     }
@@ -222,9 +203,9 @@ pub fn Grid2D(T: type) type {
             };
 
             const up: usize = blk: {
-                for (0..self.height) |j| {
-                    for (0..self.width) |i| {
-                        if (self.at(i, j) catch unreachable) {
+                for (0..self.size.y) |j| {
+                    for (0..self.size.x) |i| {
+                        if (self.at(i, j)) {
                             break :blk j;
                         }
                     }
@@ -232,10 +213,10 @@ pub fn Grid2D(T: type) type {
             };
 
             const down: usize = blk: {
-                for (0..self.height) |n_j| {
-                    const j = self.height - 1 - n_j;
-                    for (0..self.width) |i| {
-                        if (self.at(i, j) catch unreachable) {
+                for (0..self.size.y) |n_j| {
+                    const j = self.size.y - 1 - n_j;
+                    for (0..self.size.x) |i| {
+                        if (self.at(i, j)) {
                             break :blk j;
                         }
                     }
@@ -260,8 +241,8 @@ pub fn Grid2D(T: type) type {
             var result: Self = try .initUndefined(allocator, rect.inner_size.add(.both(1)));
 
             var it = result.iterator();
-            while (it.next()) |t| {
-                result.set(t.pos, try original.at2(t.pos.add(rect.top_left))) catch unreachable;
+            while (it.next()) |pos| {
+                result.set(pos, try original.at2(pos.add(rect.top_left))) catch unreachable;
             }
 
             return result;
@@ -281,7 +262,7 @@ pub fn Grid2D(T: type) type {
         }
 
         pub fn inBoundsUnsigned(self: Self, pos: UVec2) bool {
-            return pos.x < self.width and pos.y < self.height;
+            return pos.x < self.size.x and pos.y < self.size.y;
         }
     };
 }

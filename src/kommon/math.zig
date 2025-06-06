@@ -665,7 +665,7 @@ pub const Rect = struct {
         return self.top_left.add(self.size.scale(0.5));
     }
 
-    const MeasureKind = enum { top_left, top_center, top_right, bottom_center, bottom_left, bottom_right, center, size };
+    pub const MeasureKind = enum { top_left, top_center, top_right, bottom_center, bottom_left, bottom_right, center, size };
     // TODO: autogen from enum
     /// They are all Vec2 since otherwise .get wouldn't know what to return
     pub const Measure = union(MeasureKind) {
@@ -698,7 +698,14 @@ pub const Rect = struct {
     }
 
     pub fn plusMargin(self: Rect, v: f32) Rect {
-        return .{ .top_left = self.top_left.sub(.new(v, v)), .size = self.size.add(Vec2.new(v, v).scale(2)) };
+        return self.plusMargin2(.both(v));
+    }
+
+    pub fn plusMargin2(self: Rect, v: Vec2) Rect {
+        return .{
+            .top_left = self.top_left.sub(v),
+            .size = self.size.add(v.scale(2)),
+        };
     }
 
     pub fn fromCenterAndSize(center: Vec2, size: Vec2) Rect {
@@ -848,6 +855,14 @@ pub const Rect = struct {
 
     pub fn localFromWorldPosition(self: Rect, p: Vec2) Vec2 {
         return p.sub(self.top_left).div(self.size);
+    }
+
+    pub fn fromSpriteSheet(which: UVec2, count: UVec2, uv_margin: Vec2) Rect {
+        const rect: Rect = .{
+            .top_left = which.tof32().div(count.tof32()),
+            .size = Vec2.one.div(count.tof32()),
+        };
+        return rect.plusMargin2(uv_margin.neg());
     }
 
     pub fn format(value: Rect, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: std.io.AnyWriter) !void {

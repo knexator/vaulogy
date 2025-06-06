@@ -12,6 +12,7 @@ clear: *const fn (color: FColor) void,
 // TODO: wrap, optional mips, filter
 buildTexture2D: *const fn (
     data: *const anyopaque,
+    pixelart: bool,
 ) Texture,
 
 buildRenderable: *const fn (
@@ -225,6 +226,7 @@ pub const InstancedRenderable = struct {
 
 pub const Texture = struct {
     id: c_uint,
+    resolution: UVec2,
 };
 
 const std = @import("std");
@@ -235,3 +237,4 @@ const Camera = math.Camera;
 const Rect = math.Rect;
 const Point = math.Point;
 const Vec2 = math.Vec2;
+const UVec2 = math.UVec2;
