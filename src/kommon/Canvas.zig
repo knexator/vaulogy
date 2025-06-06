@@ -69,6 +69,7 @@ pub fn init(gl: Gl, gpa: std.mem.Allocator, comptime font_jsons: []const []const
             point: Point,
         },
         .vertex =
+        \\precision highp float;
         \\uniform vec4 u_camera; // as top_left, size
         \\uniform vec4 u_point; // as pos, turns, scale
         \\
@@ -103,33 +104,37 @@ pub fn init(gl: Gl, gpa: std.mem.Allocator, comptime font_jsons: []const []const
         .gl = gl,
         .frame_arena = .init(gpa),
         .sprite_renderable = try gl.buildRenderable(
+            \\precision highp float;
             \\uniform vec4 u_camera; // as top_left, size
             \\
             \\in vec2 a_position;
             \\in vec2 a_texcoord;
+            \\in vec4 a_color;
             \\out vec2 v_texcoord;
+            \\out vec4 v_color;
             \\void main() {
             \\  vec2 camera_position = (a_position - u_camera.xy) / u_camera.zw;
             \\  gl_Position = vec4((camera_position * 2.0 - 1.0) * vec2(1, -1), 0, 1);
             \\  v_texcoord = a_texcoord;
+            \\  v_color = a_color;
             \\}
         ,
             \\precision highp float;
             \\out vec4 out_color;
             \\in vec2 v_texcoord;
+            \\in vec4 v_color;
             \\uniform sampler2D u_texture;
-            \\uniform vec4 u_color;
             \\void main() {
-            \\  out_color = u_color * texture(u_texture, v_texcoord);
+            \\  out_color = v_color * texture(u_texture, v_texcoord);
             \\}
         ,
             .{ .attribs = &.{
                 .{ .name = "a_position", .kind = .Vec2 },
                 .{ .name = "a_texcoord", .kind = .Vec2 },
+                .{ .name = "a_color", .kind = .FColor },
             } },
             &.{
                 .{ .name = "u_camera", .kind = .Rect },
-                .{ .name = "u_color", .kind = .FColor },
             },
         ),
         .fill_shape_renderable = try gl.buildRenderable(
@@ -145,6 +150,7 @@ pub fn init(gl: Gl, gpa: std.mem.Allocator, comptime font_jsons: []const []const
             },
         ),
         .fill_instanced_shapes_renderable = try gl.buildInstancedRenderable(
+            \\precision highp float;
             \\uniform vec4 u_camera; // as top_left, size
             \\#define TAU 6.283185307179586
             \\in vec2 a_vertex_position;
@@ -179,6 +185,7 @@ pub fn init(gl: Gl, gpa: std.mem.Allocator, comptime font_jsons: []const []const
             },
         ),
         .fill_instanced_circles_renderable = try gl.buildInstancedRenderable(
+            \\precision highp float;
             \\uniform vec4 u_camera; // as top_left, size
             \\
             \\in vec2 a_vertex_position;
@@ -206,6 +213,7 @@ pub fn init(gl: Gl, gpa: std.mem.Allocator, comptime font_jsons: []const []const
             },
         ),
         .instanced_rounded_lines_renderable = try gl.buildInstancedRenderable(
+            \\precision highp float;
             \\uniform vec4 u_camera; // as top_left, size
             \\uniform float u_width;
             \\in vec2 a_vertex_position;
@@ -345,43 +353,117 @@ pub fn fillSquare(
     );
 }
 
-pub fn sprite(
-    self: Canvas,
-    camera: Rect,
+pub const Sprite = struct {
     point: Point,
-    pivot: Rect.MeasureKind,
+    pivot: Rect.MeasureKind = .top_left,
     texcoord: Rect,
+    tint: FColor = .white,
+};
+
+pub const SpriteBatch = struct {
+    canvas: *Canvas,
+    sprites: std.ArrayListUnmanaged(Sprite),
+    camera: Rect,
     texture: Gl.Texture,
-    tint: ?FColor,
+
+    pub fn add(self: *SpriteBatch, sprite: Sprite) void {
+        self.sprites.append(self.canvas.frame_arena.allocator(), sprite) catch @panic("OoM");
+    }
+
+    pub fn draw(self: *SpriteBatch) void {
+        self.canvas.drawSpriteBatch(self.camera, self.sprites.items, self.texture);
+    }
+};
+
+pub fn spriteBatch(
+    self: *Canvas,
+    camera: Rect,
+    texture: Gl.Texture,
+) SpriteBatch {
+    return .{
+        .canvas = self,
+        .camera = camera,
+        .texture = texture,
+        .sprites = .empty,
+    };
+}
+
+// TODO: instancing?
+pub fn drawSpriteBatch(
+    self: *Canvas,
+    camera: Rect,
+    sprites: []const Sprite,
+    texture: Gl.Texture,
 ) void {
-    if (pivot != .top_left) @panic("TODO: other pivots");
-    const VertexData = extern struct { pos: Vec2, texcoord: Vec2 };
-    const vertices: [4]VertexData = .{ .{
-        .pos = point.applyToLocalPosition(.zero),
-        .texcoord = texcoord.applyToLocalPosition(.zero),
-    }, .{
-        .pos = point.applyToLocalPosition(.e1),
-        .texcoord = texcoord.applyToLocalPosition(.e1),
-    }, .{
-        .pos = point.applyToLocalPosition(.e2),
-        .texcoord = texcoord.applyToLocalPosition(.e2),
-    }, .{
-        .pos = point.applyToLocalPosition(.one),
-        .texcoord = texcoord.applyToLocalPosition(.one),
-    } };
+    const VertexData = extern struct { pos: Vec2, texcoord: Vec2, color: FColor };
+    const vertices = self.frame_arena.allocator().alloc(VertexData, 4 * sprites.len) catch @panic("OoM");
+    const triangles = self.frame_arena.allocator().alloc([3]Gl.IndexType, 2 * sprites.len) catch @panic("OoM");
+    for (sprites, 0..) |sprite, i| {
+        for ([4]Vec2{ .zero, .e1, .e2, .one }, 0..4) |vertex, k| {
+            if (sprite.pivot != .top_left) @panic("TODO: other pivots");
+            vertices[i * 4 + k] = .{
+                .pos = sprite.point.applyToLocalPosition(vertex),
+                .texcoord = sprite.texcoord.applyToLocalPosition(vertex),
+                .color = sprite.tint,
+            };
+        }
+        const k: Gl.IndexType = @intCast(4 * i);
+        triangles[i * 2 + 0] = .{ k + 0, k + 1, k + 2 };
+        triangles[i * 2 + 1] = .{ k + 3, k + 2, k + 1 };
+    }
     self.gl.useRenderable(
         self.sprite_renderable,
-        &vertices,
-        4 * @sizeOf(VertexData),
+        vertices.ptr,
+        vertices.len * @sizeOf(VertexData),
         // .local_points = &.{ .zero, .e1, .e2, .one },
-        &.{ .{ 0, 1, 2 }, .{ 3, 2, 1 } },
+        triangles,
         &.{
-            .{ .name = "u_color", .value = .{ .FColor = tint orelse .white } },
             .{ .name = "u_camera", .value = .{ .Rect = camera } },
         },
         texture,
     );
 }
+
+// pub fn sprite(
+//     self: Canvas,
+//     camera: Rect,
+//     point: Point,
+//     pivot: Rect.MeasureKind,
+//     texcoord: Rect,
+//     texture: Gl.Texture,
+//     tint: ?FColor,
+// ) void {
+//     if (pivot != .top_left) @panic("TODO: other pivots");
+//     const VertexData = extern struct { pos: Vec2, texcoord: Vec2, color: FColor };
+//     const vertices: [4]VertexData = .{ .{
+//         .pos = point.applyToLocalPosition(.zero),
+//         .texcoord = texcoord.applyToLocalPosition(.zero),
+//         .color = tint orelse .white,
+//     }, .{
+//         .pos = point.applyToLocalPosition(.e1),
+//         .texcoord = texcoord.applyToLocalPosition(.e1),
+//         .color = tint orelse .white,
+//     }, .{
+//         .pos = point.applyToLocalPosition(.e2),
+//         .texcoord = texcoord.applyToLocalPosition(.e2),
+//         .color = tint orelse .white,
+//     }, .{
+//         .pos = point.applyToLocalPosition(.one),
+//         .texcoord = texcoord.applyToLocalPosition(.one),
+//         .color = tint orelse .white,
+//     } };
+//     self.gl.useRenderable(
+//         self.sprite_renderable,
+//         &vertices,
+//         4 * @sizeOf(VertexData),
+//         // .local_points = &.{ .zero, .e1, .e2, .one },
+//         &.{ .{ 0, 1, 2 }, .{ 3, 2, 1 } },
+//         &.{
+//             .{ .name = "u_camera", .value = .{ .Rect = camera } },
+//         },
+//         texture,
+//     );
+// }
 
 pub fn fillRect(
     self: Canvas,
@@ -668,6 +750,7 @@ pub const TextRenderer = struct {
                 .{},
             ),
             .renderable = try gl.buildRenderable(
+                \\precision highp float;
                 \\in vec2 a_position;
                 \\in vec2 a_texcoord;
                 \\
@@ -900,6 +983,7 @@ pub const SpritesheetRenderer = struct {
         return .{
             .texture = texture,
             .renderable = try gl.buildInstancedRenderable(
+                \\precision highp float;
                 \\uniform vec4 u_camera; // as top_left, size
                 \\in vec2 a_quad_vertex; // (0,0) .. (1,1)
                 \\in vec4 a_position; // as top_left, size
