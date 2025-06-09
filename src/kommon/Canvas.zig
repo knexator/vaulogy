@@ -1,5 +1,6 @@
 //! Game-layer wrapper around Gl, with common drawing utilities
 
+// TODO: have this outside
 /// for stuff that lives only for this frame
 frame_arena: std.heap.ArenaAllocator,
 /// only valid for a frame!

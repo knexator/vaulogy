@@ -167,9 +167,9 @@ pub fn Grid2D(T: type) type {
 
         pub fn mapWithCtx(self: Self, allocator: std.mem.Allocator, comptime NewType: type, ctx: anytype, comptime map_fn: fn (v: T, ctx: @TypeOf(ctx)) NewType) !Grid2D(NewType) {
             const new_data = try allocator.alloc(NewType, self.data.len);
-            for (0..self.height) |j| {
-                for (0..self.width) |i| {
-                    new_data[j * self.width + i] = map_fn(self.at(i, j), ctx);
+            for (0..self.size.y) |j| {
+                for (0..self.size.x) |i| {
+                    new_data[j * self.size.x + i] = map_fn(self.at(i, j), ctx);
                 }
             }
             return .{
