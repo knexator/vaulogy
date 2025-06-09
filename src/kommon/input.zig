@@ -85,6 +85,7 @@ pub fn CustomKeyboard(CustomKeyboardButton: type) type {
     return struct {
         cur: CustomKeyboardState(CustomKeyboardButton),
         prev: CustomKeyboardState(CustomKeyboardButton),
+        last_change_at: kommon.meta.StructFromEnum(CustomKeyboardButton, f32, false) = undefined,
 
         pub fn wasPressed(self: @This(), button: CustomKeyboardButton) bool {
             return self.cur.isDown(button) and !self.prev.isDown(button);

@@ -125,6 +125,10 @@ pub fn ZVec2(T: type) type {
             return new(a.x + b.x, a.y + b.y);
         }
 
+        pub fn addSigned(a: UVec2, b: IVec2) UVec2 {
+            return a.cast(isize).add(b).cast(usize);
+        }
+
         pub fn sub(a: Self, b: Self) Self {
             return new(a.x - b.x, a.y - b.y);
         }
