@@ -31,22 +31,24 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          path: 'vaulogy'
       - name: Get kommon
         uses: actions/checkout@v4
         with:
           repository: knexator/gamename.zig
-          path: '../gamename.zig'
+          path: 'gamename.zig'
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Setup Zig Compiler
         uses: mlugg/setup-zig@v1.2.1
         with:
           version: 0.14.0
-      - run: zig build install -p .
+      - run: cd vaulogy && zig build install -p .
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './dist'
+          path: './vaulogy/dist'
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
