@@ -35,7 +35,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: knexator/gamename.zig
-          path: './gamename.zig'
+          path: '../gamename.zig'
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Setup Zig Compiler
