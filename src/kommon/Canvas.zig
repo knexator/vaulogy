@@ -354,6 +354,23 @@ pub fn fillSquare(
     );
 }
 
+pub const SpriteSheet = struct {
+    count: UVec2,
+    margin_px: usize,
+    resolution: UVec2,
+
+    pub fn at(self: SpriteSheet, k: usize) Rect {
+        return self.atV(.new(
+            @mod(k, self.count.x),
+            @divFloor(k, self.count.x),
+        ));
+    }
+
+    pub fn atV(self: SpriteSheet, v: UVec2) Rect {
+        return .fromSpriteSheet(v, self.count, Vec2.both(@floatFromInt(self.margin_px)).div(self.resolution.tof32()));
+    }
+};
+
 pub const Sprite = struct {
     point: Point,
     pivot: Rect.MeasureKind = .top_left,
@@ -364,26 +381,23 @@ pub const Sprite = struct {
 pub const SpriteBatch = struct {
     canvas: *Canvas,
     sprites: std.ArrayListUnmanaged(Sprite),
-    camera: Rect,
     texture: Gl.Texture,
 
     pub fn add(self: *SpriteBatch, sprite: Sprite) void {
         self.sprites.append(self.canvas.frame_arena.allocator(), sprite) catch @panic("OoM");
     }
 
-    pub fn draw(self: *SpriteBatch) void {
-        self.canvas.drawSpriteBatch(self.camera, self.sprites.items, self.texture);
+    pub fn draw(self: *SpriteBatch, camera: Rect) void {
+        self.canvas.drawSpriteBatch(camera, self.sprites.items, self.texture);
     }
 };
 
 pub fn spriteBatch(
     self: *Canvas,
-    camera: Rect,
     texture: Gl.Texture,
 ) SpriteBatch {
     return .{
         .canvas = self,
-        .camera = camera,
         .texture = texture,
         .sprites = .empty,
     };
@@ -976,59 +990,59 @@ pub const TextRenderer = struct {
 };
 
 // TODO
-pub const SpritesheetRenderer = struct {
-    texture: Gl.Texture,
-    renderable: Gl.InstancedRenderable,
+// pub const SpritesheetRenderer = struct {
+//     texture: Gl.Texture,
+//     renderable: Gl.InstancedRenderable,
 
-    pub fn init(gl: Gl, texture: Gl.Texture) SpritesheetRenderer {
-        return .{
-            .texture = texture,
-            .renderable = try gl.buildInstancedRenderable(
-                \\precision highp float;
-                \\uniform vec4 u_camera; // as top_left, size
-                \\in vec2 a_quad_vertex; // (0,0) .. (1,1)
-                \\in vec4 a_position; // as top_left, size
-                \\in vec4 a_texcoord; // as top_left, size
-                \\in vec4 a_color;
-                \\out vec4 v_color;
-                \\out vec2 v_texcoord;
-                \\void main() {
-                \\  vec2 world_position = a_position.xy + a_position.zw * a_quad_vertex;
-                \\  vec2 camera_position = (world_position - u_camera.xy) / u_camera.zw;
-                \\  gl_Position = vec4((camera_position * 2.0 - 1.0) * vec2(1, -1), 0, 1);
-                \\  v_color = a_color;
-                \\  v_texcoord = a_texcoord.xy + a_quad_vertex * a_texcoord.zw;
-                \\}
-            ,
-                \\precision highp float;
-                \\out vec4 out_color;
-                \\in vec4 v_color;
-                \\in vec2 v_texcoord;
-                \\void main() {
-                \\  out_color = v_color * vec4(v_texcoord, 1, 1);
-                \\}
-            ,
-                .{ .attribs = &.{
-                    .{ .name = "a_quad_vertex", .kind = .Vec2 },
-                } },
-                .{ .attribs = &.{
-                    .{ .name = "a_position", .kind = .Rect },
-                    .{ .name = "a_color", .kind = .FColor },
-                    .{ .name = "a_texcoord", .kind = .Rect },
-                } },
-                &.{
-                    .{ .name = "u_camera", .kind = .Rect },
-                },
-            ),
-        };
-    }
+//     pub fn init(gl: Gl, texture: Gl.Texture) SpritesheetRenderer {
+//         return .{
+//             .texture = texture,
+//             .renderable = try gl.buildInstancedRenderable(
+//                 \\precision highp float;
+//                 \\uniform vec4 u_camera; // as top_left, size
+//                 \\in vec2 a_quad_vertex; // (0,0) .. (1,1)
+//                 \\in vec4 a_position; // as top_left, size
+//                 \\in vec4 a_texcoord; // as top_left, size
+//                 \\in vec4 a_color;
+//                 \\out vec4 v_color;
+//                 \\out vec2 v_texcoord;
+//                 \\void main() {
+//                 \\  vec2 world_position = a_position.xy + a_position.zw * a_quad_vertex;
+//                 \\  vec2 camera_position = (world_position - u_camera.xy) / u_camera.zw;
+//                 \\  gl_Position = vec4((camera_position * 2.0 - 1.0) * vec2(1, -1), 0, 1);
+//                 \\  v_color = a_color;
+//                 \\  v_texcoord = a_texcoord.xy + a_quad_vertex * a_texcoord.zw;
+//                 \\}
+//             ,
+//                 \\precision highp float;
+//                 \\out vec4 out_color;
+//                 \\in vec4 v_color;
+//                 \\in vec2 v_texcoord;
+//                 \\void main() {
+//                 \\  out_color = v_color * vec4(v_texcoord, 1, 1);
+//                 \\}
+//             ,
+//                 .{ .attribs = &.{
+//                     .{ .name = "a_quad_vertex", .kind = .Vec2 },
+//                 } },
+//                 .{ .attribs = &.{
+//                     .{ .name = "a_position", .kind = .Rect },
+//                     .{ .name = "a_color", .kind = .FColor },
+//                     .{ .name = "a_texcoord", .kind = .Rect },
+//                 } },
+//                 &.{
+//                     .{ .name = "u_camera", .kind = .Rect },
+//                 },
+//             ),
+//         };
+//     }
 
-    // pub fn deinit()
+//     // pub fn deinit()
 
-    // pub fn add(self: *SpritesheetRenderer, pos: Rect, tex: Rect) !void {}
+//     // pub fn add(self: *SpritesheetRenderer, pos: Rect, tex: Rect) !void {}
 
-    // pub fn end(self: *SpritesheetRenderer, camera: Rect) void {}
-};
+//     // pub fn end(self: *SpritesheetRenderer, camera: Rect) void {}
+// };
 
 const std = @import("std");
 const assert = std.debug.assert;

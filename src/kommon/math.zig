@@ -983,14 +983,18 @@ pub const FColor = extern struct {
         return .{ .h = h, .s = s, .v = v, .a = color.a };
     }
 
-    // TODO
-    pub fn lighter(color: FColor) FColor {
+    pub fn scaleRGB(color: FColor, v: f32) FColor {
         return .{
-            .r = color.r * 1.5,
-            .g = color.g * 1.5,
-            .b = color.b * 1.5,
+            .r = color.r * v,
+            .g = color.g * v,
+            .b = color.b * v,
             .a = color.a,
         };
+    }
+
+    // TODO
+    pub fn lighter(color: FColor) FColor {
+        return color.scaleRGB(1.5);
         // const delta_s = 0.2;
         // const delta_v = 0.2;
         // const hsv = color.toHsv();

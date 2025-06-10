@@ -61,6 +61,21 @@ pub fn Grid2D(T: type) type {
             return self.indexOf(pos.cast(usize));
         }
 
+        const GridSignedIterator = struct {
+            grid_iterator: GridIterator,
+
+            pub fn reset(self: *GridSignedIterator) void {
+                self.grid_iterator.reset();
+            }
+
+            pub fn next(self: *GridSignedIterator) ?IVec2 {
+                if (self.grid_iterator.next()) |p|
+                    return p.cast(isize)
+                else
+                    return null;
+            }
+        };
+
         const GridIterator = struct {
             grid: Self,
             i: kommon.itertools.Iterator(usize),
@@ -103,6 +118,10 @@ pub fn Grid2D(T: type) type {
 
         pub fn iterator(self: Self) GridIterator {
             return .init(self);
+        }
+
+        pub fn iteratorSigned(self: Self) GridSignedIterator {
+            return .{ .grid_iterator = .init(self) };
         }
 
         const RayIterator = struct {
