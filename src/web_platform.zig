@@ -145,8 +145,9 @@ const js_better = struct {
     };
 };
 
-const math = @import("kommon/math.zig");
-const funk = @import("kommon/funktional.zig");
+const kommon = @import("kommon");
+const funk = kommon.funktional;
+const math = kommon.math;
 const model = @import("main.zig");
 const presenter = @import("presenter.zig");
 const DESIGN = presenter.DESIGN;

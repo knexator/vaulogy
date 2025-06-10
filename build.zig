@@ -31,12 +31,10 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // To use in other projects
-    _ = b.addModule("kommon", .{
-        .root_source_file = b.path("src/kommon/kommon.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
+    const kommon_module = b.dependency("kommon", .{
+        // .target = target,
+        // .optimize = optimize,
+    }).module("kommon");
 
     const fast = b.option(bool, "fast", "generate only the main webgame version") orelse false;
 
@@ -53,6 +51,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
         });
+        exe.root_module.addImport("kommon", kommon_module);
         b.installArtifact(exe);
 
         const run_cmd = b.addRunArtifact(exe);
@@ -79,6 +78,7 @@ pub fn build(b: *std.Build) void {
             // .use_lld = optimize != .Debug,
         });
         exe_unit_tests.linkLibrary(dummy_exports);
+        exe_unit_tests.root_module.addImport("kommon", kommon_module);
         exe_unit_tests.root_module.addOptions("DESIGN", DESIGN.default.toOptions(b));
 
         const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
@@ -109,6 +109,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
         });
+        sdlgame_exe.root_module.addImport("kommon", kommon_module);
         sdlgame_exe.root_module.addOptions("DESIGN", DESIGN.default.toOptions(b));
         const sdl_dep = b.dependency("sdl", .{
             .target = target,
@@ -136,6 +137,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
         });
+        sdlgame_exe_check.root_module.addImport("kommon", kommon_module);
         sdlgame_exe_check.root_module.addOptions("DESIGN", DESIGN.default.toOptions(b));
         sdlgame_exe_check.linkLibrary(sdl_lib);
         sdlgame_exe_check.root_module.addImport("zstbi", b.dependency("zstbi", .{}).module("root"));
@@ -167,6 +169,7 @@ pub fn build(b: *std.Build) void {
                     // .use_lld = optimize != .Debug,
                 },
             );
+            webgame_wasm.root_module.addImport("kommon", kommon_module);
             webgame_wasm.root_module.addOptions("DESIGN", variant.design.toOptions(b));
 
             {
@@ -211,6 +214,7 @@ pub fn build(b: *std.Build) void {
                 .optimize = optimize,
             },
         );
+        webgame_wasm_check.root_module.addImport("kommon", kommon_module);
         webgame_wasm_check.root_module.addOptions("DESIGN", DESIGN.default.toOptions(b));
         check.dependOn(&webgame_wasm_check.step);
     }

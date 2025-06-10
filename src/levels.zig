@@ -1,5 +1,5 @@
 const presenter = @import("presenter.zig");
-const funk = @import("kommon/funktional.zig");
+const funk = @import("kommon").funktional;
 const BuiltinLevel = presenter.BuiltinLevel;
 const Sample = presenter.Sample;
 const core = @import("main.zig");

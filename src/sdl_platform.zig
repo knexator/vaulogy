@@ -3,8 +3,9 @@ const assert = std.debug.assert;
 const gl = @import("gl");
 const zstbi = @import("zstbi");
 
-const funk = @import("kommon/funktional.zig");
-const math = @import("kommon/math.zig");
+const kommon = @import("kommon");
+const funk = kommon.funktional;
+const math = kommon.math;
 const model = @import("main.zig");
 const presenter = @import("presenter.zig");
 const DESIGN = presenter.DESIGN;
@@ -72,7 +73,6 @@ const SdlPlatform = struct {
 var gl_vtable: Gl = undefined;
 var canvas: Canvas = undefined;
 
-const kommon = @import("kommon/kommon.zig");
 const Gl = kommon.Gl;
 const Canvas = kommon.Canvas;
 const tof32 = math.tof32;

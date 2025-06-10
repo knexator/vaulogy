@@ -3,7 +3,7 @@ const MemoryPool = std.heap.MemoryPool;
 
 const parsing = @import("parsing.zig");
 
-const indexOfString = @import("kommon/funktional.zig").indexOfString;
+const indexOfString = @import("kommon").funktional.indexOfString;
 
 // Design decision 1: strings live on the input buffer
 // Design decision 2: Sexprs are never released :(

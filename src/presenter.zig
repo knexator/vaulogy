@@ -5,11 +5,12 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-pub const safeAt = @import("kommon/kommon.zig").safeAt;
-pub const Mouse = @import("kommon/input.zig").Mouse;
+pub const kommon = @import("kommon");
+pub const safeAt = kommon.safeAt;
+pub const Mouse = kommon.input.Mouse;
 pub const KeyboardButton = enum { left, right, up, down, space };
-pub const Keyboard = @import("kommon/input.zig").CustomKeyboard(KeyboardButton);
-const math = @import("kommon/math.zig");
+pub const Keyboard = kommon.input.CustomKeyboard(KeyboardButton);
+const math = kommon.math;
 pub const Vec2 = math.Vec2;
 pub const Rect = math.Rect;
 pub const Camera = math.Camera;
@@ -23,7 +24,7 @@ const clamp = math.clamp;
 const clamp01 = math.clamp01;
 const remap = math.remap;
 const inRange = math.inRange;
-const funk = @import("kommon/funktional.zig");
+const funk = kommon.funktional;
 
 const core = @import("main.zig");
 const Atom = core.Atom;
