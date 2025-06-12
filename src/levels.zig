@@ -4,6 +4,8 @@ const BuiltinLevel = presenter.BuiltinLevel;
 const Sample = presenter.Sample;
 const core = @import("main.zig");
 const Sexpr = core.Sexpr;
+const std = @import("std");
+const assert = std.debug.assert;
 
 const Vals = struct {
     pub const Hermes: *const Sexpr = &Sexpr.doLit("Hermes");
@@ -40,6 +42,72 @@ const Vals = struct {
         @setEvalBranchQuota(1100 + n * 2);
         if (n == 0) return Sexpr.builtin.nil;
         return &Sexpr.doPair(Sexpr.builtin.true, toPeano(n - 1));
+    }
+
+    pub fn changeNumbersToPeano(comptime v: *const Sexpr) *const Sexpr {
+        switch (v.*) {
+            .atom_var => return v,
+            .pair => |p| return &Sexpr.doPair(
+                changeNumbersToPeano(p.left),
+                changeNumbersToPeano(p.right),
+            ),
+            .atom_lit => |l| if (l.value.len != 1)
+                return v
+            else switch (l.value[0]) {
+                '0'...'9' => |d| return toPeano(d - '0'),
+                else => return v,
+            },
+        }
+    }
+
+    pub fn parse(comptime str: []const u8) *const Sexpr {
+        return parseSexprTrue(str).sexpr;
+    }
+
+    fn parseSexprTrue(comptime input: []const u8) struct { sexpr: *const Sexpr, rest: []const u8 } {
+        const rest = std.mem.trimLeft(u8, input, &std.ascii.whitespace);
+        if (rest[0] == '(') {
+            const asdf = parseSexprInsideParens(rest[1..]);
+            return .{ .sexpr = asdf.sexpr, .rest = asdf.rest };
+        }
+        const asdf = parseAtom(rest);
+        const res: Sexpr = if (asdf.is_var)
+            Sexpr{ .atom_var = asdf.atom }
+        else
+            Sexpr{ .atom_lit = asdf.atom };
+
+        return .{ .sexpr = &res, .rest = asdf.rest };
+    }
+
+    fn parseAtom(input: []const u8) struct { atom: core.Atom, is_var: bool, rest: []const u8 } {
+        const word_breaks = .{ '(', ')', ':', '.', ';' } ++ std.ascii.whitespace;
+        const rest = std.mem.trimLeft(u8, input, &std.ascii.whitespace);
+        const word_end = std.mem.indexOfAnyPos(u8, rest, 0, &word_breaks) orelse rest.len;
+        const is_variable = rest[0] == '@';
+        return .{
+            .atom = core.Atom{ .value = rest[(if (is_variable) 1 else 0)..word_end] },
+            .is_var = is_variable,
+            .rest = rest[word_end..],
+        };
+    }
+
+    fn parseSexprInsideParens(input: []const u8) struct { sexpr: *const Sexpr, rest: []const u8 } {
+        const rest = std.mem.trimLeft(u8, input, &std.ascii.whitespace);
+        if (rest.len == 0) unreachable;
+        if (rest[0] == ')') {
+            return .{ .sexpr = Sexpr.builtin.nil, .rest = rest[1..] };
+        } else if (rest[0] == '.') {
+            const final_asdf = parseSexprTrue(rest[1..]);
+            const rest2 = std.mem.trimLeft(u8, final_asdf.rest, &std.ascii.whitespace);
+            if (rest2.len == 0 or rest2[0] != ')') unreachable;
+            return .{ .sexpr = final_asdf.sexpr, .rest = rest2[1..] };
+        }
+        const first_asdf = parseSexprTrue(rest);
+        const rest_asdf = parseSexprInsideParens(first_asdf.rest);
+
+        const res = Sexpr{ .pair = core.Pair{ .left = first_asdf.sexpr, .right = rest_asdf.sexpr } };
+
+        return .{ .sexpr = &res, .rest = rest_asdf.rest };
     }
 };
 
@@ -340,6 +408,28 @@ pub const builtin_levels: []const BuiltinLevel = &.{
             .{ .src = "+++[->++<]>!", .input = &.{}, .output = &.{6} },
         }),
         .description = "Brainf*ck",
+        .premade_solution = null,
+        .tutorial_state = .none,
+    },
+    .{
+        .fnk_name = &Sexpr.doLit("calculator"),
+        .manual_samples = &funk.map(struct {
+            pub fn anon(comptime values: struct { input: []const u8, output: usize }) Sample {
+                return .{
+                    .input = Vals.changeNumbersToPeano(Vals.parse(values.input)),
+                    .output = Vals.toPeano(values.output),
+                };
+            }
+            fn charToSexpr(comptime c: u8) *const Sexpr {
+                return &Sexpr.doLit(&.{c});
+            }
+        }.anon, &.{
+            .{ .input = "(peanoSum 2 . 1)", .output = 3 },
+            .{ .input = "(peanoMul 3 . 2)", .output = 6 },
+            .{ .input = "(peanoMul . ((peanoSum 2 . 1) . (peanoSum 1 . 2)))", .output = 9 },
+            .{ .input = "(peanoSum . ((peanoSum 2 . 1) . (peanoMul 2 . 3)))", .output = 9 },
+        }),
+        .description = "Build a calculator!",
         .premade_solution = null,
         .tutorial_state = .none,
     },
