@@ -38,6 +38,27 @@ const parsing = @import("parsing.zig");
 
 const OoM = error{ OutOfMemory, TODO, BAD_INPUT };
 
+const TestSetScore = struct {
+    code_size: usize,
+    compile_time: usize,
+    total_successful_matches: usize,
+    total_max_stack: usize,
+
+    pub const all_0 = std.mem.zeroes(@This());
+
+    var display_text_buf: [0x1000]u8 = undefined;
+    pub fn display(self: @This()) ![:0]const u8 {
+        return std.fmt.bufPrintZ(&display_text_buf,
+            \\Code Size: {d} 
+            \\Total Execution Time: {d}
+            \\Total Max stack: {d}
+            \\Compile Time: {d}
+        , .{ self.code_size, self.total_successful_matches, self.total_max_stack, self.compile_time }) catch |err| switch (err) {
+            error.NoSpaceLeft => error.OutOfMemory,
+        };
+    }
+};
+
 pub const DESIGN = @import("DESIGN");
 
 pub const Platform = struct {
@@ -2665,6 +2686,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         favorite_fnks: *std.ArrayList(*const Sexpr),
         cases: CaseGroup,
         main_input: if (DESIGN.no_current_data) enum { invalid_field } else *const Sexpr,
+        score: ?TestSetScore,
 
         tutorial_state: TutorialState,
 
@@ -3984,14 +4006,16 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 });
             }
 
+            var score: ?TestSetScore = null;
             if (DESIGN.instant_feedback) {
-                try updateSolvedSamples(.{ .name = fnk_name, .body = fnk_body }, tests, custom_tests.items, persistence, mem);
+                score = try updateSolvedSamples(.{ .name = fnk_name, .body = fnk_body }, tests, custom_tests.items, persistence, mem);
             }
 
             session_persistent.list_viewer.onEnterLevel(tutorial_state == .intro_to_list_viewer);
 
             const fnk_manager: FnkManager = .init();
             return .{
+                .score = score,
                 .tests_reel = tests_reel,
                 .fnk_name = fnk_name,
                 .samples = tests,
@@ -4031,8 +4055,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         fn resetSolvedSamples(self: *Self, which: TestingFnk(platform, drawer).Which) !void {
+            self.score = null;
             if (DESIGN.instant_feedback) {
-                try updateSolvedSamples(try self.getFnk(), self.samples, self.custom_tests.items, self.persistence, self.mem);
+                self.score = try updateSolvedSamples(try self.getFnk(), self.samples, self.custom_tests.items, self.persistence, self.mem);
             } else {
                 self.forgetSolvedSamples(which);
             }
@@ -4059,9 +4084,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             return if (k < self.samples.len) &self.samples[k] else &self.custom_tests.items[k - self.samples.len];
         }
 
-        fn updateSolvedSamplesHelper(self: Self, which: TestingFnk(platform, drawer).Which) !void {
+        fn updateSolvedSamplesHelper(self: *Self, which: TestingFnk(platform, drawer).Which) !void {
             switch (which) {
-                .all => try updateSolvedSamples(try self.getFnk(), self.samples, self.custom_tests.items, self.persistence, self.mem),
+                .all => self.score = try updateSolvedSamples(try self.getFnk(), self.samples, self.custom_tests.items, self.persistence, self.mem),
                 .only => |k| {
                     const fnk = try self.getFnk();
                     // TODO: move this elsewhere
@@ -4087,14 +4112,17 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         }
 
-        fn updateSolvedSamples(fnk: Fnk, samples: []TestCase, custom_tests: []TestCase, persistence: *PlayerData, mem: *VeryPermamentGameStuff) !void {
+        fn updateSolvedSamples(fnk: Fnk, samples: []TestCase, custom_tests: []TestCase, persistence: *PlayerData, mem: *VeryPermamentGameStuff) !?TestSetScore {
             // TODO: move this elsewhere
             try persistence.fnks.put(fnk.name, fnk.body);
+
+            var total_score: TestSetScore = .all_0;
+            var any_failed = false;
 
             var score = try core.ScoringRun.initFromFnks(persistence.fnks, mem);
             defer score.deinit(false);
 
-            inline for (&.{ samples, custom_tests }) |asdf| {
+            inline for (&.{ samples, custom_tests }, &.{ true, false }) |asdf, is_official_test| {
                 for (asdf) |*sample| {
                     sample.actual = blk: {
                         var exec = core.ExecutionThread.init(sample.input, fnk.name, &score) catch |err| switch (err) {
@@ -4104,14 +4132,31 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         defer exec.deinit();
 
                         const actual_output = exec.getFinalResultBounded(&score, 10_000) catch |err| switch (err) {
-                            error.FnkNotFound, error.NoMatchingCase, error.InvalidMetaFnk, error.UsedUndefinedVariable, error.TookTooLong => break :blk .undefined,
-                            error.BAD_INPUT => break :blk .undefined,
+                            error.FnkNotFound, error.NoMatchingCase, error.InvalidMetaFnk, error.UsedUndefinedVariable, error.TookTooLong => {
+                                any_failed = true;
+                                break :blk .undefined;
+                            },
+                            error.BAD_INPUT => {
+                                any_failed = true;
+                                break :blk .undefined;
+                            },
                             error.OutOfMemory => return err,
                         };
+
+                        if (is_official_test) {
+                            total_score.total_max_stack += exec.score.max_stack;
+                            total_score.total_successful_matches += exec.score.successful_matches;
+                        }
+
                         break :blk .{ .value = actual_output };
                     };
                 }
             }
+
+            total_score.code_size = score.score.code_size;
+            total_score.compile_time = score.score.compile_time;
+
+            return if (any_failed) null else total_score;
         }
 
         // TODO: deinit
@@ -4689,6 +4734,17 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             try self.tests_reel.draw(self.samples, self.custom_tests.items);
             if (self.allSolved()) {
                 drawer.drawDebugText(UI.cam, .{ .pos = self.tests_reel.reel.rect.get(.bottom_center).add(.new(0, 1.3)), .scale = 0.75 }, "All Tests passed!", .black);
+            }
+            if (self.score) |score| {
+                drawer.drawDebugText(
+                    UI.cam,
+                    .{
+                        .pos = self.tests_reel.reel.rect.get(.bottom_center).add(.new(0, 3)),
+                        .scale = 0.75,
+                    },
+                    try score.display(),
+                    .black,
+                );
             }
             if (self.tutorial_state.allowPickingVaus()) try fnks_reel.draw(self.favorite_fnks.items, .from(self.tutorial_state));
             if (self.tutorial_state.allowCreatingVaus()) try self.fnk_manager.draw();
