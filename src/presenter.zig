@@ -47,15 +47,25 @@ const TestSetScore = struct {
     pub const all_0 = std.mem.zeroes(@This());
 
     var display_text_buf: [0x1000]u8 = undefined;
-    pub fn display(self: @This()) ![:0]const u8 {
-        return std.fmt.bufPrintZ(&display_text_buf,
-            \\Code Size: {d} 
-            \\Total Execution Time: {d}
-            \\Total Max stack: {d}
-            \\Compile Time: {d}
-        , .{ self.code_size, self.total_successful_matches, self.total_max_stack, self.compile_time }) catch |err| switch (err) {
-            error.NoSpaceLeft => error.OutOfMemory,
-        };
+    pub fn display(self: @This(), meta_enabled: bool) ![:0]const u8 {
+        if (meta_enabled) {
+            return std.fmt.bufPrintZ(&display_text_buf,
+                \\Code Size: {d} 
+                \\Total Execution Time: {d}
+                \\Total Max stack: {d}
+                \\Compile Time: {d}
+            , .{ self.code_size, self.total_successful_matches, self.total_max_stack, self.compile_time }) catch |err| switch (err) {
+                error.NoSpaceLeft => error.OutOfMemory,
+            };
+        } else {
+            return std.fmt.bufPrintZ(&display_text_buf,
+                \\Code Size: {d} 
+                \\Total Execution Time: {d}
+                \\Total Max stack: {d}
+            , .{ self.code_size, self.total_successful_matches, self.total_max_stack }) catch |err| switch (err) {
+                error.NoSpaceLeft => error.OutOfMemory,
+            };
+        }
     }
 };
 
@@ -818,8 +828,7 @@ const TutorialState = union(enum) {
 
     pub fn allowMeta(self: TutorialState) bool {
         // TODO
-        _ = self;
-        return true;
+        return self == .none;
     }
 
     pub fn allowCustomTests(self: TutorialState) bool {
@@ -4742,7 +4751,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         .pos = self.tests_reel.reel.rect.get(.bottom_center).add(.new(0, 3)),
                         .scale = 0.75,
                     },
-                    try score.display(),
+                    try score.display(self.tutorial_state.allowMeta()),
                     .black,
                 );
             }
