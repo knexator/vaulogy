@@ -1,3 +1,4 @@
+zumos:
 - exit out of ExecutionResult screen by clicking anywhere
 - confused about pattern/template rotation when moving a pattern to the main_input
 - say "Vau id" instead of "Vau name"
@@ -36,6 +37,7 @@ done:
 
 ###
 
+j_gmv:
 - idea: change wrapping to multiple copies and/or reordering
 - tell player about right click
 - didn't know how to delete cases
@@ -56,6 +58,7 @@ done:
 
 ###
 
+a_gmv:
 - confused about pattern-template rotation of held value
 - better UI on execution screen (change Stop to Back on end, button order)
 - first level idea: {a -> b; b -> a;}
@@ -81,6 +84,7 @@ done:
 
 ###
 
+edu:
 - level 1: que le de al Check antes de poder modificar nada
 - level 1: no right click
 - undo button
@@ -110,6 +114,7 @@ done:
 
 ###
 
+m_gmv:
 - main menu: intenta arrastrar the level name
 - le ralla el cambio súbito al darle a "check all"
 - lvl1: cree que estan conectados los casos: el output de uno sera el input del siguiente
@@ -137,3 +142,23 @@ ok:
 done:
 - lvl3: le ralla el true/false de la toolbar
 - lvl1: cree que el orden es importante
+
+###
+
+saul:
+- in planetFromOlympian, have related shapes, not only related colors
+- en planetListFromOlympianList, lo autollama para el caso base tmbn
+- en planetListFromOlympianList, solucion horrible: {
+    (a.b) -> self: a { A -> self: b { B -> (A.B); }}
+    Hermes -> Mercury; ...
+    any -> any; // to handle the nil case!! agh
+}
+y tiene la misma puntuación que la buena, agh
+- allow editing level 1 (adding cases etc)
+- before list recursion: (#lit.x) -> f(x), (#lit2.x) -> g(x), para que piensen en juntar paralelo + secuencial
+- before list recursion: tree recursion
+- sum: better samples
+- better execution:
+  - scrubbable timeline
+  - variable fill preview?
+  - 'timeless' view, somehow??
