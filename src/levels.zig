@@ -206,6 +206,51 @@ pub const builtin_levels: []const BuiltinLevel = &.{
         .tutorial_state = .not_yet_creating_vaus_or_lists,
     },
     .{
+        .fnk_name = &Sexpr.doLit("planetTreeFromOlympianTree"),
+        .manual_samples = &funk.map(struct {
+            pub fn anon(comptime tree_src: []const u8) Sample {
+                @setEvalBranchQuota(0x10000);
+                return .{ .input = Vals.parse(tree_src), .output = toMappedTree(Vals.parse(tree_src)) };
+            }
+            fn toMappedTree(comptime value: *const Sexpr) *const Sexpr {
+                if (value.isPair()) {
+                    return &Sexpr.doPair(
+                        toMappedTree(value.pair.left),
+                        toMappedTree(value.pair.right),
+                    );
+                } else return Vals.planetFromOlympian(value).?;
+            }
+        }.anon, &.{
+            "((Hermes . Aphrodite) . (Ares . Zeus))",
+            "(((Zeus . Hermes) . (Ares . Ares)) . ((Aphrodite . (Zeus . Hermes)) . Zeus))",
+            "(Hermes . (Aphrodite . (Ares . Zeus)))",
+            "((((Zeus . Zeus) . (Zeus . Zeus)) . ((Zeus . Zeus) . (Zeus . Zeus))) . (((Zeus . Zeus) . (Zeus . Zeus)) . ((Zeus . Zeus) . (Zeus . Zeus))))",
+        }),
+        .description = "Translate a tree of Datas",
+        .premade_solution = null,
+        .tutorial_state = .not_yet_creating_vaus_or_lists,
+    },
+    .{
+        .fnk_name = &Sexpr.doLit("twoInOne"),
+        .manual_samples = &funk.map(struct {
+            pub fn anon(comptime in: struct { v: *const Sexpr, do: bool }) Sample {
+                return .{ .input = &Sexpr.doPair(in.v, Sexpr.fromBool(in.do)), .output = if (in.do) Vals.planetFromOlympian(in.v).? else in.v };
+            }
+        }.anon, &.{
+            .{ .v = Vals.Hermes, .do = true },
+            .{ .v = Vals.Hermes, .do = false },
+            .{ .v = Vals.Aphrodite, .do = true },
+            .{ .v = Vals.Aphrodite, .do = false },
+            .{ .v = Vals.Ares, .do = true },
+            .{ .v = Vals.Ares, .do = false },
+            .{ .v = Vals.Zeus, .do = true },
+            .{ .v = Vals.Zeus, .do = false },
+        }),
+        .description = "Translate or not, depending on the lower value.",
+        .premade_solution = null,
+        .tutorial_state = .not_yet_creating_vaus_or_lists,
+    },
+    .{
         .fnk_name = &Sexpr.doLit("planetListFromOlympianList"),
         .manual_samples = &funk.map(struct {
             pub fn anon(comptime values: []const *const Sexpr) Sample {
@@ -270,15 +315,14 @@ pub const builtin_levels: []const BuiltinLevel = &.{
                 };
             }
         }.anon, &.{
-            .{ 1, 0 },
-            .{ 0, 1 },
+            .{ 3, 3 },
+            .{ 0, 0 },
             .{ 1, 1 },
             .{ 2, 0 },
             .{ 0, 2 },
-            .{ 0, 0 },
             .{ 3, 2 },
             .{ 7, 2 },
-            .{ 3, 6 },
+            .{ 5, 6 },
         }),
         .description = "Sum two numbers",
         .premade_solution = null,

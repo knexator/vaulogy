@@ -155,10 +155,12 @@ saul:
 }
 y tiene la misma puntuación que la buena, agh
 - allow editing level 1 (adding cases etc)
-- before list recursion: (#lit.x) -> f(x), (#lit2.x) -> g(x), para que piensen en juntar paralelo + secuencial
-- before list recursion: tree recursion
-- sum: better samples
 - better execution:
   - scrubbable timeline
   - variable fill preview?
   - 'timeless' view, somehow??
+
+done:
+- before list recursion: tree recursion
+- before list recursion: (#lit.x) -> f(x), (#lit2.x) -> g(x), para que piensen en juntar paralelo + secuencial
+- sum: better samples
