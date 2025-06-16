@@ -809,7 +809,7 @@ export fn draw() void {
     };
 }
 
-var keyboard = presenter.Keyboard{ .cur = .init, .prev = .init };
+var keyboard = presenter.Keyboard{ .cur = .init, .prev = .init, .cur_time = undefined };
 const KeyCode = @import("./tools/generate_keycodes_js.zig").KeyCode;
 export fn keydown(code: KeyCode) void {
     keychanged(code, true);

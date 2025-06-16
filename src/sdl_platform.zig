@@ -774,7 +774,7 @@ const sdl_drawer = presenter.Drawer{
 const window_size = Vec2.new(1280, 720);
 const MouseState = presenter.MouseState;
 var mouse = presenter.Mouse{ .cur = .init, .prev = .init };
-var keyboard = presenter.Keyboard{ .cur = .init, .prev = .init };
+var keyboard = presenter.Keyboard{ .cur = .init, .prev = .init, .cur_time = undefined };
 var game: presenter.Presenter(sdl_platform, sdl_drawer) = undefined;
 
 const c = @cImport({
