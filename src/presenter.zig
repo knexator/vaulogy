@@ -664,10 +664,13 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                 std.log.info("Low FPS: {d}", .{1.0 / delta_seconds});
             }
             switch (self.state) {
-                .level_select => |*ui| if (ui.update(delta_seconds)) |level_index| {
-                    self.state = .{
-                        .loading_editing_fnk = .initFromLevelSelect(ui.*, level_index),
-                    };
+                .level_select => |*ui| switch (ui.update(delta_seconds)) {
+                    .nothing => {},
+                    .selected => |level_index| {
+                        self.state = .{
+                            .loading_editing_fnk = .initFromLevelSelect(ui.*, level_index),
+                        };
+                    },
                 },
                 .loading_editing_fnk => |*anim| if (anim.update(delta_seconds)) {
                     try self.initEditingAndMaybeFindBuiltinLevel(anim.fnk_name);
@@ -6401,7 +6404,7 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
             };
         }
 
-        pub fn update(self: *Self, delta_seconds: f32) ?usize {
+        pub fn update(self: *Self, delta_seconds: f32) union(enum) { nothing, selected: usize } {
             const mouse = platform.getMouse();
 
             if (self.load_save_buttons.update(mouse, delta_seconds)) |pressed| switch (pressed) {
@@ -6414,7 +6417,7 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
             }
             if (self.selected_level) |selected| {
                 if (self.play_level_button.update(mouse, delta_seconds) != null) {
-                    return selected;
+                    return .{ .selected = selected };
                 }
             }
 
@@ -6426,7 +6429,7 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
             else
                 .default);
 
-            return null;
+            return .nothing;
         }
 
         pub fn draw(self: Self) OoM!void {
