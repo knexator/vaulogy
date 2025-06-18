@@ -121,6 +121,21 @@ async function getWasm() {
         const value = getString(value_ptr, value_len);
         localStorage.setItem(key, value);
       },
+      downloadData: (filename_ptr, filename_len, mime_ptr, mime_len, contents_ptr, contents_len) => {
+        const blob = new Blob(
+          [getString(contents_ptr, contents_len)],
+          { type: getString(mime_ptr, mime_len) },
+        );
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = getString(filename_ptr, filename_len);
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      },
       
       setCursor: (k) => {
         const cursors = ["default", "grab", "grabbing", "pointer"];

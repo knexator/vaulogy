@@ -59,6 +59,7 @@ const js = struct {
         extern fn itemSize(key_ptr: [*]const u8, key_len: usize) usize;
         extern fn getItem(key_ptr: [*]const u8, key_len: usize, dst_ptr: [*]u8) usize;
         extern fn setItem(key_ptr: [*]const u8, key_len: usize, value_ptr: [*]const u8, value_len: usize) void;
+        extern fn downloadData(filename_ptr: [*]const u8, filename_len: usize, mime_ptr: [*]const u8, mime_len: usize, contents_ptr: [*]const u8, contents_len: usize) void;
     };
 
     extern fn setCursor(cursor: presenter.Platform.Cursor) void;
@@ -91,6 +92,13 @@ const js_better = struct {
 
         pub fn setItem(key: []const u8, value: []const u8) void {
             js.storage.setItem(key.ptr, key.len, value.ptr, value.len);
+        }
+
+        pub fn downloadData(filename: []const u8, mime: enum { txt }, contents: []const u8) void {
+            const mime_str = switch (mime) {
+                .txt => "text/plain",
+            };
+            js.storage.downloadData(filename.ptr, mime_str.len, mime_str.ptr, contents.len, contents.ptr, contents.len);
         }
     };
 
@@ -182,6 +190,12 @@ const WebPlatform = struct {
         const ascii = try player_data.toAsciiNew(mem.gpa);
         defer mem.gpa.free(ascii);
         js_better.storage.setItem("vaulogy_player_data_full", ascii);
+    }
+
+    pub fn downloadPlayerData(player_data: presenter.PlayerData, alloc: std.mem.Allocator) !void {
+        const ascii = try player_data.toAsciiNew(alloc);
+        defer alloc.free(ascii);
+        js_better.storage.downloadData("vaulogy_save.txt", .txt, ascii);
     }
 
     pub fn getMouse() presenter.Mouse {
@@ -752,6 +766,7 @@ const web_platform = presenter.Platform{
     .gpa = gpa.allocator(),
     .getPlayerData = WebPlatform.getPlayerData,
     .setPlayerData = WebPlatform.setPlayerData,
+    .downloadPlayerData = WebPlatform.downloadPlayerData,
     .getMouse = WebPlatform.getMouse,
     .getKeyboard = WebPlatform.getKeyboard,
     .setCursor = WebPlatform.setCursor,

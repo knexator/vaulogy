@@ -56,6 +56,12 @@ const SdlPlatform = struct {
         std.fs.cwd().writeFile(.{ .sub_path = "ungit/my_save/vaulogy_player_data_fav_fnks", .data = ascii.fav_fnks }) catch unreachable;
     }
 
+    pub fn downloadPlayerData(player_data: presenter.PlayerData, alloc: std.mem.Allocator) !void {
+        // TODO
+        _ = player_data;
+        _ = alloc;
+    }
+
     pub fn getMouse() presenter.Mouse {
         return mouse;
     }
@@ -741,6 +747,7 @@ const sdl_platform = presenter.Platform{
     .gpa = gpa.allocator(),
     .getPlayerData = SdlPlatform.getPlayerData,
     .setPlayerData = SdlPlatform.setPlayerData,
+    .downloadPlayerData = SdlPlatform.downloadPlayerData,
     .getMouse = SdlPlatform.getMouse,
     .getKeyboard = SdlPlatform.getKeyboard,
     .setCursor = SdlPlatform.setCursor,

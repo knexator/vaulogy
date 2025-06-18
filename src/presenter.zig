@@ -75,6 +75,7 @@ pub const Platform = struct {
     gpa: std.mem.Allocator,
     getPlayerData: fn (mem: *VeryPermamentGameStuff) OoM!?PlayerData,
     setPlayerData: fn (player_data: PlayerData, mem: *VeryPermamentGameStuff) OoM!void,
+    downloadPlayerData: fn (player_data: PlayerData, alloc: std.mem.Allocator) OoM!void,
     getMouse: fn () Mouse,
     getKeyboard: fn () Keyboard,
     setCursor: fn (cursor: Cursor) void,
@@ -6373,6 +6374,7 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
         const Self = @This();
 
         level_select_buttons: UI.State,
+        load_save_buttons: UI.State,
         play_level_button: UI.State,
         selected_level: ?usize = null,
         persistence: *const PlayerData,
@@ -6391,12 +6393,22 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
                 .play_level_button = .{ .buttons = try platform.gpa.dupe(UI.Button, &.{
                     .{ .pos = Rect{ .top_left = .new(10, 10), .size = .new(2, 1) }, .text = "Play" },
                 }) },
+                .load_save_buttons = .{ .buttons = try platform.gpa.dupe(UI.Button, &.{
+                    .{ .pos = Rect{ .top_left = .new(15.0 * 16.0 / 9.0 - 2, 0), .size = .new(1, 1) }, .text = "Save" },
+                    .{ .pos = Rect{ .top_left = .new(15.0 * 16.0 / 9.0 - 1, 0), .size = .new(1, 1) }, .text = "Load" },
+                }) },
                 .persistence = persistence,
             };
         }
 
         pub fn update(self: *Self, delta_seconds: f32) ?usize {
             const mouse = platform.getMouse();
+
+            if (self.load_save_buttons.update(mouse, delta_seconds)) |pressed| switch (pressed) {
+                0 => platform.downloadPlayerData(self.persistence.*, platform.gpa) catch @panic("OoM"),
+                else => unreachable,
+            };
+
             if (self.level_select_buttons.update(mouse, delta_seconds)) |pressed| {
                 self.selected_level = pressed;
             }
@@ -6418,6 +6430,8 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn draw(self: Self) OoM!void {
+            self.load_save_buttons.draw(drawer);
+
             for (self.level_select_buttons.buttons, 0..) |button, k| {
                 if (!button.enabled) drawer.setTransparency(0.5);
                 defer if (!button.enabled) drawer.setTransparency(1);
