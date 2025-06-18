@@ -154,8 +154,15 @@ const DESIGN = presenter.DESIGN;
 
 const WebPlatform = struct {
     pub fn getPlayerData(mem: *model.VeryPermamentGameStuff) !?presenter.PlayerData {
-        const maybe_ascii = try js_better.storage.getItemAlloc("vaulogy_player_data", mem.gpa);
-        if (maybe_ascii) |ascii| {
+        if (try js_better.storage.getItemAlloc("vaulogy_player_data_full", mem.gpa)) |ascii| {
+            defer mem.gpa.free(ascii);
+            return presenter.PlayerData.fromAsciiNew(ascii, mem) catch |err| switch (err) {
+                error.OutOfMemory => |e| return e,
+                else => null,
+            };
+        } else
+        // legacy
+        if (try js_better.storage.getItemAlloc("vaulogy_player_data", mem.gpa)) |ascii| {
             defer mem.gpa.free(ascii);
             return presenter.PlayerData.fromAscii(
                 ascii,
@@ -172,13 +179,9 @@ const WebPlatform = struct {
     }
 
     pub fn setPlayerData(player_data: presenter.PlayerData, mem: *model.VeryPermamentGameStuff) !void {
-        const ascii = try player_data.toAscii(mem.gpa);
-        defer mem.gpa.free(ascii.fnks);
-        defer mem.gpa.free(ascii.samples);
-        defer mem.gpa.free(ascii.fav_fnks);
-        js_better.storage.setItem("vaulogy_player_data", ascii.fnks);
-        js_better.storage.setItem("vaulogy_player_data_custom_samples", ascii.samples);
-        js_better.storage.setItem("vaulogy_player_data_fav_fnks", ascii.fav_fnks);
+        const ascii = try player_data.toAsciiNew(mem.gpa);
+        defer mem.gpa.free(ascii);
+        js_better.storage.setItem("vaulogy_player_data_full", ascii);
     }
 
     pub fn getMouse() presenter.Mouse {

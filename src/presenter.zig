@@ -165,6 +165,23 @@ pub const PlayerData = struct {
         }
     }
 
+    const SEPARATOR = "\n////////////////////\n";
+
+    pub fn fromAsciiNew(ascii: []const u8, mem: *VeryPermamentGameStuff) !PlayerData {
+        var it = std.mem.splitSequence(u8, ascii, SEPARATOR);
+        const version = trimmed(it.first());
+        assert(std.mem.eql(u8, version, "v0"));
+        const fnks_data = trimmed(it.next().?);
+        const custom_samples_data = trimmed(it.next().?);
+        const favorite_fnks_data = trimmed(it.next().?);
+        assert(it.next() == null);
+        return try fromAscii(fnks_data, custom_samples_data, favorite_fnks_data, mem);
+    }
+
+    fn trimmed(x: []const u8) []const u8 {
+        return std.mem.trim(u8, x, &std.ascii.whitespace);
+    }
+
     pub fn fromAscii(fnks_data: []const u8, custom_samples_data: []const u8, favorite_fnks_data: []const u8, mem: *VeryPermamentGameStuff) !PlayerData {
         const ascii_data = try mem.gpa.dupe(u8, fnks_data);
         var parser = parsing.Parser{ .remaining_text = ascii_data };
@@ -219,6 +236,21 @@ pub const PlayerData = struct {
             .ascii_data_for_fav_fnks = ascii_data_for_fav_fnks,
             .favorite_fnk_names = fav_fnks,
         };
+    }
+
+    pub fn toAsciiNew(this: PlayerData, alloc: std.mem.Allocator) ![]const u8 {
+        const asdf = try this.toAscii(alloc);
+
+        var result = std.ArrayList(u8).init(alloc);
+        try result.appendSlice("v0");
+        try result.appendSlice(SEPARATOR);
+        try result.appendSlice(asdf.fnks);
+        try result.appendSlice(SEPARATOR);
+        try result.appendSlice(asdf.samples);
+        try result.appendSlice(SEPARATOR);
+        try result.appendSlice(asdf.fav_fnks);
+
+        return result.toOwnedSlice();
     }
 
     pub fn toAscii(this: PlayerData, alloc: std.mem.Allocator) !struct {
