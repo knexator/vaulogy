@@ -22,11 +22,46 @@ fn myLogFn(
     js_better.debug.logString(res);
 }
 
+const JsReader = struct {
+    file_index: usize,
+
+    pub const Error = error{FileNotReady};
+    pub fn read(self: *JsReader, buf: []u8) Error!usize {
+        if (buf.len == 0) return 0;
+        if (!js.reader.isLoaded(self.file_index)) return error.FileNotReady;
+        const bytes_readed = js.reader.readInto(self.file_index, buf.ptr, buf.len);
+        return bytes_readed;
+    }
+
+    pub fn reader(self: *JsReader) std.io.Reader(*JsReader, Error, read) {
+        return .{ .context = self };
+    }
+
+    // return reader.reader().readAllAlloc(alloc, std.math.maxInt(usize)) catch |err| switch (err) {
+    //     error.OutOfMemory => return error.OutOfMemory,
+    //     error.StreamTooLong => unreachable,
+    // };
+    // pub fn asyncFile(self: JsReader) presenter.Platform.AsyncAnyReader {
+    //     // TODO: mem leak
+
+    //     return presenter.Platform.AsyncFile{
+    //         .reader = self.reader(),
+    //         .file_index = self.file_index,
+    //     };
+    // }
+};
+
 const js = struct {
     pub const debug = struct {
         extern fn logInt(arg: u32) void;
         extern fn logFloat(arg: f32) void;
         extern fn logString(ptr: [*]const u8, len: usize) void;
+    };
+
+    pub const reader = struct {
+        extern fn isLoaded(file_index: usize) bool;
+        /// returns bytes readed
+        extern fn readInto(file_index: usize, dst_ptr: [*]u8, dst_len: usize) usize;
     };
 
     pub const canvas = struct {
@@ -60,6 +95,8 @@ const js = struct {
         extern fn getItem(key_ptr: [*]const u8, key_len: usize, dst_ptr: [*]u8) usize;
         extern fn setItem(key_ptr: [*]const u8, key_len: usize, value_ptr: [*]const u8, value_len: usize) void;
         extern fn downloadData(filename_ptr: [*]const u8, filename_len: usize, mime_ptr: [*]const u8, mime_len: usize, contents_ptr: [*]const u8, contents_len: usize) void;
+        /// returns index of reader
+        extern fn uploadData() usize;
     };
 
     extern fn setCursor(cursor: presenter.Platform.Cursor) void;
@@ -99,6 +136,12 @@ const js_better = struct {
                 .txt => "text/plain",
             };
             js.storage.downloadData(filename.ptr, mime_str.len, mime_str.ptr, contents.len, contents.ptr, contents.len);
+        }
+
+        pub fn uploadData() JsReader {
+            const asdf = js.storage.uploadData();
+            std.log.debug("asdf: {d}", .{asdf});
+            return JsReader{ .file_index = asdf };
         }
     };
 
@@ -196,6 +239,13 @@ const WebPlatform = struct {
         const ascii = try player_data.toAsciiNew(alloc);
         defer alloc.free(ascii);
         js_better.storage.downloadData("vaulogy_save.txt", .txt, ascii);
+    }
+
+    pub fn uploadPlayerData() std.io.AnyReader {
+        // TODO: memory leak
+        const leaked_reader = gpa.allocator().create(JsReader) catch @panic("OoM");
+        leaked_reader.* = js_better.storage.uploadData();
+        return leaked_reader.reader().any();
     }
 
     pub fn getMouse() presenter.Mouse {
@@ -767,6 +817,7 @@ const web_platform = presenter.Platform{
     .getPlayerData = WebPlatform.getPlayerData,
     .setPlayerData = WebPlatform.setPlayerData,
     .downloadPlayerData = WebPlatform.downloadPlayerData,
+    .uploadPlayerData = WebPlatform.uploadPlayerData,
     .getMouse = WebPlatform.getMouse,
     .getKeyboard = WebPlatform.getKeyboard,
     .setCursor = WebPlatform.setCursor,

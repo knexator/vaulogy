@@ -76,6 +76,7 @@ pub const Platform = struct {
     getPlayerData: fn (mem: *VeryPermamentGameStuff) OoM!?PlayerData,
     setPlayerData: fn (player_data: PlayerData, mem: *VeryPermamentGameStuff) OoM!void,
     downloadPlayerData: fn (player_data: PlayerData, alloc: std.mem.Allocator) OoM!void,
+    uploadPlayerData: fn () std.io.AnyReader,
     getMouse: fn () Mouse,
     getKeyboard: fn () Keyboard,
     setCursor: fn (cursor: Cursor) void,
@@ -570,6 +571,8 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
 
         session_persistent: SessionPersistent(platform, drawer),
 
+        pending_upload_savegame: ?std.io.AnyReader = null,
+
         state: union(enum) {
             /// not used for now
             intro: IntroSequence(platform, drawer),
@@ -663,6 +666,17 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             if (1.0 / delta_seconds < 40) {
                 std.log.info("Low FPS: {d}", .{1.0 / delta_seconds});
             }
+            if (self.pending_upload_savegame) |reader| {
+                const player_data_ascii = reader.readAllAlloc(self.mem.gpa, std.math.maxInt(usize)) catch |err| switch (err) {
+                    error.FileNotReady => return,
+                    else => return err,
+                };
+                const player_data = try PlayerData.fromAsciiNew(player_data_ascii, &self.mem);
+                try platform.setPlayerData(player_data, &self.mem);
+                self.persistence = player_data;
+                self.state = .{ .level_select = try .init(&self.persistence) };
+                self.pending_upload_savegame = null;
+            }
             switch (self.state) {
                 .level_select => |*ui| switch (ui.update(delta_seconds)) {
                     .nothing => {},
@@ -670,6 +684,9 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
                         self.state = .{
                             .loading_editing_fnk = .initFromLevelSelect(ui.*, level_index),
                         };
+                    },
+                    .uploading => {
+                        self.pending_upload_savegame = platform.uploadPlayerData();
                     },
                 },
                 .loading_editing_fnk => |*anim| if (anim.update(delta_seconds)) {
@@ -6404,11 +6421,12 @@ pub fn LevelSelect(platform: Platform, drawer: Drawer) type {
             };
         }
 
-        pub fn update(self: *Self, delta_seconds: f32) union(enum) { nothing, selected: usize } {
+        pub fn update(self: *Self, delta_seconds: f32) union(enum) { nothing, selected: usize, uploading } {
             const mouse = platform.getMouse();
 
             if (self.load_save_buttons.update(mouse, delta_seconds)) |pressed| switch (pressed) {
                 0 => platform.downloadPlayerData(self.persistence.*, platform.gpa) catch @panic("OoM"),
+                1 => return .uploading,
                 else => unreachable,
             };
 

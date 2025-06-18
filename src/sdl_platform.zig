@@ -62,6 +62,10 @@ const SdlPlatform = struct {
         _ = alloc;
     }
 
+    pub fn uploadPlayerData() std.io.AnyReader {
+        @panic("TODO");
+    }
+
     pub fn getMouse() presenter.Mouse {
         return mouse;
     }
@@ -748,6 +752,7 @@ const sdl_platform = presenter.Platform{
     .getPlayerData = SdlPlatform.getPlayerData,
     .setPlayerData = SdlPlatform.setPlayerData,
     .downloadPlayerData = SdlPlatform.downloadPlayerData,
+    .uploadPlayerData = SdlPlatform.uploadPlayerData,
     .getMouse = SdlPlatform.getMouse,
     .getKeyboard = SdlPlatform.getKeyboard,
     .setCursor = SdlPlatform.setCursor,

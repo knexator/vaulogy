@@ -10,6 +10,29 @@ canvas.height = canvas.clientHeight;
 const text_decoder = new TextDecoder();
 const text_encoder = new TextEncoder();
 
+var readers = [null];
+
+class JsReader {
+  constructor() {
+    this.buffer = new Uint8Array(0);
+    this.position = 0;
+    this.loaded = false;
+  }
+
+  /// returns the number of bytes read
+  readInto(buf_ptr, buf_len) {
+    if (!this.loaded) throw new Error("Buffer not loaded yet");
+    const data_len = Math.min(buf_len, this.buffer.length - this.position);
+    if (data_len <= 0) return 0;
+    wasmMem().set(
+      this.buffer.subarray(this.position, this.position + data_len),
+      buf_ptr,
+    );
+    this.position += data_len;
+    return data_len;
+  }
+}
+
 let wasm_exports = await getWasm();
 wasm_exports.init();
 
@@ -136,7 +159,45 @@ async function getWasm() {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       },
-      
+      uploadData: () => {
+        const js_reader = new JsReader();
+        readers.push(js_reader);
+
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.addEventListener('change', (event) => {
+          const file = event.target.files[0];
+          console.log("Selected file:", file);
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              const contents = e.target.result;
+              console.log("File contents:", contents);
+              js_reader.buffer = text_encoder.encode(contents);
+              js_reader.position = 0;
+              js_reader.loaded = true;
+            };
+            reader.readAsText(file);
+          } else {
+            // TODO: return an error code instead of an empty file
+            js_reader.buffer = new Uint8Array(0);
+            js_reader.position = 0;
+            js_reader.loaded = true;
+            console.log("No file selected");
+          }
+        });
+        fileInput.click();
+
+        // console.log("before");
+        // await new Promise(r => setTimeout(r, 20000));
+        // console.log("after");
+
+        return readers.length - 1; // Return the index of the reader
+      },
+
+      isLoaded : (reader_index) => readers[reader_index].loaded,
+      readInto: (reader_index, buf_ptr, buf_len) => readers[reader_index].readInto(buf_ptr, buf_len),
+
       setCursor: (k) => {
         const cursors = ["default", "grab", "grabbing", "pointer"];
         document.body.style.cursor = cursors[k];
