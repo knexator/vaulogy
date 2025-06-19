@@ -1528,6 +1528,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
         const BindingParticle = struct {
             point: Point,
             t: f32,
+            name: []const u8,
         };
 
         pub fn drawSexprWithBindings(camera: Camera, world_point: Point, sexpr: *const Sexpr, bindings: BindingsState) !void {
@@ -1535,13 +1536,14 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             defer out_particles.deinit();
             try _drawSexprWithBindings(camera, world_point, sexpr, bindings, &out_particles);
             for (out_particles.items) |particle| {
+                const visuals = try AtomVisualCache.getAtomVisuals(particle.name);
                 drawer.drawRect(
                     camera,
                     .fromCenterAndSize(
                         particle.point.applyToLocalPosition(.new(1, 0)),
                         .both(lerp(7.5, 2.5, particle.t) * particle.point.scale),
                     ),
-                    .white,
+                    visuals.color.toFColor().lighter().lighter().toUColor(),
                     null,
                 );
             }
@@ -1579,7 +1581,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                                 drawer.setTransparency(1);
 
                                 if (anim_t < 0.5) {
-                                    try out_particles.append(.{ .point = world_point, .t = t });
+                                    try out_particles.append(.{ .point = world_point, .t = t, .name = binding.name });
                                 }
 
                                 break;
