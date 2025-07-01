@@ -544,6 +544,11 @@ const WebDrawer = struct {
         js_better.canvas.setStrokeColor(Color.black);
         js.canvas.fill();
         js.canvas.stroke();
+        if (visuals.display) |d| {
+            const p = screen_point.applyToLocalPosition(.new(0.25, 0));
+            js_better.canvas.setFillColor(.black);
+            js.canvas.fillText(d.ptr, d.len, p.x, p.y, screen_point.scale);
+        }
     }
 
     pub fn drawPatternAtom(camera: Camera, world_point: Point, visuals: presenter.AtomVisuals) void {
@@ -585,6 +590,11 @@ const WebDrawer = struct {
         js_better.canvas.setStrokeColor(Color.black);
         js.canvas.fill();
         js.canvas.stroke();
+        if (visuals.display) |d| {
+            const p = screen_point.applyToLocalPosition(.new(-0.25, 0));
+            js_better.canvas.setFillColor(.black);
+            js.canvas.fillText(d.ptr, d.len, p.x, p.y, screen_point.scale);
+        }
     }
 
     pub fn drawPairHolder(camera: Camera, world_point: Point) void {

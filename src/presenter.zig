@@ -330,6 +330,7 @@ pub const PlayerData = struct {
 pub const AtomVisuals = struct {
     profile: []const Vec2,
     color: Color,
+    display: ?[]const u8 = null,
 };
 
 pub const Drawer = struct {
@@ -999,6 +1000,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
         const HardcodedAtomVisuals = struct {
             profile: ?[]const Vec2,
             color: Color,
+            display: ?[]const u8 = null,
         };
         const hardcoded_visuals = .{
             .identity = HardcodedAtomVisuals{
@@ -1035,6 +1037,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             .Hermes = HardcodedAtomVisuals{
                 .color = .fromHex("#FA00FF"),
                 .profile = null,
+                .display = "A",
             },
             .Mercury = HardcodedAtomVisuals{
                 .color = .fromHex("#FF8EEC"),
@@ -1045,10 +1048,12 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                     .new(6.5015405e-1, -1.3726442e-1),
                     .new(8.53909e-1, -3.479591e-2),
                 },
+                .display = "a",
             },
             .Aphrodite = HardcodedAtomVisuals{
                 .color = .fromHex("#FFB600"),
                 .profile = null,
+                .display = "B",
             },
             .Venus = HardcodedAtomVisuals{
                 .color = .fromHex("#FFE18E"),
@@ -1066,22 +1071,27 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                     .new(8.802021e-1, -1.4742844e-1),
                     .new(9.332106e-1, -1.6913065e-1),
                 },
+                .display = "b",
             },
             .Ares = HardcodedAtomVisuals{
                 .color = .fromHex("#00E5FF"),
                 .profile = null,
+                .display = "C",
             },
             .Mars = HardcodedAtomVisuals{
                 .color = .fromHex("#9EFFF2"),
                 .profile = null,
+                .display = "c",
             },
             .Zeus = HardcodedAtomVisuals{
                 .color = .fromHex("#97F200"),
                 .profile = null,
+                .display = "D",
             },
             .Jupiter = HardcodedAtomVisuals{
                 .color = .fromHex("#C8ED8F"),
                 .profile = null,
+                .display = "d",
             },
         };
 
@@ -1092,6 +1102,7 @@ fn Artist(platform: Platform, drawer: Drawer) type {
                 const atom_visuals: AtomVisuals = .{
                     .color = input.color,
                     .profile = input.profile orelse try newAtomProfile(atom_name),
+                    .display = input.display,
                 };
                 try visuals_cache.put(atom_name, atom_visuals);
             }
