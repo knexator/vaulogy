@@ -897,7 +897,7 @@ fn keychanged(key: KeyCode, is_pressed: bool) void {
     }
 }
 
-var mouse = presenter.Mouse{ .cur = .init, .prev = .init };
+var mouse = presenter.Mouse{ .cur = .init, .prev = .init, .cur_time = undefined };
 export fn pointermove(x: f32, y: f32) void {
     mouse.cur.client_pos = Vec2.new(x, y).scale(1.0 / js_better.canvas.getSize().y);
 }
