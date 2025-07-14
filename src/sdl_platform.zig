@@ -877,6 +877,8 @@ pub fn main() !void {
             .buildTexture2D = buildTexture2D,
             .buildInstancedRenderable = buildInstancedRenderable,
             .useInstancedRenderable = useInstancedRenderable,
+            .loadTextureDataFromBase64 = undefined,
+            .loadTextureDataFromFilename = undefined,
         };
 
         pub fn clear(color: FColor) void {
