@@ -1920,6 +1920,11 @@ const FNK_NAME_OFFSET = Point{
     .turns = -0.25,
     .scale = 0.5,
 };
+const FNK_NAME_OFFSET_FROM_TEMPLATE = Point{
+    .pos = .new(-1, -0.75),
+    .turns = -0.25,
+    .scale = 0.5,
+};
 const MAIN_INPUT_POS = Point{ .pos = .new(1, 0) };
 const MAIN_FNK_POS = Point{ .pos = .new(0, -1.25), .turns = -0.25 };
 const DIST_BETWEEN_QUEUED_FNKS = 3.5;
@@ -5040,13 +5045,17 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         fn drawCaseExtra(camera: Camera, pattern_point: Point, case: CaseState, held_wildcard_names: ?[]const []const u8) !void {
-            const template_point = pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) });
+            const template_point = if (DESIGN.horizontal_depth) blk: {
+                var template_point = pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) });
+                template_point.pos.y = 0;
+                break :blk template_point;
+            } else pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) });
             try artist.drawSexpr(
                 camera,
                 template_point,
                 case.template,
             );
-            try artist.drawHoldedFnk(camera, pattern_point.applyToLocalPoint(FNK_NAME_OFFSET), 0, case.fnk_name);
+            try artist.drawHoldedFnk(camera, template_point.applyToLocalPoint(FNK_NAME_OFFSET_FROM_TEMPLATE), 0, case.fnk_name);
             drawer.drawCable(
                 camera,
                 pattern_point.applyToLocalPosition(.new(0.5, 0)),
@@ -5070,7 +5079,16 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             try artist.drawTemplateWildcardLines(camera, case.template, template_point);
             try artist.drawPatternWildcardLines(camera, case.pattern, pattern_point);
             if (case.next) |next| {
-                try drawCases(camera, false, pattern_point, next, held_wildcard_names);
+                try drawCases(
+                    camera,
+                    false,
+                    if (DESIGN.horizontal_depth)
+                        template_point.applyToLocalPoint(.{ .pos = .new(-DIST_TO_TEMPLATE * 0.5, 0) })
+                    else
+                        pattern_point,
+                    next,
+                    held_wildcard_names,
+                );
             }
         }
 
