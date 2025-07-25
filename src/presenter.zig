@@ -5040,13 +5040,13 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         fn drawCaseExtra(camera: Camera, pattern_point: Point, case: CaseState, held_wildcard_names: ?[]const []const u8) !void {
+            const template_point = pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) });
             try artist.drawSexpr(
                 camera,
-                pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) }),
+                template_point,
                 case.template,
             );
             try artist.drawHoldedFnk(camera, pattern_point.applyToLocalPoint(FNK_NAME_OFFSET), 0, case.fnk_name);
-            const template_point = pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) });
             drawer.drawCable(
                 camera,
                 pattern_point.applyToLocalPosition(.new(0.5, 0)),
