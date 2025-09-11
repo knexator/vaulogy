@@ -302,17 +302,18 @@ const SdlDrawer = struct {
         var k: f32 = -(tof32(n_lines) - 1) / 2;
         while (it.next()) |line| {
             defer k += 1.0;
-            canvas.text_renderers[0].drawText(
+            canvas.text_renderers[0].drawLine(
                 gl_vtable,
                 camera.toRect(),
-                center.applyToLocalPosition(.new(
+                .{ .center = center.applyToLocalPosition(.new(
                     -tof32(line.len) * 0.158,
                     0.22583334 + k * 0.725,
-                )),
+                )) },
                 line,
                 center.scale * 0.7,
                 color.toFColor(),
-            );
+                canvas.frame_arena.allocator(),
+            ) catch @panic("TODO");
         }
         // const screen_point = screenFromWorld(camera, center);
         // // TODO: scale
@@ -356,7 +357,7 @@ const SdlDrawer = struct {
             Vec2.new(-1, -1),
             Vec2.new(0, -1),
         };
-        const indices = [_][3]u16{
+        const indices = [_][3]IndexType{
             .{ 1, 2, 3 },
             .{ 0, 1, 3 },
             .{ 0, 3, 4 },
@@ -1048,6 +1049,7 @@ pub fn main() !void {
 
             gl.DrawElements(gl.TRIANGLES, @intCast(3 * triangles.len), switch (Gl.IndexType) {
                 u16 => gl.UNSIGNED_SHORT,
+                u32 => gl.UNSIGNED_INT,
                 else => @compileError("not implemented"),
             }, 0);
         }
@@ -1230,6 +1232,7 @@ pub fn main() !void {
 
             gl.DrawElementsInstanced(gl.TRIANGLES, @intCast(3 * triangles.len), switch (Gl.IndexType) {
                 u16 => gl.UNSIGNED_SHORT,
+                u32 => gl.UNSIGNED_INT,
                 else => @compileError("not implemented"),
             }, null, @intCast(instance_count));
         }
