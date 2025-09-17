@@ -1914,14 +1914,14 @@ const SexprView = struct {
 };
 
 const DEFAULT_CAM: Camera = .{ .center = .new(8, 3), .height = 15.0 };
-const DIST_TO_TEMPLATE = 5;
+const DIST_TO_TEMPLATE = if (DESIGN.stack_right) 2 else 5;
 const FNK_NAME_OFFSET = Point{
-    .pos = .new(DIST_TO_TEMPLATE - 1, -0.75),
+    .pos = if (DESIGN.stack_right) .new(5, 0) else .new(DIST_TO_TEMPLATE - 1, -0.75),
     .turns = -0.25,
     .scale = 0.5,
 };
 const FNK_NAME_OFFSET_FROM_TEMPLATE = Point{
-    .pos = .new(-1, -0.75),
+    .pos = if (DESIGN.stack_right) .new(3, 0) else .new(-1, -0.75),
     .turns = -0.25,
     .scale = 0.5,
 };
@@ -5082,7 +5082,9 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 try drawCases(
                     camera,
                     false,
-                    if (DESIGN.horizontal_depth)
+                    if (DESIGN.stack_right)
+                        template_point.applyToLocalPoint(.{ .pos = .new(-2, 0) })
+                    else if (DESIGN.horizontal_depth)
                         template_point.applyToLocalPoint(.{ .pos = .new(-DIST_TO_TEMPLATE * 0.5, 0) })
                     else
                         pattern_point,
@@ -5094,6 +5096,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         fn asdfUpdateAndReturnOverlap(self: *Self, mouse_pos: Vec2, delta_seconds: f32) !?OverlapResult {
             if (std.meta.activeTag(self.focus) == .grabbing and std.meta.activeTag(self.focus.grabbing) == .case) {
+                std.log.debug("TODO", .{});
                 const main_fnk_address_if_released = if (self.focus.grabbing.case.address_if_released) |address_if_released|
                     switch (address_if_released) {
                         .main_fnk => |x| x.ghost.address,
@@ -5138,7 +5141,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         };
 
         fn relativePatternPoint(is_gen0: bool, is_folded: bool, cur_top_line: f32) Point {
-            return .{
+            if (DESIGN.stack_right) {
+                return .{
+                    .pos = .new(if (is_gen0) 5 else 8, cur_top_line + if (is_folded) tof32(0.5) else 1.0),
+                    .scale = if (is_folded) 0.5 else 1,
+                };
+            } else return .{
                 .pos = .new(if (is_gen0) 5 else 4, cur_top_line + if (is_folded) tof32(0.5) else 1.0),
                 .scale = if (is_folded) 0.5 else 1,
             };
@@ -5146,7 +5154,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
         fn updateCasePositionsAndReturnMouseOverlap(mem: *VeryPermamentGameStuff, parent_address: core.CaseAddress, maybe_relative_mouse_pos: ?Vec2, group: CaseGroup, delta_seconds: f32) !?OverlapResult {
             const is_gen0 = parent_address.len == 0;
-            var cur_top_line: f32 = 2;
+            var cur_top_line: f32 = if (DESIGN.stack_right) -1 else 2;
             const unfolded = group.unfolded;
 
             var overlapped: ?OverlapResult = null;
@@ -5157,6 +5165,20 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 case.pattern_point_relative_to_parent.lerp_towards(relative_pattern_point, 0.6, delta_seconds);
 
                 const cur_address = try childAddress(mem, parent_address, k);
+
+                const case_grabber_rect: Rect = if (DESIGN.stack_right)
+                    Rect.lerp(.fromRanges(
+                        .{ @as(f32, if (is_gen0) -5 else -3) / 0.5, 0 },
+                        .{ -1, 1 },
+                    ), .fromRanges(
+                        .{ -4, -2 },
+                        .{ 0, 2 },
+                    ), math.inverse_lerp(0.5, 1, case.pattern_point_relative_to_parent.scale))
+                else
+                    .fromRanges(
+                        .{ -5 / case.pattern_point_relative_to_parent.scale, 0 },
+                        .{ -1, 1 },
+                    );
 
                 const maybe_local_mouse_pos = if (maybe_relative_mouse_pos) |relative_mouse_pos|
                     relative_pattern_point.inverseApplyGetLocalPosition(relative_mouse_pos)
@@ -5204,9 +5226,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             .sexpr_address = local_address,
                             .which = .fnk_name,
                         } };
-                    } else if (inRange(local_mouse_pos.y, -1, 1) and
-                        inRange(local_mouse_pos.x, -5 / case.pattern_point_relative_to_parent.scale, 0))
-                    {
+                    } else if (case_grabber_rect.contains(local_mouse_pos)) {
                         overlapped = .{ .case = .{ .existing = cur_address } };
                     }
                 }
@@ -5245,7 +5265,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         fn doGrabbingCaseFirstPass(mem: *VeryPermamentGameStuff, address_if_released: ?core.CaseAddress, parent_address: core.CaseAddress, group: CaseGroup, delta_seconds: f32) !void {
             // first pass just to update positions almost as usual
             const is_gen0 = parent_address.len == 0;
-            var cur_top_line: f32 = 2;
+            var cur_top_line: f32 = if (DESIGN.stack_right) -1 else 2;
             const unfolded = getUnfoldedChild(address_if_released, parent_address, group.unfolded);
             for (group.cases.items, 0..) |*case, k| {
                 if (std.meta.eql(unfolded, .{ .above = k })) {
@@ -5253,10 +5273,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
                 const is_folded = !std.meta.eql(unfolded, .{ .normal = k });
                 defer cur_top_line += if (is_folded) 1.5 else 2.5;
-                const relative_pattern_point = Point{
-                    .pos = .new(if (is_gen0) 5 else 4, cur_top_line + if (is_folded) tof32(0.5) else 1.0),
-                    .scale = if (is_folded) 0.5 else 1,
-                };
+                const relative_pattern_point = relativePatternPoint(is_gen0, is_folded, cur_top_line);
                 case.pattern_point_relative_to_parent.lerp_towards(
                     relative_pattern_point,
                     0.6,
@@ -5284,6 +5301,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             group: *CaseGroup,
         ) !?CaseAddressWithPoint {
             // second pass to update the grabbing state
+            const y_top = if (DESIGN.stack_right) -1 else 0;
+            const starting_top_line = if (DESIGN.stack_right) -1 else 2;
             for (group.cases.items, 0..) |*case, k| {
                 const grabbing_pos_relative_to_cur = Point.inverseApplyGetLocalPosition(
                     case.pattern_point_relative_to_parent,
@@ -5302,7 +5321,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     return null;
                 }
             } else {
-                const below_the_cable = mouse_pos_relative_to_parent.y > 0;
+                const below_the_cable = mouse_pos_relative_to_parent.y > y_top;
                 for (group.cases.items, 0..) |*case, k| {
                     const grabbing_pos_relative_to_cur = Point.inverseApplyGetLocalPosition(
                         case.pattern_point_relative_to_parent,
@@ -5327,7 +5346,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             last_case.pattern_point_relative_to_parent,
                             mouse_pos_relative_to_parent,
                         );
-                        if (grabbing_pos_relative_to_last.y > 0 and inRange(
+                        if (grabbing_pos_relative_to_last.y > y_top and inRange(
                             grabbing_pos_relative_to_last.x,
                             -5.0 / last_case.pattern_point_relative_to_parent.scale,
                             0,
@@ -5361,10 +5380,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                 if (child_thing) |x| {
                                     return x;
                                 }
-                            } else if (inRange(cur_relative_mouse.x, 0, 5) and cur_relative_mouse.y > 0) {
+                            } else if ((if (DESIGN.stack_right)
+                                inRange(cur_relative_mouse.x, 5, 10)
+                            else
+                                inRange(cur_relative_mouse.x, 0, 5)) and
+                                cur_relative_mouse.y > y_top)
+                            {
                                 return .{
                                     .address = try childAddress(mem, cur_address, 0),
-                                    .pattern_point_relative_to_parent = relativePatternPoint(false, false, 2),
+                                    .pattern_point_relative_to_parent = relativePatternPoint(false, false, starting_top_line),
                                 };
                             } else {
                                 return null;
