@@ -1913,7 +1913,7 @@ const SexprView = struct {
     }
 };
 
-const DEFAULT_CAM: Camera = .{ .center = .new(8, 3), .height = 15.0 };
+const DEFAULT_CAM: Camera = .{ .center = if (DESIGN.stack_right) .new(12, 3) else .new(8, 3), .height = 15.0 };
 const DIST_TO_TEMPLATE = if (DESIGN.stack_right) 2 else 5;
 const FNK_NAME_OFFSET = Point{
     .pos = if (DESIGN.stack_right) .new(5, 0) else .new(DIST_TO_TEMPLATE - 1, -0.75),
@@ -1926,7 +1926,7 @@ const FNK_NAME_OFFSET_FROM_TEMPLATE = Point{
     .scale = 0.5,
 };
 const MAIN_INPUT_POS = Point{ .pos = .new(1, 0) };
-const MAIN_FNK_POS = Point{ .pos = .new(0, -1.25), .turns = -0.25 };
+const MAIN_FNK_POS: Point = if (DESIGN.stack_right) .{ .pos = .new(4, -2.25), .turns = -0.25 } else .{ .pos = .new(0, -1.25), .turns = -0.25 };
 const DIST_BETWEEN_QUEUED_FNKS = 3.5;
 const CABLE_OFFSCREEN_DIST = 15;
 
@@ -2982,7 +2982,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             };
 
             const special_var_point = (if (things.len == 0) Camera.remap(DEFAULT_CAM, .{
-                .pos = .new(3.5, -2.5),
+                .pos = if (DESIGN.stack_right) .new(8, -2.5) else .new(3.5, -2.5),
                 .scale = 0.5,
             }, UI.cam) else things[0].point).applyToLocalPoint(.{ .pos = .new(-2, 0) });
             var special_var_state: struct {
@@ -4067,7 +4067,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             _ = try cases.updateWildcards(platform.gpa);
             const main_input: *const Sexpr = Sexpr.builtin.nil;
 
-            const tests_reel: TestsReel = .init(.{ .pos = .new(19.5, 0.75), .scale = 0.75 }, tutorial_state.allowCustomTests());
+            const tests_reel: TestsReel = .init(.{ .pos = if (DESIGN.stack_right)
+                .new(19.5, 6.5)
+            else
+                .new(19.5, 0.75), .scale = 0.75 }, tutorial_state.allowCustomTests());
 
             const tests: []TestCase = try mem.gpa.alloc(TestCase, builtin_samples.len);
             for (tests, builtin_samples) |*dst, src| {
@@ -4956,9 +4959,15 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .none, .not_yet_creating_vaus, .not_yet_creating_vaus_or_lists => {},
                 .first_level => {
                     // drawer.drawDebugText(camera, .{ .pos = .new(-3.55, -2), .scale = 0.75 }, "That's the name of →\nthe Vau you're editing.", .black);
-                    drawer.drawDebugText(camera, .{ .pos = .new(4.5, -2), .scale = 0.75 }, "← That's the name of\nthe Vau you're editing.", .black);
+                    drawer.drawDebugText(camera, .{ .pos = if (DESIGN.stack_right)
+                        .new(8.0, -3)
+                    else
+                        .new(4.5, -2), .scale = 0.75 }, "← That's the name of\nthe Vau you're editing.", .black);
                     if (DESIGN.no_current_data) {
-                        drawer.drawDebugText(camera, .{ .pos = .new(8, 0), .scale = 0.75 }, "↓ a Vau is a list of Cases: if the left Data matches,\nthe result will be the right side's Data.", .black);
+                        drawer.drawDebugText(camera, .{ .pos = if (DESIGN.stack_right)
+                            .new(13, -1.5)
+                        else
+                            .new(8, 0), .scale = 0.75 }, "↓ a Vau is a list of Cases: if the left Data matches,\nthe result will be the right side's Data.", .black);
                         // drawer.drawDebugText(camera, .{ .pos = .new(9, 0), .scale = 0.75 }, "← Place some Data here to run the Vau on it.", .black);
                     } else {
                         drawer.drawDebugText(camera, .{ .pos = .new(8, 0), .scale = 0.75 }, "← That gray thing is the current Data;\nfeel free to change it by\ndropping some other Data on it.", .black);
@@ -4973,17 +4982,17 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     }
                 },
                 .second_level => {
-                    drawer.drawDebugText(camera, .{ .pos = .new(7, -3.75), .scale = 0.75 }, "↓ This special Data is called a Wildcard,\nand will match with any other Data.", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(if (DESIGN.stack_right) 11.25 else 7, -3.75), .scale = 0.75 }, "↓ This special Data is called a Wildcard,\nand will match with any other Data.", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(8, 8), .scale = 0.75 }, "All the Tests for this Vau have the same structure; use a Wildcard to solve them with a single Case.", .black);
                 },
                 .third_level => {
-                    drawer.drawDebugText(camera, .{ .pos = .new(-3.2, -2), .scale = 0.6 }, "Remember, each Vau\nhas a name →", .black);
+                    drawer.drawDebugText(camera, .{ .pos = if (DESIGN.stack_right) .new(0.9, -3) else .new(-3.2, -2), .scale = 0.6 }, "Remember, each Vau\nhas a name →", .black);
                     drawer.drawDebugText(UI.cam, .{ .pos = fnks_reel.reel.rect.get(.top_right).add(.new(3.5, 1)), .scale = 0.75 }, "← your collection of Vaus.", .black);
-                    drawer.drawDebugText(camera, .{ .pos = .new(9, 0.6), .scale = 0.75 }, "Place a Vau name here to call it on the result.\n↓", .black);
+                    drawer.drawDebugText(camera, .{ .pos = if (DESIGN.stack_right) .new(10, -2) else .new(9, 0.6), .scale = 0.75 }, "Place a Vau name here to call it on the result.\n↓", .black);
                     if (!DESIGN.no_current_data) drawer.drawDebugText(camera, .{ .pos = .new(2.5, -4), .scale = 0.75 }, "← Don't forget to hit Play to see the Vau in action!", .black);
                 },
                 .fourth_level => {
-                    drawer.drawDebugText(camera, .{ .pos = .new(7.5, -3.5), .scale = 0.75 }, "↓ Add new Cases with this", .black);
+                    drawer.drawDebugText(camera, .{ .pos = .new(if (DESIGN.stack_right) 11.5 else 7.5, -3.5), .scale = 0.75 }, "↓ Add new Cases with this", .black);
                     drawer.drawDebugText(camera, .{ .pos = .new(3, 6), .scale = 0.75 }, "Nested Cases will\nbe called on the result →", .black);
                 },
                 .fifth_level => {
@@ -5663,28 +5672,23 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 },
                 .failed_to_match => |discarded_case| {
                     const active_stack: core.StackThing = it.next().?;
+                    try artist.drawSexpr(camera, parent_point.applyToLocalPoint(input_pos), self.thread.active_value);
+                    try artist.drawHoldedFnk(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), 1, active_stack.cur_fnk_name);
                     artist.drawOffscreenCableTo(camera, MAIN_INPUT_POS);
                     // TODO: is the parent_point.apply required here?
                     try artist.drawSexpr(camera, parent_point.applyToLocalPoint(input_pos), self.thread.active_value);
                     try artist.drawHoldedFnk(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), 1, active_stack.cur_fnk_name);
-                    if (self.anim_t < 0.5) {
-                        try drawCasesAsdf(
-                            camera,
-                            self.anim_t,
-                            parent_point,
-                            discarded_case,
-                            active_stack.cur_cases,
-                            .{ .anim_t = null, .new = &.{}, .old = active_stack.cur_bindings.items },
-                        );
-                    } else {
-                        const t = remap(self.anim_t, 0.5, 1, 0, 1);
+                    if (DESIGN.stack_right) {
+                        const match_dist = math.remapClamped(self.anim_t, 0, 0.2, 1, 0);
+                        const fly_away = math.remapClamped(self.anim_t, 0.2, 0.8, 0, 1);
+
                         const pattern_point_floating_away = parent_point.applyToLocalPoint(Point.lerp(
-                            .{ .pos = .new(4, 0) },
-                            .{ .pos = .new(12, -4), .scale = 0, .turns = -0.65 },
-                            t,
+                            .{ .pos = .new(math.remapFrom01(match_dist, 0, 1), 1) },
+                            .{ .pos = .new(10, -1), .scale = 0, .turns = -0.2 },
+                            fly_away,
                         ));
-                        try drawCase(camera, discarded_case, pattern_point_floating_away
-                            .applyToLocalPoint(.{ .pos = .new(-4, 1) }), .{
+
+                        try drawCase(camera, discarded_case, pattern_point_floating_away, .{
                             .anim_t = null,
                             .new = &.{},
                             .old = active_stack.cur_bindings.items,
@@ -5695,21 +5699,64 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             .unfolded = 1,
                             .with_extra = true,
                         });
+
                         if (active_stack.cur_cases.len > 0) {
                             try drawCases(
                                 camera,
                                 1,
                                 parent_point,
                                 active_stack.cur_cases,
-                                .{ .unfolding = t },
+                                .{ .unfolding = math.remapTo01Clamped(self.anim_t, 0.2, 1) },
                                 0,
                                 .{ .anim_t = null, .new = &.{}, .old = active_stack.cur_bindings.items },
                             );
                         }
+                    } else {
+                        if (self.anim_t < 0.5) {
+                            try drawCasesAsdf(
+                                camera,
+                                self.anim_t,
+                                parent_point,
+                                discarded_case,
+                                active_stack.cur_cases,
+                                .{ .anim_t = null, .new = &.{}, .old = active_stack.cur_bindings.items },
+                            );
+                        } else {
+                            const t = remap(self.anim_t, 0.5, 1, 0, 1);
+                            const pattern_point_floating_away = parent_point.applyToLocalPoint(Point.lerp(
+                                .{ .pos = .new(4, 0) },
+                                .{ .pos = .new(12, -4), .scale = 0, .turns = -0.65 },
+                                t,
+                            ));
+                            try drawCase(camera, discarded_case, pattern_point_floating_away
+                                .applyToLocalPoint(.{ .pos = .new(-4, 1) }), .{
+                                .anim_t = null,
+                                .new = &.{},
+                                .old = active_stack.cur_bindings.items,
+                            }, .{
+                                .is_gen0 = 1,
+                                .hiding_children = 0,
+                                .matching = 1,
+                                .unfolded = 1,
+                                .with_extra = true,
+                            });
+                            if (active_stack.cur_cases.len > 0) {
+                                try drawCases(
+                                    camera,
+                                    1,
+                                    parent_point,
+                                    active_stack.cur_cases,
+                                    .{ .unfolding = t },
+                                    0,
+                                    .{ .anim_t = null, .new = &.{}, .old = active_stack.cur_bindings.items },
+                                );
+                            }
+                        }
                     }
                 },
                 .matched => |matched| {
-                    if (self.anim_t < 0.5) {
+                    const halfway_t = if (DESIGN.stack_right) 0.2 else 0.5;
+                    if (self.anim_t < halfway_t) {
                         if (matched.added_new_fnk_to_stack) {
                             _ = it.next().?;
                         }
@@ -5727,14 +5774,14 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
                         try drawCasesAsdf(
                             camera,
-                            self.anim_t,
+                            remap(self.anim_t, 0, halfway_t, 0, 0.5),
                             parent_point,
                             matched.case,
                             matched.discarded_cases,
                             .{ .anim_t = null, .new = matched.new_bindings, .old = matched.old_bindings },
                         );
                     } else {
-                        const t = remap(self.anim_t, 0.5, 1, 0, 1);
+                        const t = remap(self.anim_t, halfway_t, 1, 0, 1);
 
                         try drawCases(
                             camera,
@@ -5745,14 +5792,14 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                 clamp01(remap(t, 0, 0.8, 0, 1)),
                             )),
                             matched.discarded_cases,
-                            .{ .offset = 0.5 },
+                            if (DESIGN.stack_right) .inert else .{ .offset = 0.5 },
                             0,
                             .{ .anim_t = null, .new = matched.new_bindings, .old = matched.old_bindings },
                         );
 
                         // TODO: draw centered
-                        const t2 = clamp01(remap(self.anim_t, 0.5, 0.8, 0, 1));
-                        const hiding_children_t = math.smoothstep(self.anim_t, 0.5, 0.65);
+                        const t2 = clamp01(remap(t, 0.0, 0.6, 0, 1));
+                        const hiding_children_t = math.smoothstep(t, 0.0, 0.3);
                         const dissolving_pattern_point = parent_point
                             .applyToLocalPoint(MAIN_INPUT_POS)
                             .applyToLocalPoint(.{ .scale = 1 - t2 });
@@ -5787,6 +5834,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             .{ .pos = .new(5 + DIST_TO_TEMPLATE - 1, 0) },
                             MAIN_INPUT_POS,
                             t,
+                            // if (DESIGN.stack_right) math.remapTo01Clamped(t, 0, 0.4) else t,
                         ));
                         artist.drawCableTo(camera, cable_asdf_pos, active_value_cur_pos);
                         if (t < 0.25) {
@@ -5820,7 +5868,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                                 0
                                             else
                                                 lerp(0, -1 - DIST_BETWEEN_QUEUED_FNKS, t2),
-                                            t * 10,
+                                            if (DESIGN.stack_right) 0 else t * 10,
                                         )),
                                         .scale = 0.25,
                                     }, binding.value);
@@ -5838,12 +5886,13 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             const active_stack: core.StackThing = it.next().?;
                             try artist.drawHoldedFnk(camera, parent_point
                                 .applyToLocalPoint(Point.lerp(
-                                (Point{ .pos = .new(DIST_TO_TEMPLATE - 1, 0) })
+                                (if (DESIGN.stack_right) Point{ .pos = .new(4, 0) } else Point{ .pos = .new(DIST_TO_TEMPLATE - 1, 0) })
                                     .applyToLocalPoint(FNK_NAME_OFFSET),
                                 MAIN_FNK_POS,
                                 t,
                             )), t, active_stack.cur_fnk_name);
-                            const t3 = math.smoothstep(t, 0, 0.25);
+                            const t3 = if (DESIGN.stack_right) t else math.smoothstep(t, 0, 0.25);
+                            const t4 = if (DESIGN.stack_right) math.smoothstep(t, 0, 0.8) else t3;
                             try drawCases(
                                 camera,
                                 1,
@@ -5855,7 +5904,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                             lerp(2 * (DIST_TO_TEMPLATE - 1), 0, t),
                                             t3,
                                         ),
-                                        lerp(7, 0, t3),
+                                        lerp(7, 0, t4),
                                     ),
                                 }),
                                 active_stack.cur_cases,
@@ -5894,13 +5943,19 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             // };
 
                             if (!matched.added_new_fnk_to_stack) {
-                                defer parent_point = parent_point.applyToLocalPoint(.{ .pos = .new(lerp(-DIST_BETWEEN_QUEUED_FNKS, 0, t), 0) });
+                                defer parent_point = parent_point.applyToLocalPoint(.{ .pos = .new(if (DESIGN.stack_right)
+                                    9 * (1 - t2)
+                                else
+                                    -DIST_BETWEEN_QUEUED_FNKS * t, 0) });
 
                                 if (it.next()) |prev_stack| {
                                     try artist.drawHoldedFnk(
                                         camera,
                                         parent_point
-                                            .applyToLocalPoint(.{ .pos = .new(lerp(-DIST_BETWEEN_QUEUED_FNKS, 0, t), 0) })
+                                            .applyToLocalPoint(.{ .pos = .new(if (DESIGN.stack_right)
+                                                lerp(11, 0, t)
+                                            else
+                                                lerp(-DIST_BETWEEN_QUEUED_FNKS, 0, t), 0) })
                                             .applyToLocalPoint(MAIN_FNK_POS),
                                         1,
                                         prev_stack.cur_fnk_name,
@@ -5909,7 +5964,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                         camera,
                                         t,
                                         parent_point.applyToLocalPoint(.{
-                                            .pos = .new(lerp(-1 - DIST_BETWEEN_QUEUED_FNKS, 0, t), 0),
+                                            .pos = .new(if (DESIGN.stack_right)
+                                                lerp(9, 0, t)
+                                            else
+                                                lerp(-1 - DIST_BETWEEN_QUEUED_FNKS, 0, t), 0),
                                         }),
                                         prev_stack.cur_cases,
                                         .{ .unfolding = 1 },
@@ -5922,13 +5980,21 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         } else {
                             const prev_stack: core.StackThing = it.next().?;
                             if (matched.added_new_fnk_to_stack) {
-                                defer parent_point = parent_point.applyToLocalPoint(.{ .pos = .new(-DIST_BETWEEN_QUEUED_FNKS * t2, 0) });
+                                defer parent_point = parent_point.applyToLocalPoint(.{ .pos = .new(if (DESIGN.stack_right)
+                                    9 * t2
+                                else
+                                    -DIST_BETWEEN_QUEUED_FNKS * t2, 0) });
 
                                 try artist.drawHoldedFnk(
                                     camera,
-                                    parent_point
-                                        .applyToLocalPoint(.{ .pos = .new(lerp(0, -DIST_BETWEEN_QUEUED_FNKS, t2), 0) })
-                                        .applyToLocalPoint(MAIN_FNK_POS),
+                                    if (DESIGN.stack_right)
+                                        active_value_cur_pos.applyToLocalPoint(.{
+                                            .pos = .new(lerp(-6, 10, t2), 0),
+                                        }).applyToLocalPoint(MAIN_FNK_POS)
+                                    else
+                                        parent_point
+                                            .applyToLocalPoint(.{ .pos = .new(lerp(0, -DIST_BETWEEN_QUEUED_FNKS, t2), 0) })
+                                            .applyToLocalPoint(MAIN_FNK_POS),
                                     1,
                                     prev_stack.cur_fnk_name,
                                 );
@@ -5936,9 +6002,14 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                 try drawCases(
                                     camera,
                                     0,
-                                    parent_point.applyToLocalPoint(.{
-                                        .pos = .new(lerp(DIST_TO_TEMPLATE - 1, -1 - DIST_BETWEEN_QUEUED_FNKS, t2), 0),
-                                    }),
+                                    if (DESIGN.stack_right)
+                                        active_value_cur_pos.applyToLocalPoint(.{
+                                            .pos = .new(lerp(-2, 8, t2), 0),
+                                        })
+                                    else
+                                        parent_point.applyToLocalPoint(.{
+                                            .pos = .new(lerp(DIST_TO_TEMPLATE - 1, -1 - DIST_BETWEEN_QUEUED_FNKS, t2), 0),
+                                        }),
                                     prev_stack.cur_cases,
                                     .{ .unfolding = 1 },
                                     hiding_children_t,
@@ -5958,7 +6029,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                     camera,
                                     t,
                                     parent_point
-                                        .applyToLocalPoint(.{ .pos = .new(lerp(DIST_TO_TEMPLATE - 1, 0, t), 0) }),
+                                        .applyToLocalPoint(.{ .pos = .new(if (DESIGN.stack_right)
+                                        3
+                                    else
+                                        lerp(DIST_TO_TEMPLATE - 1, 0, t), 0) }),
                                     prev_stack.cur_cases,
                                     .{ .unfolding = 1 },
                                     0,
@@ -6053,14 +6127,21 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     }
                 },
             }
+
+            if (DESIGN.stack_right) {
+                parent_point = parent_point.applyToLocalPoint(.{ .pos = .new(9, 0) });
+            }
             while (it.next()) |x| {
-                parent_point = parent_point.applyToLocalPoint(.{ .pos = .new(-DIST_BETWEEN_QUEUED_FNKS, 0) });
-                try artist.drawHoldedFnk(camera, parent_point.applyToLocalPoint(MAIN_FNK_POS), 1, x.cur_fnk_name);
+                defer parent_point = parent_point.applyToLocalPoint(.{ .pos = .new(if (DESIGN.stack_right) 4 else -DIST_BETWEEN_QUEUED_FNKS, 0) });
+                try artist.drawHoldedFnk(camera, if (DESIGN.stack_right)
+                    parent_point.applyToLocalPoint(.{ .pos = .new(2, 0) }).applyToLocalPoint(MAIN_FNK_POS)
+                else
+                    parent_point.applyToLocalPoint(MAIN_FNK_POS), 1, x.cur_fnk_name);
 
                 try drawCases(
                     camera,
                     0,
-                    parent_point.applyToLocalPoint(.{ .pos = .new(-1, 0) }),
+                    if (DESIGN.stack_right) parent_point else parent_point.applyToLocalPoint(.{ .pos = .new(-1, 0) }),
                     x.cur_cases,
                     .{ .unfolding = 1 },
                     1,
@@ -6073,20 +6154,27 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
         fn drawCasesAsdf(
             camera: Camera,
+            // TODO: change all callers to pass t in 0..1
             t_0_05: f32,
             parent_point: Point,
             first_case: core.MatchCaseDefinition,
             rest_cases: []const core.MatchCaseDefinition,
             bindings: BindingsState,
         ) OoM!void {
-            const t1 = clamp01(remap(t_0_05, 0, 0.4, 0, 1));
-            const t2 = clamp01(remap(t_0_05, 0.4, 0.5, 0, 1));
+            const t1 = if (DESIGN.stack_right) 1.0 else clamp01(remap(t_0_05, 0, 0.4, 0, 1));
+            const t2 = if (DESIGN.stack_right)
+                clamp01(remap(t_0_05, 0.0, 0.5, 0, 1))
+            else
+                clamp01(remap(t_0_05, 0.4, 0.5, 0, 1));
             try drawCases(
                 camera,
                 1,
                 parent_point,
                 rest_cases,
-                .{ .offset = 0.5 + lerp(1.5, 0, t1) },
+                if (DESIGN.stack_right)
+                    .inert
+                else
+                    .{ .offset = 0.5 + lerp(1.5, 0, t1) },
                 0,
                 bindings,
             );
@@ -6136,7 +6224,27 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             };
         }
 
-        const StateOfFirst = union(enum) {
+        const StateOfFirst = if (DESIGN.stack_right) union(enum) {
+            unfolding: f32,
+            inert,
+            // TODO: remove
+            offset: f32,
+
+            pub fn unfolded(self: @This(), k: usize) f32 {
+                return switch (self) {
+                    .unfolding => |v| if (k == 0) v else 0,
+                    .inert => 0,
+                    .offset => 0,
+                };
+            }
+            pub fn offseting(self: @This()) f32 {
+                return switch (self) {
+                    .unfolding => |v| lerp(2.5, 1, v),
+                    .inert => 2.5,
+                    .offset => |v| v,
+                };
+            }
+        } else union(enum) {
             unfolding: f32,
             offset: f32,
             pub fn unfolded(self: @This(), k: usize) f32 {
@@ -6146,7 +6254,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 };
             }
             pub fn offseting(self: @This()) f32 {
-                return switch (self) {
+                return 3.5 + switch (self) {
                     .offset => |v| v,
                     .unfolding => 0.5,
                 };
@@ -6170,7 +6278,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     camera,
                     case,
                     parent_point
-                        .applyToLocalPoint(.{ .pos = .new(1 - is_gen0, first_state.offseting() + 3.5 + tof32(k) * 1.5) }),
+                        .applyToLocalPoint(.{ .pos = .new(
+                        1 - is_gen0,
+                        first_state.offseting() + tof32(k) * 1.5,
+                    ) }),
                     bindings,
                     .{
                         .is_gen0 = is_gen0,
@@ -6185,7 +6296,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             var prev_point = parent_point.applyToLocalPosition(.new(1 - is_gen0, 0));
             for (0..cases.len) |k| {
                 const cur_point = parent_point
-                    .applyToLocalPosition(.new(1 - is_gen0, first_state.offseting() + 3.5 + tof32(k) * 1.5));
+                    .applyToLocalPosition(.new(1 - is_gen0, first_state.offseting() + tof32(k) * 1.5));
                 // .applyToLocalPoint(getRelativePatternPointAsdf(is_gen0, first_state, hiding_children, k))
                 // .applyToLocalPosition(.new(0, 1))
                 // .sub(.new(parent_point.scale * lerp(3, 5, is_gen0) - hiding_children, 0));
@@ -6239,7 +6350,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             // .applyToLocalPoint(.{ .pos = .new(lerp(DIST_TO_TEMPLATE, 4, t2), lerp(3, 0, t)) }),
             // TODO ASDF
             const pattern_point = attachment_point.applyToLocalPoint(.{ .pos = .new(
-                lerp(3, 5, matices.is_gen0) - matices.hiding_children - matices.matching,
+                lerp(if (DESIGN.stack_right) 7 else 3, 5, matices.is_gen0) - matices.hiding_children - matices.matching,
                 -lerp(0.5, 1, matices.unfolded),
             ), .scale = lerp(0.5, 1, matices.unfolded) });
             try artist.drawPatternSexpr(
@@ -6258,7 +6369,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 0,
             );
 
-            if (matices.with_extra) {
+            if (matices.with_extra and (!DESIGN.stack_right or (matices.is_gen0 > 0.5))) {
                 try drawCaseExtra(camera, pattern_point, case, bindings, matices.hiding_children);
             }
         }
