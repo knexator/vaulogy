@@ -822,8 +822,10 @@ const WebDrawer = struct {
 };
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
+var mem_frame_arena: std.heap.ArenaAllocator = undefined;
 const web_platform = presenter.Platform{
     .gpa = gpa.allocator(),
+    .mem_frame = mem_frame_arena.allocator(),
     .getPlayerData = WebPlatform.getPlayerData,
     .setPlayerData = WebPlatform.setPlayerData,
     .downloadPlayerData = WebPlatform.downloadPlayerData,
@@ -861,6 +863,8 @@ const web_drawer = presenter.Drawer{
 var game: presenter.Presenter(web_platform, web_drawer) = undefined;
 
 export fn init() void {
+    mem_frame_arena = .init(gpa.allocator());
+
     @TypeOf(game).init(&game) catch {
         std.log.err("bad start", .{});
         programmerError();
@@ -870,6 +874,7 @@ export fn init() void {
 var paused = false;
 export fn frame(delta_seconds: f32) void {
     if (paused) return;
+    _ = mem_frame_arena.reset(.retain_capacity);
     game.update(delta_seconds) catch |err| switch (err) {
         error.OutOfMemory => OoM(),
         // TODO: remove this

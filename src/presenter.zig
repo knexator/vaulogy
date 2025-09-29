@@ -35,6 +35,7 @@ const FnkBody = core.FnkBody;
 const FnkCollection = core.FnkCollection;
 const VeryPermamentGameStuff = core.VeryPermamentGameStuff;
 const parsing = @import("parsing.zig");
+const ExecutionTree = core.ExecutionTree;
 
 const OoM = error{ OutOfMemory, TODO, BAD_INPUT };
 
@@ -73,6 +74,7 @@ pub const DESIGN = @import("DESIGN");
 
 pub const Platform = struct {
     gpa: std.mem.Allocator,
+    mem_frame: std.mem.Allocator,
     getPlayerData: fn (mem: *VeryPermamentGameStuff) OoM!?PlayerData,
     setPlayerData: fn (player_data: PlayerData, mem: *VeryPermamentGameStuff) OoM!void,
     downloadPlayerData: fn (player_data: PlayerData, alloc: std.mem.Allocator) OoM!void,
@@ -5467,6 +5469,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         result: ?core.ExecutionThread.Result = null,
         main_input: if (DESIGN.no_current_data) PhysicalSexpr else enum { invalid_field },
 
+        execution_tree: ExecutionTree,
+
         result_ui_point_for_test: ?Point,
 
         pub fn init(
@@ -5505,6 +5509,8 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 }) },
                 .main_input = if (DESIGN.no_current_data) input else .invalid_field,
                 .result_ui_point_for_test = result_ui_point_for_test,
+                // TODO: handle infinite tree and errors
+                .execution_tree = ExecutionTree.buildNewStack(scoring_run, fn_name, if (DESIGN.no_current_data) input.value else input) catch undefined,
             };
 
             // for now, skip the "start" anim
@@ -5516,7 +5522,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn isFinished(self: Self) bool {
-            return self.result != null and self.anim_t >= 1;
+            if (draw == drawWithTree)
+                return self.result != null
+            else
+                return self.result != null and self.anim_t >= 1;
         }
 
         pub fn update(self: *Self, delta_seconds: f32) OoM!union(enum) { nothing, back_to_editing } {
@@ -5627,7 +5636,341 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             };
         }
 
-        pub fn draw(self: Self) !void {
+        pub const draw = if (DESIGN.use_tree) drawWithTree else drawWithThread;
+
+        pub fn drawWithTree(self: Self) !void {
+            if (self.result) |result| {
+                if (self.anim_t >= 1) {
+                    const camera = DEFAULT_CAM;
+
+                    switch (result) {
+                        .result => |value| {
+                            if (self.result_ui_point_for_test == null) {
+                                drawer.drawDebugText(camera, text_pos, "Result:", .black);
+                                try artist.drawSexpr(camera, result_pos, value);
+                            }
+                        },
+                        .no_matching_case => drawer.drawDebugText(camera, text_pos, "Ran out of cases!", .black),
+                        .missing_or_uncompilable_fnk => |fnk_name| {
+                            drawer.drawDebugText(camera, text_pos, "Could not find\nor compile this vau:", .black);
+                            try artist.drawSexpr(camera, bad_fnk_pos, fnk_name);
+                        },
+                        .used_undefined_variable => |asdf| {
+                            drawer.drawDebugText(camera, text_pos, "Could not fill in\nall Wildcards:", .black);
+                            try artist.drawSexpr(camera, result_pos, asdf.template);
+                        },
+                    }
+
+                    self.ui_state.draw(drawer);
+                    return;
+                }
+            }
+
+            const DrawList = std.ArrayList(union(enum) {
+                physical: PhysicalSexpr,
+                case: struct {
+                    case: core.MatchCaseDefinition,
+                    pattern_point: Point,
+                    bindings: BindingsState,
+                    unfolded: f32,
+                },
+                templated: struct {
+                    point: Point,
+                    bindings: BindingsState,
+                    template: *const Sexpr,
+                },
+                fnk_name: struct {
+                    point: Point,
+                    value: *const Sexpr,
+                },
+
+                pub fn draw(item: @This(), camera: Camera) !void {
+                    switch (item) {
+                        .physical => |p| try artist.drawPhysicalSexpr(camera, p),
+                        .case => |c| try drawCase(camera, c.case, c.pattern_point.applyToLocalPoint(.{ .pos = .new(-5, 1) }), c.bindings, .{
+                            .unfolded = c.unfolded,
+                            .is_gen0 = 1,
+                            .with_extra = true,
+                            .hiding_children = 0,
+                            .matching = 0,
+                        }),
+                        .templated => |t| try artist.drawSexprWithBindings(camera, t.point, t.template, t.bindings),
+                        .fnk_name => |f| try artist.drawHoldedFnk(camera, f.point, 1.0, f.value),
+                    }
+                }
+            });
+
+            const original_t = self.anim_t + tof32(self.done_steps);
+            var shapes: DrawList = .init(platform.mem_frame);
+
+            var active = self.execution_tree;
+            var queued: std.ArrayList(struct {
+                tree: *const ExecutionTree,
+                // TODO: reduce
+                bindings_stuff: ExecutionTree,
+            }) = .init(platform.mem_frame);
+
+            var displacement: f32 = 0;
+            var remaining_t = original_t;
+            var input_point: Point = .{ .pos = .new(1, 0) };
+
+            try shapes.append(.{ .physical = .{
+                .is_pattern = 0,
+                .pos = input_point,
+                .value = active.input,
+            } });
+
+            const any_left: bool = blk: while (@floor(remaining_t) > tof32(active.matched_index)) {
+                try shapes.append(.{ .physical = .{
+                    .is_pattern = 1,
+                    .pos = input_point.applyToLocalPoint(.{ .pos = .new(3, 0) }),
+                    .value = active.matched.pattern,
+                } });
+                try shapes.append(.{ .templated = .{
+                    .point = input_point.applyToLocalPoint(.{ .pos = .new(5, 0) }),
+                    .template = active.matched.raw_template,
+                    .bindings = .{
+                        .anim_t = 1,
+                        .old = active.incoming_bindings,
+                        .new = active.new_bindings,
+                    },
+                } });
+                // const function_point = template_point.applyToLocalPoint(.{
+                //     .pos = .new(3, 0),
+                //     .turns = -0.25,
+                //     .scale = 0.5,
+                // }).applyToLocalPoint(.{ .pos = .new(4 * invoking_t, 0) });
+                remaining_t -= tof32(active.matched_index + 1);
+                displacement += 1;
+                input_point = input_point.applyToLocalPoint(.{ .pos = .new(5, 0) });
+                // std.log.err("remaining t now: {d}", .{remaining_t});
+                if (active.matched.funk_tangent) |funk_tangent| {
+                    if (active.matched.next) |next| {
+                        try queued.append(.{ .tree = next, .bindings_stuff = active });
+                    }
+                    try shapes.append(.{ .fnk_name = .{
+                        .value = funk_tangent.fn_name,
+                        .point = input_point.applyToLocalPoint(.{
+                            .pos = .new(3, 0),
+                            .turns = -0.25,
+                            .scale = 0.5,
+                        }).applyToLocalPoint(.{ .pos = .new(4, 0) }),
+                    } });
+                    active = funk_tangent.tree.*;
+                } else if (active.matched.next) |next| {
+                    active = next.*;
+                } else if (queued.pop()) |q| {
+                    active = q.tree.*;
+                } else break :blk false;
+            } else true;
+
+            var queued_extra_offset: f32 = 0;
+            var last_displacement: f32 = 0;
+            if (any_left) {
+                const anim_t = @mod(remaining_t, 1);
+                const moving_case = active.cases[@intFromFloat(@floor(remaining_t))];
+                const rest_of_cases = active.cases[@as(usize, @intFromFloat(@floor(remaining_t))) + 1 ..];
+
+                if (@floor(remaining_t) < tof32(active.matched_index)) {
+                    const match_t = math.remapClamped(anim_t, 0, 0.2, 0, 1);
+                    const flyaway_t = math.remapClamped(anim_t, 0.2, 0.8, 0, 1);
+                    const offset_t = math.remapClamped(anim_t, 0.2, 0.8, 0, 1);
+
+                    const old_bindings: BindingsState = .{
+                        .anim_t = null,
+                        .new = &.{},
+                        .old = active.incoming_bindings,
+                    };
+
+                    const pattern_point_floating_away = input_point
+                        .applyToLocalPoint(Point.lerp(
+                        .{ .pos = .new(4.0 - match_t, 0) },
+                        .{ .pos = .new(10, -2), .scale = 0, .turns = -0.2 },
+                        flyaway_t,
+                    ));
+                    try shapes.append(.{ .case = .{
+                        .pattern_point = pattern_point_floating_away,
+                        .case = moving_case,
+                        .bindings = old_bindings,
+                        .unfolded = 1,
+                    } });
+
+                    for (rest_of_cases, 0..) |case, k| {
+                        try shapes.append(.{ .case = .{
+                            .pattern_point = input_point.applyToLocalPoint(.{
+                                .pos = .new(4, (tof32(k + 1) - offset_t) * 1.5),
+                            }),
+                            .case = case,
+                            .bindings = old_bindings,
+                            .unfolded = if (k == 0) anim_t else 0,
+                        } });
+                    }
+                } else {
+                    assert(@floor(remaining_t) == tof32(active.matched_index));
+                    last_displacement = math.remapClamped(anim_t, 0.2, 1, 0, 1);
+                    defer displacement += last_displacement;
+
+                    const match_t = math.remapClamped(anim_t, 0, 0.2, 0, 1);
+                    const bindings_t: ?f32 = if (anim_t < 0.2) null else math.remapTo01Clamped(anim_t, 0.2, 0.8);
+                    const template_t = math.remapClamped(anim_t, 0.2, 1.0, 0, 1);
+                    const invoking_t = math.remapClamped(anim_t, 0.0, 0.7, 0, 1);
+                    const enqueueing_t = last_displacement;
+                    const discarded_t = anim_t;
+
+                    const pattern_point = input_point.applyToLocalPoint(
+                        .{ .pos = .new(4.0 - match_t, 0) },
+                    );
+
+                    try shapes.append(.{ .physical = .{
+                        .is_pattern = 1,
+                        .pos = pattern_point,
+                        .value = moving_case.pattern,
+                    } });
+
+                    const template_point = pattern_point.applyToLocalPoint(.{ .pos = .new(2, 0) });
+
+                    try shapes.append(.{ .templated = .{
+                        .point = template_point,
+                        .template = moving_case.template,
+                        .bindings = .{
+                            .anim_t = bindings_t,
+                            .old = active.incoming_bindings,
+                            .new = active.new_bindings,
+                        },
+                    } });
+
+                    const old_bindings: BindingsState = .{
+                        .anim_t = null,
+                        .new = &.{},
+                        .old = active.incoming_bindings,
+                    };
+                    for (rest_of_cases, 0..) |case, k| {
+                        try shapes.append(.{ .case = .{
+                            .pattern_point = input_point
+                                .applyToLocalPoint(.lerp(.{}, .{ .turns = 0.2, .scale = 0, .pos = .new(-4, 8) }, discarded_t))
+                                .applyToLocalPoint(.{
+                                .pos = .new(4, tof32(k + 1) * 1.5),
+                            }),
+                            .case = case,
+                            .bindings = old_bindings,
+                            .unfolded = 0,
+                        } });
+                    }
+
+                    if (active.matched.funk_tangent) |funk_tangent| {
+                        const function_point = template_point.applyToLocalPoint(.{
+                            .pos = .new(3, 0),
+                            .turns = -0.25,
+                            .scale = 0.5,
+                        }).applyToLocalPoint(.{ .pos = .new(4 * invoking_t, 0) });
+
+                        try shapes.append(.{ .fnk_name = .{
+                            .point = function_point,
+                            .value = funk_tangent.fn_name,
+                        } });
+
+                        const offset = (1.0 - invoking_t) + 2.0 * math.smoothstepEased(invoking_t, 0.4, 0.0, .linear);
+                        for (funk_tangent.tree.cases, 0..) |next_case, k| {
+                            try shapes.append(.{ .case = .{
+                                .pattern_point = template_point.applyToLocalPoint(
+                                    .{ .pos = .new(4, 1.5 * (offset + tof32(k))) },
+                                ),
+                                .case = next_case,
+                                .bindings = .none,
+                                .unfolded = if (k == 0) 1 else 0,
+                            } });
+                        }
+
+                        if (active.matched.next) |next| {
+                            queued_extra_offset += enqueueing_t;
+                            const next_pattern_point = template_point
+                                .applyToLocalPoint(.{ .pos = .new(6, 0) })
+                                .applyToLocalPoint(.{ .pos = .new(6 * template_t, 0) })
+                                .applyToLocalPoint(.{ .pos = .new(0, -2 * enqueueing_t) })
+                                .rotateAroundLocalPosition(.new(-1, -1), math.lerp(
+                                0,
+                                -0.1,
+                                math.smoothstepEased(enqueueing_t, 0, 1, .easeInOutCubic),
+                            ));
+                            try shapes.append(.{ .case = .{
+                                .pattern_point = next_pattern_point,
+                                .case = next.cases[0],
+                                .unfolded = 1,
+                                .bindings = .{
+                                    .anim_t = bindings_t,
+                                    .old = active.incoming_bindings,
+                                    .new = active.new_bindings,
+                                },
+                            } });
+                        }
+                    } else if (active.matched.next) |next| {
+                        const next_pattern_point = template_point
+                            .applyToLocalPoint(.{ .pos = .new(6, 0) })
+                            .applyToLocalPoint(.{ .pos = .new(-2 * template_t, 0) });
+
+                        for (next.cases, 0..) |next_case, k| {
+                            try shapes.append(.{ .case = .{
+                                .pattern_point = next_pattern_point.applyToLocalPoint(
+                                    .{ .pos = .new(0, 1.5 * tof32(k)) },
+                                ),
+                                .unfolded = if (k == 0) 1 else 0,
+                                .case = next_case,
+                                .bindings = .{
+                                    .anim_t = bindings_t,
+                                    .old = active.incoming_bindings,
+                                    .new = active.new_bindings,
+                                },
+                            } });
+                        }
+                    } else {
+                        queued_extra_offset -= enqueueing_t;
+                    }
+                }
+            }
+
+            for (0..queued.items.len) |k| {
+                const next = queued.items[queued.items.len - k - 1];
+                const next_pattern_point = if (k == 0 and queued_extra_offset < 0)
+                    input_point
+                        .applyToLocalPoint(.{ .pos = .new(6, 0) })
+                        .applyToLocalPoint(.{ .pos = .new(6, 0) })
+                        // .applyToLocalPoint(.{ .pos = .new(5 * last_displacement, 0) })
+                        .applyToLocalPoint(.{ .pos = .new(-3 * math.remapClamped(queued_extra_offset, 0, -1, 0, 1), 0) })
+                        .applyToLocalPoint(.{ .pos = .new(0, -2 * math.remapClamped(queued_extra_offset, 0, -1, 1, 0)) })
+                        .rotateAroundLocalPosition(.new(-1, -1), math.lerp(
+                        0,
+                        -0.1,
+                        math.smoothstepEased(queued_extra_offset, -1, 0, .easeInOutCubic),
+                    ))
+                else
+                    input_point
+                        .applyToLocalPoint(.{ .pos = .new(6, 0) })
+                        .applyToLocalPoint(.{ .pos = .new(6, 0) })
+                        .applyToLocalPoint(.{ .pos = .new(5 * last_displacement, 0) })
+                        .applyToLocalPoint(.{ .pos = .new(5 * tof32(k), 0) })
+                        .applyToLocalPoint(.{ .pos = .new(5 * queued_extra_offset, 0) })
+                        .applyToLocalPoint(.{ .pos = .new(0, -2) })
+                        .rotateAroundLocalPosition(.new(-1, -1), -0.1);
+                try shapes.append(.{ .case = .{
+                    .pattern_point = next_pattern_point,
+                    .case = next.tree.cases[0],
+                    .unfolded = 1,
+                    .bindings = .{
+                        .anim_t = 1,
+                        .old = next.bindings_stuff.incoming_bindings,
+                        .new = next.bindings_stuff.new_bindings,
+                    },
+                } });
+            }
+
+            for (shapes.items) |s| {
+                try s.draw(self.camera.move(.new(5 * displacement, 0)));
+            }
+
+            self.ui_state.draw(drawer);
+        }
+
+        pub fn drawWithThread(self: Self) !void {
             if (self.result) |result| {
                 if (self.anim_t >= 1) {
                     const camera = DEFAULT_CAM;

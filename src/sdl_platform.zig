@@ -748,8 +748,10 @@ const SdlDrawer = struct {
 var gl_procs: gl.ProcTable = undefined;
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
+var mem_frame_arena: std.heap.ArenaAllocator = undefined;
 const sdl_platform = presenter.Platform{
     .gpa = gpa.allocator(),
+    .mem_frame = mem_frame_arena.allocator(),
     .getPlayerData = SdlPlatform.getPlayerData,
     .setPlayerData = SdlPlatform.setPlayerData,
     .downloadPlayerData = SdlPlatform.downloadPlayerData,
@@ -802,6 +804,8 @@ const c = @cImport({
 
 pub fn main() !void {
     errdefer |err| if (err == error.SdlError) std.log.err("SDL error: {s}", .{c.SDL_GetError()});
+
+    mem_frame_arena = .init(gpa.allocator());
 
     std.log.debug("SDL build time version: {d}.{d}.{d}", .{
         c.SDL_MAJOR_VERSION,
@@ -1254,6 +1258,7 @@ pub fn main() !void {
     var timer: std.time.Timer = try .start();
     main_loop: while (true) {
         _ = canvas.frame_arena.reset(.retain_capacity);
+        _ = mem_frame_arena.reset(.retain_capacity);
         const lap: f32 = @floatFromInt(timer.lap());
         if (lap / std.time.ns_per_ms > 17) {
             std.log.warn("slow frame: {d}ms", .{lap / std.time.ns_per_ms});

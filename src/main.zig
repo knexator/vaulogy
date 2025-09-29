@@ -1473,3 +1473,152 @@ fn externalFromInternal(s: *const Sexpr, pool: *MemoryPool(Sexpr)) !*const Sexpr
         )),
     };
 }
+
+const core = @This();
+pub const ExecutionTree = struct {
+    incoming_bindings: []const core.Binding,
+    new_bindings: []const core.Binding,
+    all_bindings: []const core.Binding,
+    current_fn_name: *const Sexpr,
+    input: *const Sexpr,
+    cases: []const core.MatchCaseDefinition,
+    matched_index: usize,
+    matched: struct {
+        pattern: *const Sexpr,
+        raw_template: *const Sexpr,
+        filled_template: *const Sexpr,
+        funk_tangent: ?struct {
+            fn_name: *const Sexpr,
+            tree: *const ExecutionTree,
+        },
+        next: ?*const ExecutionTree,
+    },
+
+    fn getLast(self: ExecutionTree) *const Sexpr {
+        const matched = self.matched;
+        if (matched.next) |next| {
+            return next.getLast();
+        } else if (matched.funk_tangent) |fnk| {
+            return fnk.tree.getLast();
+        } else return matched.filled_template;
+    }
+
+    pub fn buildNewStack(scoring_run: *core.ScoringRun, fn_name: *const Sexpr, input: *const Sexpr) error{
+        OutOfMemory,
+        BAD_INPUT,
+        FnkNotFound,
+        NoMatchingCase,
+        InvalidMetaFnk,
+        UsedUndefinedVariable,
+    }!ExecutionTree {
+        const func = try scoring_run.findFunktion(fn_name);
+        const result: ExecutionTree = try .buildExtending(scoring_run, func.cases.items, input, &.{}, fn_name);
+        return result;
+    }
+
+    pub fn buildExtending(
+        scoring_run: *core.ScoringRun,
+        cases: []const core.MatchCaseDefinition,
+        input: *const Sexpr,
+        incoming_bindings: []const core.Binding,
+        current_fn_name: *const Sexpr,
+    ) !ExecutionTree {
+        for (cases, 0..) |case, case_index| {
+            var new_bindings: std.ArrayList(core.Binding) = .init(scoring_run.mem.gpa);
+            if (try core.generateBindings(case.pattern, input, &new_bindings)) {
+                const bindings = try scoring_run.mem.gpa.alloc(core.Binding, incoming_bindings.len + new_bindings.items.len);
+                @memcpy(bindings[0..incoming_bindings.len], incoming_bindings);
+                @memcpy(bindings[incoming_bindings.len..], new_bindings.items);
+                const argument = try core.fillTemplateV2(case.template, bindings, &scoring_run.mem.pool_for_sexprs);
+
+                const funk_tangent: ?ExecutionTree = if (case.fnk_name.equals(Sexpr.builtin.identity))
+                    null
+                else
+                    try .buildNewStack(scoring_run, case.fnk_name, argument);
+
+                const next_input = if (funk_tangent) |t| t.getLast() else argument;
+
+                const next_tree: ?ExecutionTree = if (case.next) |next|
+                    try .buildExtending(scoring_run, next.items, next_input, bindings, current_fn_name)
+                else
+                    null;
+
+                return .{
+                    .current_fn_name = current_fn_name,
+                    .all_bindings = bindings,
+                    .incoming_bindings = incoming_bindings,
+                    .new_bindings = try new_bindings.toOwnedSlice(),
+                    .input = input,
+                    .cases = cases,
+                    .matched_index = case_index,
+                    // .matched = if (funk_tangent == null and next_tree == null) null else .{
+                    .matched = .{
+                        .pattern = case.pattern,
+                        .raw_template = case.template,
+                        .filled_template = argument,
+                        .funk_tangent = if (funk_tangent) |t| blk: {
+                            const ptr = try scoring_run.mem.gpa.create(ExecutionTree);
+                            ptr.* = t;
+                            break :blk .{
+                                .fn_name = case.fnk_name,
+                                .tree = ptr,
+                            };
+                        } else null,
+                        .next = if (next_tree) |t| blk: {
+                            const ptr = try scoring_run.mem.gpa.create(ExecutionTree);
+                            ptr.* = t;
+                            break :blk ptr;
+                        } else null,
+                    },
+                };
+            } else {
+                new_bindings.deinit();
+            }
+        } else @panic("nope"); // else return .{ .all_bindings = incoming_bindings, .incoming_bindings = incoming_bindings, .input = input, .matched = null };
+    }
+
+    pub fn buildFromText(scoring_run: *core.ScoringRun, fn_name_raw: []const u8, input_raw: []const u8) !ExecutionTree {
+        var permanent_stuff = scoring_run.mem;
+        const fn_name = try parsing.parseSingleSexpr(fn_name_raw, &permanent_stuff.pool_for_sexprs);
+        const input = try parsing.parseSingleSexpr(input_raw, &permanent_stuff.pool_for_sexprs);
+        return try .buildNewStack(scoring_run, fn_name, input);
+    }
+
+    fn depth(self: ExecutionTree) usize {
+        const matched = self.matched;
+        const a = if (matched.funk_tangent) |f| f.tree.depth() else 0;
+        const b = if (matched.next) |n| n.depth() else 0;
+        return 1 + a + b;
+    }
+};
+
+fn partiallyFillTemplateV2(template: *const Sexpr, bindings: []const Binding, pool: *MemoryPool(Sexpr)) OoM!struct {
+    result: *const Sexpr,
+    complete: bool,
+} {
+    switch (template.*) {
+        .atom_var => |templ| {
+            for (0..bindings.len) |k| {
+                const bind = bindings[bindings.len - k - 1];
+                if (std.mem.eql(u8, bind.name, templ.value)) {
+                    return .{ .result = bind.value, .complete = true };
+                }
+            }
+            return .{ .result = template, .complete = false };
+        },
+        .atom_lit => return .{ .result = template, .complete = true },
+        .pair => |templ| {
+            const left = try partiallyFillTemplateV2(templ.left, bindings, pool);
+            const right = try partiallyFillTemplateV2(templ.right, bindings, pool);
+            const result: *Sexpr = try pool.create();
+            result.* = Sexpr{ .pair = Pair{ .left = left.result, .right = right.result } };
+            return .{ .result = result, .complete = left.complete and right.complete };
+        },
+    }
+}
+
+pub fn fillTemplateV2(template: *const Sexpr, bindings: []const Binding, pool: *MemoryPool(Sexpr)) !*const Sexpr {
+    const x = try partiallyFillTemplateV2(template, bindings, pool);
+    if (!x.complete) return error.UsedUndefinedVariable;
+    return x.result;
+}
