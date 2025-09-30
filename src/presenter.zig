@@ -5732,15 +5732,15 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 .value = active.input,
             } });
 
-            const any_left: bool = blk: while (@floor(remaining_t) > tof32(active.matched.index)) {
+            const any_left: bool = if (active.hadError()) false else blk: while (@floor(remaining_t) > tof32(active.step.matched.index)) {
                 try shapes.append(.{ .physical = .{
                     .is_pattern = 1,
                     .pos = input_point.applyToLocalPoint(.{ .pos = .new(3, 0) }),
-                    .value = active.matched.pattern,
+                    .value = active.step.matched.pattern,
                 } });
                 try shapes.append(.{ .templated = .{
                     .point = input_point.applyToLocalPoint(.{ .pos = .new(5, 0) }),
-                    .template = active.matched.raw_template,
+                    .template = active.step.matched.raw_template,
                     .bindings = .{
                         .anim_t = 1,
                         .old = active.incoming_bindings,
@@ -5752,12 +5752,12 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 //     .turns = -0.25,
                 //     .scale = 0.5,
                 // }).applyToLocalPoint(.{ .pos = .new(4 * invoking_t, 0) });
-                remaining_t -= tof32(active.matched.index + 1);
+                remaining_t -= tof32(active.step.matched.index + 1);
                 displacement += 1;
                 input_point = input_point.applyToLocalPoint(.{ .pos = .new(5, 0) });
                 // std.log.err("remaining t now: {d}", .{remaining_t});
-                if (active.matched.funk_tangent) |funk_tangent| {
-                    if (active.matched.next) |next| {
+                if (active.step.matched.funk_tangent) |funk_tangent| {
+                    if (active.step.matched.next) |next| {
                         try queued.append(.{ .tree = next, .bindings_stuff = active });
                     }
                     try shapes.append(.{ .fnk_name = .{
@@ -5769,11 +5769,12 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         }).applyToLocalPoint(.{ .pos = .new(4, 0) }),
                     } });
                     active = funk_tangent.tree.*;
-                } else if (active.matched.next) |next| {
+                } else if (active.step.matched.next) |next| {
                     active = next.*;
                 } else if (queued.pop()) |q| {
                     active = q.tree.*;
                 } else break :blk false;
+                if (active.hadError()) break :blk false;
             } else true;
 
             var queued_extra_offset: f32 = 0;
@@ -5783,7 +5784,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 const moving_case = active.cases[@intFromFloat(@floor(remaining_t))];
                 const rest_of_cases = active.cases[@as(usize, @intFromFloat(@floor(remaining_t))) + 1 ..];
 
-                if (@floor(remaining_t) < tof32(active.matched.index)) {
+                if (@floor(remaining_t) < tof32(active.step.matched.index)) {
                     const match_t = math.remapClamped(anim_t, 0, 0.2, 0, 1);
                     const flyaway_t = math.remapClamped(anim_t, 0.2, 0.8, 0, 1);
                     const next_t = math.remapClamped(anim_t, 0.2, 1, 0, 1);
@@ -5814,7 +5815,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         .bindings = old_bindings,
                     } });
                 } else {
-                    assert(@floor(remaining_t) == tof32(active.matched.index));
+                    assert(@floor(remaining_t) == tof32(active.step.matched.index));
                     last_displacement = math.remapClamped(anim_t, 0.2, 1, 0, 1);
                     defer displacement += last_displacement;
 
@@ -5859,7 +5860,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         .bindings = old_bindings,
                     } });
 
-                    if (active.matched.funk_tangent) |funk_tangent| {
+                    if (active.step.matched.funk_tangent) |funk_tangent| {
                         const function_point = template_point.applyToLocalPoint(.{
                             .pos = .new(3, 0),
                             .turns = -0.25,
@@ -5881,7 +5882,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             .bindings = .none,
                         } });
 
-                        if (active.matched.next) |next| {
+                        if (active.step.matched.next) |next| {
                             queued_extra_offset += enqueueing_t;
                             const next_pattern_point = template_point
                                 .applyToLocalPoint(.{ .pos = .new(6, 0) })
@@ -5903,7 +5904,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                 },
                             } });
                         }
-                    } else if (active.matched.next) |next| {
+                    } else if (active.step.matched.next) |next| {
                         const next_pattern_point = template_point
                             .applyToLocalPoint(.{ .pos = .new(6, 0) })
                             .applyToLocalPoint(.{ .pos = .new(-2 * template_t, 0) });
@@ -5924,17 +5925,17 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         queued_extra_offset -= enqueueing_t;
                     }
                 }
-            } else {
+            } else if (!active.hadError()) {
                 if (self.result_ui_point_for_test) |ui_point_for_test| {
                     const cam = Camera.lerp(self.camera, UI.cam, self.anim_t);
                     const p = Point.lerp(MAIN_INPUT_POS, ui_point_for_test, self.anim_t);
                     artist.drawOffscreenCableTo(cam, p);
-                    try artist.drawSexpr(cam, p, active.matched.filled_template);
+                    try artist.drawSexpr(cam, p, active.step.matched.filled_template);
                 } else {
                     const cam = Camera.lerp(self.camera, DEFAULT_CAM, self.anim_t);
                     const p = Point.lerp(MAIN_INPUT_POS, self.result_ui_point_for_test orelse result_pos, self.anim_t);
                     artist.drawOffscreenCableTo(cam, p);
-                    try artist.drawSexpr(cam, p, active.matched.filled_template);
+                    try artist.drawSexpr(cam, p, active.step.matched.filled_template);
                 }
                 self.ui_state.draw(drawer);
                 return;

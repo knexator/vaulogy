@@ -9,7 +9,7 @@ const DESIGN = struct {
     all_levels_unlocked: bool = true,
     horizontal_depth: bool = false,
     stack_right: bool = true,
-    use_tree: bool = false,
+    use_tree: bool = true,
 
     pub const default: @This() = .{};
     pub const variants: []const struct {

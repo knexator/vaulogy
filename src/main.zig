@@ -1482,25 +1482,39 @@ pub const ExecutionTree = struct {
     current_fn_name: *const Sexpr,
     input: *const Sexpr,
     cases: []const core.MatchCaseDefinition,
-    matched: struct {
-        index: usize,
-        pattern: *const Sexpr,
-        raw_template: *const Sexpr,
-        filled_template: *const Sexpr,
-        funk_tangent: ?struct {
-            fn_name: *const Sexpr,
-            tree: *const ExecutionTree,
+    step: union(enum) {
+        had_error,
+        matched: struct {
+            index: usize,
+            pattern: *const Sexpr,
+            raw_template: *const Sexpr,
+            filled_template: *const Sexpr,
+            funk_tangent: ?struct {
+                fn_name: *const Sexpr,
+                tree: *const ExecutionTree,
+            },
+            next: ?*const ExecutionTree,
         },
-        next: ?*const ExecutionTree,
     },
 
     fn getLast(self: ExecutionTree) *const Sexpr {
-        const matched = self.matched;
-        if (matched.next) |next| {
-            return next.getLast();
-        } else if (matched.funk_tangent) |fnk| {
-            return fnk.tree.getLast();
-        } else return matched.filled_template;
+        switch (self.step) {
+            .matched => |matched| {
+                if (matched.next) |next| {
+                    return next.getLast();
+                } else if (matched.funk_tangent) |fnk| {
+                    return fnk.tree.getLast();
+                } else return matched.filled_template;
+            },
+            else => {
+                std.log.err("TODO!", .{});
+                return Sexpr.builtin.nil;
+            },
+        }
+    }
+
+    pub fn hadError(self: ExecutionTree) bool {
+        return std.meta.activeTag(self.step) == .had_error;
     }
 
     pub fn buildNewStack(scoring_run: *core.ScoringRun, fn_name: *const Sexpr, input: *const Sexpr) error{
@@ -1551,30 +1565,40 @@ pub const ExecutionTree = struct {
                     .input = input,
                     .cases = cases,
                     // .matched = if (funk_tangent == null and next_tree == null) null else .{
-                    .matched = .{
-                        .index = case_index,
-                        .pattern = case.pattern,
-                        .raw_template = case.template,
-                        .filled_template = argument,
-                        .funk_tangent = if (funk_tangent) |t| blk: {
-                            const ptr = try scoring_run.mem.gpa.create(ExecutionTree);
-                            ptr.* = t;
-                            break :blk .{
-                                .fn_name = case.fnk_name,
-                                .tree = ptr,
-                            };
-                        } else null,
-                        .next = if (next_tree) |t| blk: {
-                            const ptr = try scoring_run.mem.gpa.create(ExecutionTree);
-                            ptr.* = t;
-                            break :blk ptr;
-                        } else null,
+                    .step = .{
+                        .matched = .{
+                            .index = case_index,
+                            .pattern = case.pattern,
+                            .raw_template = case.template,
+                            .filled_template = argument,
+                            .funk_tangent = if (funk_tangent) |t| blk: {
+                                const ptr = try scoring_run.mem.gpa.create(ExecutionTree);
+                                ptr.* = t;
+                                break :blk .{
+                                    .fn_name = case.fnk_name,
+                                    .tree = ptr,
+                                };
+                            } else null,
+                            .next = if (next_tree) |t| blk: {
+                                const ptr = try scoring_run.mem.gpa.create(ExecutionTree);
+                                ptr.* = t;
+                                break :blk ptr;
+                            } else null,
+                        },
                     },
                 };
             } else {
                 new_bindings.deinit();
             }
-        } else @panic("nope"); // else return .{ .all_bindings = incoming_bindings, .incoming_bindings = incoming_bindings, .input = input, .matched = null };
+        } else return .{
+            .current_fn_name = current_fn_name,
+            .all_bindings = incoming_bindings,
+            .incoming_bindings = incoming_bindings,
+            .new_bindings = &.{},
+            .input = input,
+            .cases = cases,
+            .step = .had_error,
+        };
     }
 
     pub fn buildFromText(scoring_run: *core.ScoringRun, fn_name_raw: []const u8, input_raw: []const u8) !ExecutionTree {
