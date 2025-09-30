@@ -1482,8 +1482,8 @@ pub const ExecutionTree = struct {
     current_fn_name: *const Sexpr,
     input: *const Sexpr,
     cases: []const core.MatchCaseDefinition,
-    matched_index: usize,
     matched: struct {
+        index: usize,
         pattern: *const Sexpr,
         raw_template: *const Sexpr,
         filled_template: *const Sexpr,
@@ -1550,9 +1550,9 @@ pub const ExecutionTree = struct {
                     .new_bindings = try new_bindings.toOwnedSlice(),
                     .input = input,
                     .cases = cases,
-                    .matched_index = case_index,
                     // .matched = if (funk_tangent == null and next_tree == null) null else .{
                     .matched = .{
+                        .index = case_index,
                         .pattern = case.pattern,
                         .raw_template = case.template,
                         .filled_template = argument,

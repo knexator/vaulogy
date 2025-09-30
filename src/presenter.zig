@@ -5732,7 +5732,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 .value = active.input,
             } });
 
-            const any_left: bool = blk: while (@floor(remaining_t) > tof32(active.matched_index)) {
+            const any_left: bool = blk: while (@floor(remaining_t) > tof32(active.matched.index)) {
                 try shapes.append(.{ .physical = .{
                     .is_pattern = 1,
                     .pos = input_point.applyToLocalPoint(.{ .pos = .new(3, 0) }),
@@ -5752,7 +5752,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 //     .turns = -0.25,
                 //     .scale = 0.5,
                 // }).applyToLocalPoint(.{ .pos = .new(4 * invoking_t, 0) });
-                remaining_t -= tof32(active.matched_index + 1);
+                remaining_t -= tof32(active.matched.index + 1);
                 displacement += 1;
                 input_point = input_point.applyToLocalPoint(.{ .pos = .new(5, 0) });
                 // std.log.err("remaining t now: {d}", .{remaining_t});
@@ -5783,7 +5783,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 const moving_case = active.cases[@intFromFloat(@floor(remaining_t))];
                 const rest_of_cases = active.cases[@as(usize, @intFromFloat(@floor(remaining_t))) + 1 ..];
 
-                if (@floor(remaining_t) < tof32(active.matched_index)) {
+                if (@floor(remaining_t) < tof32(active.matched.index)) {
                     const match_t = math.remapClamped(anim_t, 0, 0.2, 0, 1);
                     const flyaway_t = math.remapClamped(anim_t, 0.2, 0.8, 0, 1);
                     const next_t = math.remapClamped(anim_t, 0.2, 1, 0, 1);
@@ -5814,7 +5814,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         .bindings = old_bindings,
                     } });
                 } else {
-                    assert(@floor(remaining_t) == tof32(active.matched_index));
+                    assert(@floor(remaining_t) == tof32(active.matched.index));
                     last_displacement = math.remapClamped(anim_t, 0.2, 1, 0, 1);
                     defer displacement += last_displacement;
 
