@@ -5522,10 +5522,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         pub fn isFinished(self: Self) bool {
-            if (draw == drawWithTree)
-                return self.result != null and self.anim_t > 0.3
-            else
-                return self.result != null and self.anim_t >= 1;
+            return self.result != null and self.anim_t >= 1;
         }
 
         pub fn update(self: *Self, delta_seconds: f32) OoM!union(enum) { nothing, back_to_editing } {
@@ -5927,6 +5924,20 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         queued_extra_offset -= enqueueing_t;
                     }
                 }
+            } else {
+                if (self.result_ui_point_for_test) |ui_point_for_test| {
+                    const cam = Camera.lerp(self.camera, UI.cam, self.anim_t);
+                    const p = Point.lerp(MAIN_INPUT_POS, ui_point_for_test, self.anim_t);
+                    artist.drawOffscreenCableTo(cam, p);
+                    try artist.drawSexpr(cam, p, active.matched.filled_template);
+                } else {
+                    const cam = Camera.lerp(self.camera, DEFAULT_CAM, self.anim_t);
+                    const p = Point.lerp(MAIN_INPUT_POS, self.result_ui_point_for_test orelse result_pos, self.anim_t);
+                    artist.drawOffscreenCableTo(cam, p);
+                    try artist.drawSexpr(cam, p, active.matched.filled_template);
+                }
+                self.ui_state.draw(drawer);
+                return;
             }
 
             for (0..queued.items.len) |k| {
