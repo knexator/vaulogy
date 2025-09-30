@@ -5523,7 +5523,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
         pub fn isFinished(self: Self) bool {
             if (draw == drawWithTree)
-                return self.result != null
+                return self.result != null and self.anim_t > 0.3
             else
                 return self.result != null and self.anim_t >= 1;
         }
@@ -5674,6 +5674,12 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     bindings: BindingsState,
                     unfolded: f32,
                 },
+                cases: struct {
+                    cases: []const core.MatchCaseDefinition,
+                    matching_input_point: Point,
+                    first_state: StateOfFirst,
+                    bindings: BindingsState,
+                },
                 templated: struct {
                     point: Point,
                     bindings: BindingsState,
@@ -5694,6 +5700,15 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             .hiding_children = 0,
                             .matching = 0,
                         }),
+                        .cases => |c| try drawCases(
+                            camera,
+                            1,
+                            c.matching_input_point.applyToLocalPoint(.{ .pos = .new(-1, 0) }),
+                            c.cases,
+                            c.first_state,
+                            0,
+                            c.bindings,
+                        ),
                         .templated => |t| try artist.drawSexprWithBindings(camera, t.point, t.template, t.bindings),
                         .fnk_name => |f| try artist.drawHoldedFnk(camera, f.point, 1.0, f.value),
                     }
@@ -5774,7 +5789,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 if (@floor(remaining_t) < tof32(active.matched_index)) {
                     const match_t = math.remapClamped(anim_t, 0, 0.2, 0, 1);
                     const flyaway_t = math.remapClamped(anim_t, 0.2, 0.8, 0, 1);
-                    const offset_t = math.remapClamped(anim_t, 0.2, 0.8, 0, 1);
+                    const next_t = math.remapClamped(anim_t, 0.2, 1, 0, 1);
 
                     const old_bindings: BindingsState = .{
                         .anim_t = null,
@@ -5795,16 +5810,12 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         .unfolded = 1,
                     } });
 
-                    for (rest_of_cases, 0..) |case, k| {
-                        try shapes.append(.{ .case = .{
-                            .pattern_point = input_point.applyToLocalPoint(.{
-                                .pos = .new(4, (tof32(k + 1) - offset_t) * 1.5),
-                            }),
-                            .case = case,
-                            .bindings = old_bindings,
-                            .unfolded = if (k == 0) anim_t else 0,
-                        } });
-                    }
+                    try shapes.append(.{ .cases = .{
+                        .matching_input_point = input_point,
+                        .cases = rest_of_cases,
+                        .first_state = .{ .unfolding = next_t },
+                        .bindings = old_bindings,
+                    } });
                 } else {
                     assert(@floor(remaining_t) == tof32(active.matched_index));
                     last_displacement = math.remapClamped(anim_t, 0.2, 1, 0, 1);
@@ -5844,18 +5855,12 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         .new = &.{},
                         .old = active.incoming_bindings,
                     };
-                    for (rest_of_cases, 0..) |case, k| {
-                        try shapes.append(.{ .case = .{
-                            .pattern_point = input_point
-                                .applyToLocalPoint(.lerp(.{}, .{ .turns = 0.2, .scale = 0, .pos = .new(-4, 8) }, discarded_t))
-                                .applyToLocalPoint(.{
-                                .pos = .new(4, tof32(k + 1) * 1.5),
-                            }),
-                            .case = case,
-                            .bindings = old_bindings,
-                            .unfolded = 0,
-                        } });
-                    }
+                    try shapes.append(.{ .cases = .{
+                        .matching_input_point = input_point.applyToLocalPoint(.lerp(.{}, .{ .turns = 0.2, .scale = 0, .pos = .new(-4, 8) }, discarded_t)),
+                        .cases = rest_of_cases,
+                        .first_state = .inert,
+                        .bindings = old_bindings,
+                    } });
 
                     if (active.matched.funk_tangent) |funk_tangent| {
                         const function_point = template_point.applyToLocalPoint(.{
@@ -5870,16 +5875,14 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         } });
 
                         const offset = (1.0 - invoking_t) + 2.0 * math.smoothstepEased(invoking_t, 0.4, 0.0, .linear);
-                        for (funk_tangent.tree.cases, 0..) |next_case, k| {
-                            try shapes.append(.{ .case = .{
-                                .pattern_point = template_point.applyToLocalPoint(
-                                    .{ .pos = .new(4, 1.5 * (offset + tof32(k))) },
-                                ),
-                                .case = next_case,
-                                .bindings = .none,
-                                .unfolded = if (k == 0) 1 else 0,
-                            } });
-                        }
+                        try shapes.append(.{ .cases = .{
+                            .matching_input_point = template_point.applyToLocalPoint(
+                                .{ .pos = .new(0, 1.5 * offset) },
+                            ),
+                            .cases = funk_tangent.tree.cases,
+                            .first_state = .{ .unfolding = 1 },
+                            .bindings = .none,
+                        } });
 
                         if (active.matched.next) |next| {
                             queued_extra_offset += enqueueing_t;
@@ -5908,20 +5911,18 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             .applyToLocalPoint(.{ .pos = .new(6, 0) })
                             .applyToLocalPoint(.{ .pos = .new(-2 * template_t, 0) });
 
-                        for (next.cases, 0..) |next_case, k| {
-                            try shapes.append(.{ .case = .{
-                                .pattern_point = next_pattern_point.applyToLocalPoint(
-                                    .{ .pos = .new(0, 1.5 * tof32(k)) },
-                                ),
-                                .unfolded = if (k == 0) 1 else 0,
-                                .case = next_case,
-                                .bindings = .{
-                                    .anim_t = bindings_t,
-                                    .old = active.incoming_bindings,
-                                    .new = active.new_bindings,
-                                },
-                            } });
-                        }
+                        try shapes.append(.{ .cases = .{
+                            .matching_input_point = next_pattern_point.applyToLocalPoint(
+                                .{ .pos = .new(-4, 0) },
+                            ),
+                            .cases = next.cases,
+                            .first_state = .{ .unfolding = 1 },
+                            .bindings = .{
+                                .anim_t = bindings_t,
+                                .old = active.incoming_bindings,
+                                .new = active.new_bindings,
+                            },
+                        } });
                     } else {
                         queued_extra_offset -= enqueueing_t;
                     }
@@ -6712,7 +6713,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 0,
             );
 
-            if (matices.with_extra and (!DESIGN.stack_right or (matices.is_gen0 > 0.5))) {
+            if (matices.with_extra and (DESIGN.stack_right or (matices.is_gen0 > 0.5))) {
                 try drawCaseExtra(camera, pattern_point, case, bindings, matices.hiding_children);
             }
         }
