@@ -1483,7 +1483,7 @@ pub const ExecutionTree = struct {
     input: *const Sexpr,
     cases: []const core.MatchCaseDefinition,
     step: union(enum) {
-        had_error,
+        ran_out_of_cases,
         matched: struct {
             index: usize,
             pattern: *const Sexpr,
@@ -1497,7 +1497,7 @@ pub const ExecutionTree = struct {
         },
     },
 
-    fn getLast(self: ExecutionTree) *const Sexpr {
+    fn getLast(self: ExecutionTree) ?*const Sexpr {
         switch (self.step) {
             .matched => |matched| {
                 if (matched.next) |next| {
@@ -1506,15 +1506,12 @@ pub const ExecutionTree = struct {
                     return fnk.tree.getLast();
                 } else return matched.filled_template;
             },
-            else => {
-                std.log.err("TODO!", .{});
-                return Sexpr.builtin.nil;
-            },
+            else => return null,
         }
     }
 
     pub fn hadError(self: ExecutionTree) bool {
-        return std.meta.activeTag(self.step) == .had_error;
+        return std.meta.activeTag(self.step) != .matched;
     }
 
     pub fn buildNewStack(scoring_run: *core.ScoringRun, fn_name: *const Sexpr, input: *const Sexpr) error{
@@ -1552,8 +1549,10 @@ pub const ExecutionTree = struct {
 
                 const next_input = if (funk_tangent) |t| t.getLast() else argument;
 
-                const next_tree: ?ExecutionTree = if (case.next) |next|
-                    try .buildExtending(scoring_run, next.items, next_input, bindings, current_fn_name)
+                const next_tree: ?ExecutionTree = if (next_input == null)
+                    null
+                else if (case.next) |next|
+                    try .buildExtending(scoring_run, next.items, next_input.?, bindings, current_fn_name)
                 else
                     null;
 
@@ -1597,7 +1596,7 @@ pub const ExecutionTree = struct {
             .new_bindings = &.{},
             .input = input,
             .cases = cases,
-            .step = .had_error,
+            .step = .ran_out_of_cases,
         };
     }
 

@@ -5510,7 +5510,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 .main_input = if (DESIGN.no_current_data) input else .invalid_field,
                 .result_ui_point_for_test = result_ui_point_for_test,
                 // TODO: handle infinite tree and errors
-                .execution_tree = ExecutionTree.buildNewStack(scoring_run, fn_name, if (DESIGN.no_current_data) input.value else input) catch undefined,
+                .execution_tree = try ExecutionTree.buildNewStack(scoring_run, fn_name, if (DESIGN.no_current_data) input.value else input),
             };
 
             // for now, skip the "start" anim
@@ -5732,7 +5732,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 .value = active.input,
             } });
 
-            const any_left: bool = if (active.hadError()) false else blk: while (@floor(remaining_t) > tof32(active.step.matched.index)) {
+            const any_left: bool = if (active.hadError()) true else blk: while (@floor(remaining_t) > tof32(active.step.matched.index)) {
                 try shapes.append(.{ .physical = .{
                     .is_pattern = 1,
                     .pos = input_point.applyToLocalPoint(.{ .pos = .new(3, 0) }),
@@ -5774,17 +5774,20 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 } else if (queued.pop()) |q| {
                     active = q.tree.*;
                 } else break :blk false;
-                if (active.hadError()) break :blk false;
+                if (active.hadError()) break :blk true;
             } else true;
 
             var queued_extra_offset: f32 = 0;
             var last_displacement: f32 = 0;
             if (any_left) {
                 const anim_t = @mod(remaining_t, 1);
-                const moving_case = active.cases[@intFromFloat(@floor(remaining_t))];
-                const rest_of_cases = active.cases[@as(usize, @intFromFloat(@floor(remaining_t))) + 1 ..];
 
-                if (@floor(remaining_t) < tof32(active.step.matched.index)) {
+                if (@floor(remaining_t) < tof32(switch (active.step) {
+                    .matched => |m| m.index,
+                    .ran_out_of_cases => active.cases.len,
+                })) {
+                    const moving_case = active.cases[@intFromFloat(@floor(remaining_t))];
+                    const rest_of_cases = active.cases[@as(usize, @intFromFloat(@floor(remaining_t))) + 1 ..];
                     const match_t = math.remapClamped(anim_t, 0, 0.2, 0, 1);
                     const flyaway_t = math.remapClamped(anim_t, 0.2, 0.8, 0, 1);
                     const next_t = math.remapClamped(anim_t, 0.2, 1, 0, 1);
@@ -5814,7 +5817,11 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         .first_state = .{ .unfolding = next_t },
                         .bindings = old_bindings,
                     } });
+                } else if (std.meta.activeTag(active.step) == .ran_out_of_cases) {
+                    std.log.debug("TODO", .{});
                 } else {
+                    const moving_case = active.cases[@intFromFloat(@floor(remaining_t))];
+                    const rest_of_cases = active.cases[@as(usize, @intFromFloat(@floor(remaining_t))) + 1 ..];
                     assert(@floor(remaining_t) == tof32(active.step.matched.index));
                     last_displacement = math.remapClamped(anim_t, 0.2, 1, 0, 1);
                     defer displacement += last_displacement;
