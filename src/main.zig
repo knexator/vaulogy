@@ -1484,6 +1484,9 @@ pub const ExecutionTree = struct {
     cases: []const core.MatchCaseDefinition,
     step: union(enum) {
         ran_out_of_cases,
+        used_undefined_variable: struct {
+            index: usize,
+        },
         matched: struct {
             index: usize,
             pattern: *const Sexpr,
@@ -1496,6 +1499,13 @@ pub const ExecutionTree = struct {
             next: ?*const ExecutionTree,
         },
     },
+
+    pub fn matchedIndex(self: ExecutionTree) ?usize {
+        return switch (self.step) {
+            .ran_out_of_cases => null,
+            inline .matched, .used_undefined_variable => |m| m.index,
+        };
+    }
 
     fn getLast(self: ExecutionTree) ?*const Sexpr {
         switch (self.step) {
@@ -1540,7 +1550,23 @@ pub const ExecutionTree = struct {
                 const bindings = try scoring_run.mem.gpa.alloc(core.Binding, incoming_bindings.len + new_bindings.items.len);
                 @memcpy(bindings[0..incoming_bindings.len], incoming_bindings);
                 @memcpy(bindings[incoming_bindings.len..], new_bindings.items);
-                const argument = try core.fillTemplateV2(case.template, bindings, &scoring_run.mem.pool_for_sexprs);
+                const argument = core.fillTemplateV2(case.template, bindings, &scoring_run.mem.pool_for_sexprs) catch |err| switch (err) {
+                    else => |x| return x,
+                    error.UsedUndefinedVariable => return .{
+                        .current_fn_name = current_fn_name,
+                        .all_bindings = bindings,
+                        .incoming_bindings = incoming_bindings,
+                        .new_bindings = try new_bindings.toOwnedSlice(),
+                        .input = input,
+                        .cases = cases,
+                        // .matched = if (funk_tangent == null and next_tree == null) null else .{
+                        .step = .{
+                            .used_undefined_variable = .{
+                                .index = case_index,
+                            },
+                        },
+                    },
+                };
 
                 const funk_tangent: ?ExecutionTree = if (case.fnk_name.equals(Sexpr.builtin.identity))
                     null

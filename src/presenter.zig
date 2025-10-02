@@ -5782,10 +5782,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             if (any_left) {
                 const anim_t = @mod(remaining_t, 1);
 
-                if (@floor(remaining_t) < tof32(switch (active.step) {
-                    .matched => |m| m.index,
-                    .ran_out_of_cases => active.cases.len,
-                })) {
+                if (@floor(remaining_t) < tof32(active.matchedIndex() orelse active.cases.len)) {
                     const moving_case = active.cases[@intFromFloat(@floor(remaining_t))];
                     const rest_of_cases = active.cases[@as(usize, @intFromFloat(@floor(remaining_t))) + 1 ..];
                     const match_t = math.remapClamped(anim_t, 0, 0.2, 0, 1);
@@ -5822,7 +5819,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 } else {
                     const moving_case = active.cases[@intFromFloat(@floor(remaining_t))];
                     const rest_of_cases = active.cases[@as(usize, @intFromFloat(@floor(remaining_t))) + 1 ..];
-                    assert(@floor(remaining_t) == tof32(active.step.matched.index));
+                    assert(@floor(remaining_t) == tof32(active.matchedIndex().?));
                     last_displacement = math.remapClamped(anim_t, 0.2, 1, 0, 1);
                     defer displacement += last_displacement;
 
@@ -5867,69 +5864,75 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                         .bindings = old_bindings,
                     } });
 
-                    if (active.step.matched.funk_tangent) |funk_tangent| {
-                        const function_point = template_point.applyToLocalPoint(.{
-                            .pos = .new(3, 0),
-                            .turns = -0.25,
-                            .scale = 0.5,
-                        }).applyToLocalPoint(.{ .pos = .new(4 * invoking_t, 0) });
+                    switch (active.step) {
+                        .ran_out_of_cases => unreachable,
+                        .used_undefined_variable => std.log.debug("TODO: better", .{}),
+                        .matched => {
+                            if (active.step.matched.funk_tangent) |funk_tangent| {
+                                const function_point = template_point.applyToLocalPoint(.{
+                                    .pos = .new(3, 0),
+                                    .turns = -0.25,
+                                    .scale = 0.5,
+                                }).applyToLocalPoint(.{ .pos = .new(4 * invoking_t, 0) });
 
-                        try shapes.append(.{ .fnk_name = .{
-                            .point = function_point,
-                            .value = funk_tangent.fn_name,
-                        } });
+                                try shapes.append(.{ .fnk_name = .{
+                                    .point = function_point,
+                                    .value = funk_tangent.fn_name,
+                                } });
 
-                        const offset = (1.0 - invoking_t) + 2.0 * math.smoothstepEased(invoking_t, 0.4, 0.0, .linear);
-                        try shapes.append(.{ .cases = .{
-                            .matching_input_point = template_point.applyToLocalPoint(
-                                .{ .pos = .new(0, 1.5 * offset) },
-                            ),
-                            .cases = funk_tangent.tree.cases,
-                            .first_state = .{ .unfolding = 1 },
-                            .bindings = .none,
-                        } });
+                                const offset = (1.0 - invoking_t) + 2.0 * math.smoothstepEased(invoking_t, 0.4, 0.0, .linear);
+                                try shapes.append(.{ .cases = .{
+                                    .matching_input_point = template_point.applyToLocalPoint(
+                                        .{ .pos = .new(0, 1.5 * offset) },
+                                    ),
+                                    .cases = funk_tangent.tree.cases,
+                                    .first_state = .{ .unfolding = 1 },
+                                    .bindings = .none,
+                                } });
 
-                        if (active.step.matched.next) |next| {
-                            queued_extra_offset += enqueueing_t;
-                            const next_pattern_point = template_point
-                                .applyToLocalPoint(.{ .pos = .new(6, 0) })
-                                .applyToLocalPoint(.{ .pos = .new(6 * template_t, 0) })
-                                .applyToLocalPoint(.{ .pos = .new(0, -2 * enqueueing_t) })
-                                .rotateAroundLocalPosition(.new(-1, -1), math.lerp(
-                                0,
-                                -0.1,
-                                math.smoothstepEased(enqueueing_t, 0, 1, .easeInOutCubic),
-                            ));
-                            try shapes.append(.{ .case = .{
-                                .pattern_point = next_pattern_point,
-                                .case = next.cases[0],
-                                .unfolded = 1,
-                                .bindings = .{
-                                    .anim_t = bindings_t,
-                                    .old = active.incoming_bindings,
-                                    .new = active.new_bindings,
-                                },
-                            } });
-                        }
-                    } else if (active.step.matched.next) |next| {
-                        const next_pattern_point = template_point
-                            .applyToLocalPoint(.{ .pos = .new(6, 0) })
-                            .applyToLocalPoint(.{ .pos = .new(-2 * template_t, 0) });
+                                if (active.step.matched.next) |next| {
+                                    queued_extra_offset += enqueueing_t;
+                                    const next_pattern_point = template_point
+                                        .applyToLocalPoint(.{ .pos = .new(6, 0) })
+                                        .applyToLocalPoint(.{ .pos = .new(6 * template_t, 0) })
+                                        .applyToLocalPoint(.{ .pos = .new(0, -2 * enqueueing_t) })
+                                        .rotateAroundLocalPosition(.new(-1, -1), math.lerp(
+                                        0,
+                                        -0.1,
+                                        math.smoothstepEased(enqueueing_t, 0, 1, .easeInOutCubic),
+                                    ));
+                                    try shapes.append(.{ .case = .{
+                                        .pattern_point = next_pattern_point,
+                                        .case = next.cases[0],
+                                        .unfolded = 1,
+                                        .bindings = .{
+                                            .anim_t = bindings_t,
+                                            .old = active.incoming_bindings,
+                                            .new = active.new_bindings,
+                                        },
+                                    } });
+                                }
+                            } else if (active.step.matched.next) |next| {
+                                const next_pattern_point = template_point
+                                    .applyToLocalPoint(.{ .pos = .new(6, 0) })
+                                    .applyToLocalPoint(.{ .pos = .new(-2 * template_t, 0) });
 
-                        try shapes.append(.{ .cases = .{
-                            .matching_input_point = next_pattern_point.applyToLocalPoint(
-                                .{ .pos = .new(-4, 0) },
-                            ),
-                            .cases = next.cases,
-                            .first_state = .{ .unfolding = 1 },
-                            .bindings = .{
-                                .anim_t = bindings_t,
-                                .old = active.incoming_bindings,
-                                .new = active.new_bindings,
-                            },
-                        } });
-                    } else {
-                        queued_extra_offset -= enqueueing_t;
+                                try shapes.append(.{ .cases = .{
+                                    .matching_input_point = next_pattern_point.applyToLocalPoint(
+                                        .{ .pos = .new(-4, 0) },
+                                    ),
+                                    .cases = next.cases,
+                                    .first_state = .{ .unfolding = 1 },
+                                    .bindings = .{
+                                        .anim_t = bindings_t,
+                                        .old = active.incoming_bindings,
+                                        .new = active.new_bindings,
+                                    },
+                                } });
+                            } else {
+                                queued_extra_offset -= enqueueing_t;
+                            }
+                        },
                     }
                 }
             } else if (!active.hadError()) {
