@@ -5866,7 +5866,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
                     switch (active.step) {
                         .ran_out_of_cases => unreachable,
-                        .used_undefined_variable => std.log.debug("TODO: better", .{}),
+                        .used_undefined_variable, .bad_fnk_name => std.log.debug("TODO: better", .{}),
                         .matched => {
                             if (active.step.matched.funk_tangent) |funk_tangent| {
                                 const function_point = template_point.applyToLocalPoint(.{

@@ -1487,6 +1487,10 @@ pub const ExecutionTree = struct {
         used_undefined_variable: struct {
             index: usize,
         },
+        bad_fnk_name: struct {
+            index: usize,
+            fn_name: *const Sexpr,
+        },
         matched: struct {
             index: usize,
             pattern: *const Sexpr,
@@ -1503,7 +1507,7 @@ pub const ExecutionTree = struct {
     pub fn matchedIndex(self: ExecutionTree) ?usize {
         return switch (self.step) {
             .ran_out_of_cases => null,
-            inline .matched, .used_undefined_variable => |m| m.index,
+            inline else => |m| m.index,
         };
     }
 
@@ -1559,7 +1563,6 @@ pub const ExecutionTree = struct {
                         .new_bindings = try new_bindings.toOwnedSlice(),
                         .input = input,
                         .cases = cases,
-                        // .matched = if (funk_tangent == null and next_tree == null) null else .{
                         .step = .{
                             .used_undefined_variable = .{
                                 .index = case_index,
@@ -1571,7 +1574,23 @@ pub const ExecutionTree = struct {
                 const funk_tangent: ?ExecutionTree = if (case.fnk_name.equals(Sexpr.builtin.identity))
                     null
                 else
-                    try .buildNewStack(scoring_run, case.fnk_name, argument);
+                    ExecutionTree.buildNewStack(scoring_run, case.fnk_name, argument) catch |err| switch (err) {
+                        else => return err,
+                        error.InvalidMetaFnk, error.FnkNotFound => return .{
+                            .current_fn_name = current_fn_name,
+                            .all_bindings = bindings,
+                            .incoming_bindings = incoming_bindings,
+                            .new_bindings = try new_bindings.toOwnedSlice(),
+                            .input = input,
+                            .cases = cases,
+                            .step = .{
+                                .bad_fnk_name = .{
+                                    .index = case_index,
+                                    .fn_name = case.fnk_name,
+                                },
+                            },
+                        },
+                    };
 
                 const next_input = if (funk_tangent) |t| t.getLast() else argument;
 
