@@ -5484,6 +5484,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 .value = if (DESIGN.no_current_data) input.value else input,
                 .fn_name = fn_name,
             };
+            var fuel: usize = 1000;
             var result = Self{
                 .thread_initial_params = thread_initial_params,
                 .thread = try thread_initial_params.toThread(scoring_run),
@@ -5510,7 +5511,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 .main_input = if (DESIGN.no_current_data) input else .invalid_field,
                 .result_ui_point_for_test = result_ui_point_for_test,
                 // TODO: handle infinite tree and errors
-                .execution_tree = try ExecutionTree.buildNewStack(scoring_run, fn_name, if (DESIGN.no_current_data) input.value else input),
+                .execution_tree = try ExecutionTree.buildNewStack(scoring_run, fn_name, if (DESIGN.no_current_data) input.value else input, &fuel),
             };
 
             // for now, skip the "start" anim
@@ -5866,7 +5867,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
                     switch (active.step) {
                         .ran_out_of_cases => unreachable,
-                        .used_undefined_variable, .bad_fnk_name => std.log.debug("TODO: better", .{}),
+                        .used_undefined_variable, .bad_fnk_name, .uncomputed => std.log.debug("TODO: better", .{}),
                         .matched => {
                             if (active.step.matched.funk_tangent) |funk_tangent| {
                                 const function_point = template_point.applyToLocalPoint(.{

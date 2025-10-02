@@ -1491,6 +1491,9 @@ pub const ExecutionTree = struct {
             index: usize,
             fn_name: *const Sexpr,
         },
+        uncomputed: struct {
+            index: usize,
+        },
         matched: struct {
             index: usize,
             pattern: *const Sexpr,
@@ -1528,16 +1531,19 @@ pub const ExecutionTree = struct {
         return std.meta.activeTag(self.step) != .matched;
     }
 
-    pub fn buildNewStack(scoring_run: *core.ScoringRun, fn_name: *const Sexpr, input: *const Sexpr) error{
+    pub fn buildNewStack(scoring_run: *core.ScoringRun, fn_name: *const Sexpr, input: *const Sexpr, fuel: *usize) error{
         OutOfMemory,
         BAD_INPUT,
         FnkNotFound,
         NoMatchingCase,
         InvalidMetaFnk,
         UsedUndefinedVariable,
+        RanOutOfFuel,
     }!ExecutionTree {
+        if (fuel.* == 0) return error.RanOutOfFuel;
+        fuel.* -= 1;
         const func = try scoring_run.findFunktion(fn_name);
-        const result: ExecutionTree = try .buildExtending(scoring_run, func.cases.items, input, &.{}, fn_name);
+        const result: ExecutionTree = try .buildExtending(scoring_run, func.cases.items, input, &.{}, fn_name, fuel);
         return result;
     }
 
@@ -1547,7 +1553,18 @@ pub const ExecutionTree = struct {
         input: *const Sexpr,
         incoming_bindings: []const core.Binding,
         current_fn_name: *const Sexpr,
-    ) !ExecutionTree {
+        fuel: *usize,
+    ) error{
+        OutOfMemory,
+        BAD_INPUT,
+        FnkNotFound,
+        NoMatchingCase,
+        InvalidMetaFnk,
+        UsedUndefinedVariable,
+        RanOutOfFuel,
+    }!ExecutionTree {
+        if (fuel.* == 0) return error.RanOutOfFuel;
+        fuel.* -= 1;
         for (cases, 0..) |case, case_index| {
             var new_bindings: std.ArrayList(core.Binding) = .init(scoring_run.mem.gpa);
             if (try core.generateBindings(case.pattern, input, &new_bindings)) {
@@ -1574,8 +1591,21 @@ pub const ExecutionTree = struct {
                 const funk_tangent: ?ExecutionTree = if (case.fnk_name.equals(Sexpr.builtin.identity))
                     null
                 else
-                    ExecutionTree.buildNewStack(scoring_run, case.fnk_name, argument) catch |err| switch (err) {
+                    ExecutionTree.buildNewStack(scoring_run, case.fnk_name, argument, fuel) catch |err| switch (err) {
                         else => return err,
+                        error.RanOutOfFuel => return .{
+                            .current_fn_name = current_fn_name,
+                            .all_bindings = bindings,
+                            .incoming_bindings = incoming_bindings,
+                            .new_bindings = try new_bindings.toOwnedSlice(),
+                            .input = input,
+                            .cases = cases,
+                            .step = .{
+                                .uncomputed = .{
+                                    .index = case_index,
+                                },
+                            },
+                        },
                         error.InvalidMetaFnk, error.FnkNotFound => return .{
                             .current_fn_name = current_fn_name,
                             .all_bindings = bindings,
@@ -1597,7 +1627,22 @@ pub const ExecutionTree = struct {
                 const next_tree: ?ExecutionTree = if (next_input == null)
                     null
                 else if (case.next) |next|
-                    try .buildExtending(scoring_run, next.items, next_input.?, bindings, current_fn_name)
+                    ExecutionTree.buildExtending(scoring_run, next.items, next_input.?, bindings, current_fn_name, fuel) catch |err| switch (err) {
+                        else => return err,
+                        error.RanOutOfFuel => return .{
+                            .current_fn_name = current_fn_name,
+                            .all_bindings = bindings,
+                            .incoming_bindings = incoming_bindings,
+                            .new_bindings = try new_bindings.toOwnedSlice(),
+                            .input = input,
+                            .cases = cases,
+                            .step = .{
+                                .uncomputed = .{
+                                    .index = case_index,
+                                },
+                            },
+                        },
+                    }
                 else
                     null;
 
@@ -1649,7 +1694,8 @@ pub const ExecutionTree = struct {
         var permanent_stuff = scoring_run.mem;
         const fn_name = try parsing.parseSingleSexpr(fn_name_raw, &permanent_stuff.pool_for_sexprs);
         const input = try parsing.parseSingleSexpr(input_raw, &permanent_stuff.pool_for_sexprs);
-        return try .buildNewStack(scoring_run, fn_name, input);
+        var fuel: usize = 10_000;
+        return try .buildNewStack(scoring_run, fn_name, input, &fuel);
     }
 
     fn depth(self: ExecutionTree) usize {
