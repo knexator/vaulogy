@@ -1531,6 +1531,20 @@ pub const ExecutionTree = struct {
         return std.meta.activeTag(self.step) != .matched;
     }
 
+    // TODO: don't call this each frame!!
+    pub fn computeMore(self: ExecutionTree, scoring_run: *core.ScoringRun) !?ExecutionTree {
+        if (std.meta.activeTag(self.step) != .uncomputed) return null;
+        var fuel: usize = 1000;
+        return try ExecutionTree.buildExtending(
+            scoring_run,
+            self.cases,
+            self.input,
+            self.incoming_bindings,
+            self.current_fn_name,
+            &fuel,
+        );
+    }
+
     pub fn buildNewStack(scoring_run: *core.ScoringRun, fn_name: *const Sexpr, input: *const Sexpr, fuel: *usize) error{
         OutOfMemory,
         BAD_INPUT,
@@ -1592,7 +1606,7 @@ pub const ExecutionTree = struct {
                     null
                 else
                     ExecutionTree.buildNewStack(scoring_run, case.fnk_name, argument, fuel) catch |err| switch (err) {
-                        else => return err,
+                        else => |x| return x,
                         error.RanOutOfFuel => return .{
                             .current_fn_name = current_fn_name,
                             .all_bindings = bindings,

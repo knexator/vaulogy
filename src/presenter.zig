@@ -765,7 +765,8 @@ pub fn Presenter(platform: Platform, drawer: Drawer) type {
             }
         }
 
-        pub fn draw(self: Self) OoM!void {
+        // TODO: return error type should just be OoM
+        pub fn draw(self: Self) !void {
             drawer.clear(Color.gray(128));
             drawer.asdfBackground();
             try switch (self.state) {
@@ -5775,6 +5776,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 } else if (queued.pop()) |q| {
                     active = q.tree.*;
                 } else break :blk false;
+                if (try active.computeMore(self.scoring_run)) |new_active| active = new_active;
                 if (active.hadError()) break :blk true;
             } else true;
 
