@@ -362,7 +362,8 @@ pub const Drawer = struct {
     drawWildcardsCable: fn (camera: Camera, points: []const Vec2, visuals: []const AtomVisuals) void,
 
     pub fn drawCaseHolderFromPatternPoint(self: Drawer, camera: Camera, pattern_point: Point) void {
-        self.drawCaseHolder(camera, .{ .pos = pattern_point.pos.sub(.new(3, 0)) });
+        // self.drawCaseHolder(camera, .{ .pos = pattern_point.pos.sub(.new(3, 0)) });
+        self.drawCaseHolder(camera, .{ .pos = pattern_point.pos.sub(.new(if (DESIGN.stack_right) -1 else 3, 0)) });
     }
 
     pub fn drawCaseHolderExtended(self: Drawer, camera: Camera, world_point: Point, enabled: bool) void {
@@ -2106,11 +2107,13 @@ const CaseGroup = struct {
     }
 
     pub fn getPatternGlobalPoint(self: CaseGroup, parent_point: Point, address: core.CaseAddress) !Point {
+        const offset: Point = .{};
+        // const offset: Point = if (DESIGN.stack_right) .{ .pos = .new(4, 0) } else .{};
         if (address.len == 0) {
-            return parent_point;
+            return parent_point.applyToLocalPoint(offset);
         } else if (address.len == 1) {
             return parent_point.applyToLocalPoint(
-                self.cases.items[address[0]].pattern_point_relative_to_parent,
+                self.cases.items[address[0]].pattern_point_relative_to_parent.applyToLocalPoint(offset),
             );
         } else if (self.cases.items[address[0]].next) |*next| {
             return next.getPatternGlobalPoint(parent_point.applyToLocalPoint(
@@ -2884,8 +2887,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             pub fn draw(self: CaseParticleState, camera: Camera) !void {
                 drawer.setTransparency(@min(1, self.remaining_lifetime));
-                const asdf = try platform.gpa.dupe(CaseState, &.{self.main});
-                defer platform.gpa.free(asdf);
                 try artist.drawPatternSexpr(camera, self.main.pattern_point_relative_to_parent, self.main.pattern);
                 try drawCaseExtra(camera, self.main.pattern_point_relative_to_parent, self.main, null);
                 drawer.setTransparency(1);
@@ -2961,7 +2962,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             const camera = UI.cam;
             // TODO: cooler
             drawer.drawCaseHolder(camera, case_point
-                .applyToLocalPoint(.{ .pos = .new(-2, 0) })
+                .applyToLocalPoint(.{ .pos = .new(if (DESIGN.stack_right) 0 else -2, 0) })
                 .applyToLocalPoint(.{ .scale = hot }));
         }
 
@@ -3030,7 +3031,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         .pattern = self.next_var,
                         .template = self.next_var,
                         .next = null,
-                        .pattern_point_relative_to_parent = Camera.remap(UI.cam, special_case_point, camera),
+                        .pattern_point_relative_to_parent = Camera.remap(UI.cam, special_case_point, camera).applyToLocalPoint(if (DESIGN.stack_right) .{ .pos = .new(-1, 0) } else .{}),
                         .incoming_wildcards = &.{},
                         .outgoing_wildcards = &.{},
                     };
@@ -4316,7 +4317,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         grabbing.case.pattern_point_relative_to_parent.lerp_towards((Point{
                             .pos = platform.getMouse().cur.pos(camera),
                             .scale = if (grabbing.address_if_released == null) 0.5 else 1,
-                        }).applyToLocalPoint(.{ .pos = .new(3, 0) }), 0.6, delta_seconds);
+                        }).applyToLocalPoint(if (DESIGN.stack_right) .{ .pos = .new(-1, 0) } else .{ .pos = .new(3, 0) }), 0.6, delta_seconds);
                     },
                     .sexpr => |*grabbing| {
                         grabbing.point.lerp_towards(if (grabbing.address_if_released) |goal|
@@ -4892,7 +4893,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         .main_fnk => |unfolded| {
                             const pattern_point = try self.cases.getPatternGlobalPoint(.{}, unfolded.existing);
                             drawer.drawCaseHolderExtended(camera, .{
-                                .pos = pattern_point.pos.sub(.new(3, 0)),
+                                .pos = pattern_point.pos.sub(.new(if (DESIGN.stack_right) -1 else 3, 0)),
                                 .scale = hovering.hot,
                             }, self.tutorial_state != .first_level);
                         },
@@ -5180,12 +5181,21 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
                 const case_grabber_rect: Rect = if (DESIGN.stack_right)
                     Rect.lerp(.fromRanges(
-                        .{ @as(f32, if (is_gen0) -5 else -3) / 0.5, 0 },
+                        if (DESIGN.stack_right)
+                            .{ @as(f32, if (is_gen0) 0 else 0) / 0.5, 2 }
+                        else
+                            .{ @as(f32, if (is_gen0) -5 else -3) / 0.5, 0 },
                         .{ -1, 1 },
-                    ), .fromRanges(
-                        .{ -4, -2 },
-                        .{ 0, 2 },
-                    ), math.inverse_lerp(0.5, 1, case.pattern_point_relative_to_parent.scale))
+                    ), if (DESIGN.stack_right)
+                        .fromRanges(
+                            .{ 0, 2 },
+                            .{ -1, 1 },
+                        )
+                    else
+                        .fromRanges(
+                            .{ -4, -2 },
+                            .{ 0, 2 },
+                        ), math.inverse_lerp(0.5, 1, case.pattern_point_relative_to_parent.scale))
                 else
                     .fromRanges(
                         .{ -5 / case.pattern_point_relative_to_parent.scale, 0 },
