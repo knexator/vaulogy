@@ -8,7 +8,7 @@ const assert = std.debug.assert;
 pub const kommon = @import("kommon");
 pub const safeAt = kommon.safeAt;
 pub const Mouse = kommon.input.Mouse;
-pub const KeyboardButton = enum { left, right, up, down, space };
+pub const KeyboardButton = enum { left, right, up, down, space, KeyQ, KeyE };
 pub const Keyboard = kommon.input.CustomKeyboard(KeyboardButton);
 const math = kommon.math;
 pub const Vec2 = math.Vec2;
@@ -5570,6 +5570,16 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             if (DESIGN.no_current_data) {
                 self.main_input.pos.lerp_towards(MAIN_INPUT_POS, 0.6, delta_seconds);
                 math.lerp_towards(&self.main_input.is_pattern, 0, 0.6, delta_seconds);
+            }
+
+            if (platform.getKeyboard().cur.isDown(.KeyE)) {
+                self.anim_state = .paused;
+                self.anim_t += delta_seconds;
+            }
+            if (platform.getKeyboard().cur.isDown(.KeyQ)) {
+                self.anim_state = .paused;
+                self.anim_t -= delta_seconds;
+                self.anim_t = @max(0, self.anim_t);
             }
 
             const debug_slowdown: f32 = if (platform.getMouse().cur.isDown(.right)) 0.05 else 1;

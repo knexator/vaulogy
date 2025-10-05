@@ -909,6 +909,8 @@ fn keychanged(key: KeyCode, is_pressed: bool) void {
         .KeyW, .ArrowUp => keyboard.cur.keys.up = is_pressed,
         .KeyS, .ArrowDown => keyboard.cur.keys.down = is_pressed,
         .Space => keyboard.cur.keys.space = is_pressed,
+        .KeyE => keyboard.cur.keys.KeyE = is_pressed,
+        .KeyQ => keyboard.cur.keys.KeyQ = is_pressed,
     }
 }
 
