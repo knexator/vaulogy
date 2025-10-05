@@ -5323,7 +5323,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             group: *CaseGroup,
         ) !?CaseAddressWithPoint {
             // second pass to update the grabbing state
-            const y_top = if (DESIGN.stack_right) -1 else 0;
+            const y_top = if (DESIGN.stack_right) -2 else 0;
             const starting_top_line = if (DESIGN.stack_right) -1 else 2;
             for (group.cases.items, 0..) |*case, k| {
                 const grabbing_pos_relative_to_cur = Point.inverseApplyGetLocalPosition(
@@ -5337,7 +5337,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 ) and inRange(
                     grabbing_pos_relative_to_cur.x,
                     -5.0 / case.pattern_point_relative_to_parent.scale,
-                    0,
+                    if (DESIGN.stack_right) 5.0 / case.pattern_point_relative_to_parent.scale else 0,
                 )) {
                     group.unfolded = k;
                     return null;
@@ -5352,7 +5352,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     if (below_the_cable and grabbing_pos_relative_to_cur.y < 0 and inRange(
                         grabbing_pos_relative_to_cur.x,
                         -5.0 / case.pattern_point_relative_to_parent.scale,
-                        0,
+                        if (DESIGN.stack_right) 5.0 / case.pattern_point_relative_to_parent.scale else 0,
                     )) {
                         return .{
                             .address = try childAddress(mem, parent_address, k),
@@ -5371,7 +5371,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                         if (grabbing_pos_relative_to_last.y > y_top and inRange(
                             grabbing_pos_relative_to_last.x,
                             -5.0 / last_case.pattern_point_relative_to_parent.scale,
-                            0,
+                            if (DESIGN.stack_right) 5.0 / last_case.pattern_point_relative_to_parent.scale else 0,
                         )) {
                             return .{
                                 .address = try childAddress(mem, parent_address, group.cases.items.len),
@@ -5403,7 +5403,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                     return x;
                                 }
                             } else if ((if (DESIGN.stack_right)
-                                inRange(cur_relative_mouse.x, 5, 10)
+                                inRange(cur_relative_mouse.x, 5, 15)
                             else
                                 inRange(cur_relative_mouse.x, 0, 5)) and
                                 cur_relative_mouse.y > y_top)
