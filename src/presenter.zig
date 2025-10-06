@@ -1917,7 +1917,7 @@ const SexprView = struct {
     }
 };
 
-const DEFAULT_CAM: Camera = .{ .center = if (DESIGN.stack_right) .new(12, 3) else .new(8, 3), .height = 15.0 };
+const DEFAULT_CAM: Camera = .{ .center = if (DESIGN.stack_right) .new(8, 3) else .new(8, 3), .height = 15.0 };
 const DIST_TO_TEMPLATE = if (DESIGN.stack_right) 2 else 5;
 const FNK_NAME_OFFSET = Point{
     .pos = if (DESIGN.stack_right) .new(5, 0) else .new(DIST_TO_TEMPLATE - 1, -0.75),
