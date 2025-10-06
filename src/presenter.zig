@@ -6009,6 +6009,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 } });
             }
 
+            drawer.drawCable(self.camera.move(.new(5 * displacement, 0)), .new(-CABLE_OFFSCREEN_DIST, 0), .new(1, 0), 1, 0);
             for (shapes.items) |s| {
                 try s.draw(self.camera.move(.new(5 * displacement, 0)));
             }
