@@ -5708,9 +5708,14 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     point: Point,
                     value: *const Sexpr,
                 },
+                cable: struct {
+                    from: Vec2,
+                    to: Vec2,
+                },
 
                 pub fn draw(item: @This(), camera: Camera) !void {
                     switch (item) {
+                        .cable => |c| drawer.drawCable(camera, c.from, c.to, 1, 0),
                         .physical => |p| try artist.drawPhysicalSexpr(camera, p),
                         .case => |c| try drawCase(camera, c.case, c.pattern_point.applyToLocalPoint(.{ .pos = .new(-5, 1) }), c.bindings, .{
                             .unfolded = c.unfolded,
@@ -5736,6 +5741,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
             const original_t = self.anim_t + tof32(self.done_steps);
             var shapes: DrawList = .init(platform.mem_frame);
+            try shapes.append(.{ .cable = .{ .from = .new(-CABLE_OFFSCREEN_DIST, 0), .to = .new(1, 0) } });
 
             var active = self.execution_tree;
             var queued: std.ArrayList(struct {
@@ -5755,13 +5761,19 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             } });
 
             const any_left: bool = if (active.hadError()) true else blk: while (@floor(remaining_t) > tof32(active.step.matched.index)) {
+                const pattern_point = input_point.applyToLocalPoint(.{ .pos = .new(3, 0) });
+                const template_point = input_point.applyToLocalPoint(.{ .pos = .new(5, 0) });
+                try shapes.append(.{ .cable = .{
+                    .from = pattern_point.pos,
+                    .to = template_point.pos,
+                } });
                 try shapes.append(.{ .physical = .{
                     .is_pattern = 1,
-                    .pos = input_point.applyToLocalPoint(.{ .pos = .new(3, 0) }),
+                    .pos = pattern_point,
                     .value = active.step.matched.pattern,
                 } });
                 try shapes.append(.{ .templated = .{
-                    .point = input_point.applyToLocalPoint(.{ .pos = .new(5, 0) }),
+                    .point = template_point,
                     .template = active.step.matched.raw_template,
                     .bindings = .{
                         .anim_t = 1,
@@ -5856,6 +5868,11 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     const pattern_point = input_point.applyToLocalPoint(
                         .{ .pos = .new(4.0 - match_t, 0) },
                     );
+
+                    try shapes.append(.{ .cable = .{
+                        .from = pattern_point.applyToLocalPosition(.zero),
+                        .to = pattern_point.applyToLocalPosition(.new(2, 0)),
+                    } });
 
                     try shapes.append(.{ .physical = .{
                         .is_pattern = 1,
@@ -6009,7 +6026,6 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 } });
             }
 
-            drawer.drawCable(self.camera.move(.new(5 * displacement, 0)), .new(-CABLE_OFFSCREEN_DIST, 0), .new(1, 0), 1, 0);
             for (shapes.items) |s| {
                 try s.draw(self.camera.move(.new(5 * displacement, 0)));
             }
