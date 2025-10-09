@@ -9,7 +9,7 @@ const indexOfString = @import("kommon").funktional.indexOfString;
 // Design decision 2: Sexprs are never released :(
 
 const DEBUG = false;
-const OoM = error{ OutOfMemory, BAD_INPUT };
+pub const OoM = error{ OutOfMemory, BAD_INPUT };
 
 pub const Atom = struct {
     value: []const u8,
@@ -321,7 +321,7 @@ pub const Binding = struct {
     name: []const u8,
     value: *const Sexpr,
 };
-const Bindings = std.ArrayList(Binding);
+pub const Bindings = std.ArrayList(Binding);
 
 pub const SexprContext = struct {
     pub fn hash(self: @This(), s: *const Sexpr) u32 {
@@ -348,7 +348,7 @@ pub const FnkCollection = std.HashMap(*const Sexpr, FnkBody, struct {
     }
 }, std.hash_map.default_max_load_percentage);
 
-const builtin_fnks = [_]struct { name: *const Sexpr, fnk: fn (v: *const Sexpr) *const Sexpr }{
+pub const builtin_fnks = [_]struct { name: *const Sexpr, fnk: fn (v: *const Sexpr) *const Sexpr }{
     .{ .name = Sexpr.builtin.identity, .fnk = builtin_fnk_identity },
     .{ .name = Sexpr.builtin.@"eqAtoms?", .fnk = @"builtin_fnk_eqAtoms?" },
 };
@@ -773,7 +773,7 @@ pub const ExecutionThread = struct {
     }
 };
 
-const SingleRunHelper = struct {
+pub const SingleRunHelper = struct {
     permanent_stuff: VeryPermamentGameStuff,
     scoring_run: ScoringRun,
     execution: ExecutionThread,
@@ -924,6 +924,116 @@ pub fn main() !u8 {
             // try stdout.print("{s}\n", .{"-" ** 10});
             try stdout.print("final result: {any}\n", .{exec.active_value});
         }
+    } else if (std.mem.eql(u8, verb, "game")) {
+        const player_fnks_collection_raw: []const u8 = blk: {
+            const filename = args.next() orelse "default-save.txt";
+            const file = std.fs.cwd().openFile(filename, .{}) catch |err| switch (err) {
+                error.FileNotFound => f: {
+                    try std.fs.cwd().writeFile(.{
+                        .sub_path = filename,
+                        .data = @embedFile("default_game.txt"),
+                    });
+                    break :f try std.fs.cwd().openFile(filename, .{});
+                },
+                else => |x| return x,
+            };
+            defer file.close();
+            break :blk try file.readToEndAlloc(allocator, std.math.maxInt(usize));
+        };
+        defer allocator.free(player_fnks_collection_raw);
+
+        var mem = VeryPermamentGameStuff.init(allocator);
+        defer mem.deinit();
+        var player_score = try ScoringRun.init(player_fnks_collection_raw, &mem);
+        defer player_score.deinit(true);
+
+        var per_sample_arena: std.heap.ArenaAllocator = .init(allocator);
+        var per_sample_pool: std.heap.MemoryPool(Sexpr) = .init(allocator);
+
+        // pub fn next(self: *SamplesIterator, pool: *std.heap.MemoryPool(Sexpr), arena: std.mem.Allocator) !?Sample {
+
+        for (@import("levels_new.zig").levels) |level| {
+            const fnk_name = level.fnk_name;
+            var result: union(enum) {
+                target_fnk_not_defined: void,
+                fnk_not_found: struct {
+                    input: *const Sexpr,
+                },
+                ran_out_of_cases: struct {
+                    input: *const Sexpr,
+                },
+                bad_result: struct {
+                    input: *const Sexpr,
+                    expected: *const Sexpr,
+                    actual: *const Sexpr,
+                },
+                score: struct {
+                    time: usize,
+                    max_stack: usize,
+                },
+            } = .{ .score = .{ .time = 0, .max_stack = 0 } };
+            var it = level.samplesIterator();
+            while (try it.next(&per_sample_pool, per_sample_arena.allocator())) |sample| {
+                const cur_input = sample.input;
+                const expected_output = sample.output.?;
+
+                var exec = ExecutionThread.init(cur_input, fnk_name, &player_score) catch |err| switch (err) {
+                    error.FnkNotFound => {
+                        result = .{ .target_fnk_not_defined = {} };
+                        break;
+                    },
+                    // TODO: good error messages for everything
+                    else => return err,
+                };
+                defer exec.deinit();
+
+                const actual_output = exec.getFinalResult(&player_score) catch |err| switch (err) {
+                    error.FnkNotFound => {
+                        result = .{ .fnk_not_found = .{ .input = cur_input } };
+                        break;
+                    },
+                    error.NoMatchingCase => {
+                        result = .{ .ran_out_of_cases = .{ .input = cur_input } };
+                        break;
+                    },
+                    error.OutOfMemory => return err,
+                    // TODO: good error messages for everything
+                    else => return err,
+                };
+                if (!actual_output.equals(expected_output)) {
+                    result = .{ .bad_result = .{ .input = cur_input, .expected = expected_output, .actual = actual_output } };
+                    break;
+                } else {
+                    result.score.time += exec.score.successful_matches;
+                    result.score.max_stack = @max(result.score.max_stack, exec.score.max_stack);
+                }
+            }
+            switch (result) {
+                .target_fnk_not_defined => {
+                    try stdout.print("no fnk named {any} in the solutions file\n", .{fnk_name});
+                },
+                .fnk_not_found => |f| {
+                    try stdout.print("tried to call an invalid fnk when applying fnk {any} to input {any}\n", .{ fnk_name, f.input });
+                },
+                .ran_out_of_cases => |f| {
+                    try stdout.print("ran out of cases when applying fnk {any} to input {any}\n", .{ fnk_name, f.input });
+                },
+                .bad_result => |f| {
+                    try stdout.print("failed fnk {any}:\texpected {any} for input {any}, got {any}\n", .{ fnk_name, f.expected, f.input, f.actual });
+                },
+                .score => |s| {
+                    const fnk_name_str = try std.fmt.allocPrint(allocator, "fnk {any}:", .{fnk_name});
+                    defer allocator.free(fnk_name_str);
+                    const rest = try std.fmt.allocPrint(allocator, "solved! max stack {d}, required time {d}", .{ s.max_stack, s.time });
+                    defer allocator.free(rest);
+                    try stdout.print("{s: <40}{s}\n", .{ fnk_name_str, rest });
+                    // try stdout.print("fnk {s}:\tmax stack {d}, required time {d}\n", .{ fnk_name_str, s.max_stack, s.time });
+                    // n_correct += 1;
+                },
+            }
+            // n_total += 1;
+            try stdout.print("global stats: code size {d}, compile time {d}\n", .{ player_score.score.code_size, player_score.score.compile_time });
+        }
     } else if (std.mem.eql(u8, verb, "score")) {
         var n_correct: u32 = 0;
         var n_total: u32 = 0;
@@ -1068,6 +1178,7 @@ pub fn main() !u8 {
             \\      score [my-fnk-lib] [target-fnk-lib]
             \\      debug [fnk-lib] [fnk-name] [input]
             \\      see-fnk [fnk-lib] [fnk-name]
+            \\      game [fnk-lib]
         , .{});
         return 1;
     }
@@ -1749,4 +1860,8 @@ pub fn fillTemplateV2(template: *const Sexpr, bindings: []const Binding, pool: *
     const x = try partiallyFillTemplateV2(template, bindings, pool);
     if (!x.complete) return error.UsedUndefinedVariable;
     return x.result;
+}
+
+fn eqlStr(a: []const u8, b: []const u8) bool {
+    return std.mem.eql(u8, a, b);
 }

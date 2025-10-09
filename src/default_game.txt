@@ -1,0 +1,25 @@
+// This is a game about programming in a simple language.
+// Your goal is to finish all these functions.
+
+// Each function is just a list of hardcoded match cases.
+// This one takes a letter from 'a' to 'f' and returns it in uppercase.
+uppercase {
+    a -> A;
+    b -> B;
+    c -> C;
+    d -> D;
+    e -> E;
+    f -> F;
+}
+
+// As a warm up, finish this function and run the command to see your score.
+lowercase {
+    A -> a;
+    B -> b;
+    // C -> c;
+    // ...
+}
+
+pairExample {
+
+}
