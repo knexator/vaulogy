@@ -29,24 +29,82 @@ pub const Level = struct {
     };
 };
 
-pub const levels: []const Level = &.{.{
-    .fnk_name = &Sexpr.doLit("uppercase"),
-    .generate_sample = struct {
-        fn generate_sample(k: usize, pool: *std.heap.MemoryPool(Sexpr), arena: std.mem.Allocator) core.OoM!?Sample {
-            _ = pool;
-            _ = arena;
-            switch (k) {
-                0 => return .{ .input = Vals.a, .output = Vals.A },
-                1 => return .{ .input = Vals.b, .output = Vals.B },
-                else => return null,
+const Solutions = struct {
+    fn isVowel(in: *const Sexpr) ?*const Sexpr {
+        if (in.equals(Vals.lowercase[0]) or in.equals(Vals.lowercase[4]) or
+            in.equals(Vals.uppercase[0]) or in.equals(Vals.uppercase[4]))
+        {
+            return Sexpr.builtin.true;
+        } else return Sexpr.builtin.false;
+    }
+};
+
+pub const levels: []const Level = &.{
+    .{
+        .fnk_name = &Sexpr.doLit("uppercase"),
+        .generate_sample = struct {
+            fn generate_sample(k: usize, _: *std.heap.MemoryPool(Sexpr), _: std.mem.Allocator) core.OoM!?Sample {
+                if (k < Vals.lowercase.len) {
+                    return .{ .input = Vals.lowercase[k], .output = Vals.uppercase[k] };
+                } else return null;
             }
-        }
-    }.generate_sample,
-}};
+        }.generate_sample,
+    },
+    .{
+        .fnk_name = &Sexpr.doLit("lowercase"),
+        .generate_sample = struct {
+            fn generate_sample(k: usize, _: *std.heap.MemoryPool(Sexpr), _: std.mem.Allocator) core.OoM!?Sample {
+                if (k < Vals.lowercase.len) {
+                    return .{ .input = Vals.uppercase[k], .output = Vals.lowercase[k] };
+                } else return null;
+            }
+        }.generate_sample,
+    },
+    .{
+        .fnk_name = &Sexpr.doLit("isVowel"),
+        .generate_sample = struct {
+            fn generate_sample(k: usize, _: *std.heap.MemoryPool(Sexpr), _: std.mem.Allocator) core.OoM!?Sample {
+                if (k < Vals.lowercase.len) {
+                    return .{
+                        .input = Vals.lowercase[k],
+                        .output = Solutions.isVowel(Vals.lowercase[k]),
+                    };
+                } else if (k < Vals.lowercase.len * 2) {
+                    return .{
+                        .input = Vals.uppercase[k - Vals.lowercase.len],
+                        .output = Solutions.isVowel(Vals.uppercase[k - Vals.lowercase.len]),
+                    };
+                } else return null;
+            }
+        }.generate_sample,
+    },
+    // .{
+    //     .fnk_name = &Sexpr.doLit("uppercase"),
+    //     .generate_sample = struct {
+    //         fn generate_sample(k: usize, pool: *std.heap.MemoryPool(Sexpr), arena: std.mem.Allocator) core.OoM!?Sample {
+    //             if (k < Vals.lowercase.len) {
+    //                 return .{ .input = Vals.lowercase[k], .output = Vals.uppercase[k] };
+    //             } else return null;
+    //         }
+    //     }.generate_sample,
+    // },
+};
 
 const Vals = struct {
-    pub const a: *const Sexpr = &Sexpr.doLit("a");
-    pub const b: *const Sexpr = &Sexpr.doLit("b");
-    pub const A: *const Sexpr = &Sexpr.doLit("A");
-    pub const B: *const Sexpr = &Sexpr.doLit("B");
+    pub const lowercase: []const *const Sexpr = &.{
+        &Sexpr.doLit("a"),
+        &Sexpr.doLit("b"),
+        &Sexpr.doLit("c"),
+        &Sexpr.doLit("d"),
+        &Sexpr.doLit("e"),
+        &Sexpr.doLit("f"),
+    };
+    pub const uppercase: []const *const Sexpr = &.{
+        &Sexpr.doLit("A"),
+        &Sexpr.doLit("B"),
+        &Sexpr.doLit("C"),
+        &Sexpr.doLit("D"),
+        &Sexpr.doLit("E"),
+        &Sexpr.doLit("F"),
+    };
 };

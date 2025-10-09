@@ -20,6 +20,9 @@ lowercase {
     // ...
 }
 
-pairExample {
-
+// Words starting with '@' are wildcards and will match anything.
+isVowel {
+    A -> true;
+    E -> true;
+    @other -> false;
 }
