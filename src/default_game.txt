@@ -26,3 +26,11 @@ isVowel {
     E -> true;
     @other -> false;
 }
+
+// Values can also be a pair of two values, to any depth
+swap {
+    ( A . B ) => ( B . A );
+    ( A . (C . D) ) => ( (C . D) . A );
+    ( (E . F) . (C . D) ) => ( (C . D) . (E . F) );
+    (((A . a) . (B . b)) . ((C . c) . (D . d))) => (((C . c) . (D . d)) . ((A . a) . (B . b)));
+}

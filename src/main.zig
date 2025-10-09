@@ -1032,8 +1032,8 @@ pub fn main() !u8 {
                 },
             }
             // n_total += 1;
-            try stdout.print("global stats: code size {d}, compile time {d}\n", .{ player_score.score.code_size, player_score.score.compile_time });
         }
+        try stdout.print("global stats: code size {d}, compile time {d}\n", .{ player_score.score.code_size, player_score.score.compile_time });
     } else if (std.mem.eql(u8, verb, "score")) {
         var n_correct: u32 = 0;
         var n_total: u32 = 0;
