@@ -237,15 +237,20 @@ pub const Sexpr = union(enum) {
             .pair => |p| {
                 try writer.writeAll("(");
                 try p.left.format("", options, writer);
-                var rest = p.right;
-                while (rest.isPair()) {
-                    try writer.writeAll(" ");
-                    try rest.pair.left.format("", options, writer);
-                    rest = rest.pair.right;
-                }
-                if (!rest.equals(Sexpr.builtin.nil)) {
+                if (false) {
+                    var rest = p.right;
+                    while (rest.isPair()) {
+                        try writer.writeAll(" ");
+                        try rest.pair.left.format("", options, writer);
+                        rest = rest.pair.right;
+                    }
+                    if (!rest.equals(Sexpr.builtin.nil)) {
+                        try writer.writeAll(" . ");
+                        try rest.format("", options, writer);
+                    }
+                } else {
                     try writer.writeAll(" . ");
-                    try rest.format("", options, writer);
+                    try p.right.format("", options, writer);
                 }
                 try writer.writeAll(")");
             },
@@ -950,6 +955,9 @@ pub fn main() !u8 {
         var per_sample_arena: std.heap.ArenaAllocator = .init(allocator);
         var per_sample_pool: std.heap.MemoryPool(Sexpr) = .init(allocator);
 
+        defer per_sample_arena.deinit();
+        defer per_sample_pool.deinit();
+
         // pub fn next(self: *SamplesIterator, pool: *std.heap.MemoryPool(Sexpr), arena: std.mem.Allocator) !?Sample {
 
         for (@import("levels_new.zig").levels) |level| {
@@ -961,6 +969,11 @@ pub fn main() !u8 {
                 },
                 ran_out_of_cases: struct {
                     input: *const Sexpr,
+                    expected: *const Sexpr,
+                },
+                took_too_long: struct {
+                    input: *const Sexpr,
+                    expected: *const Sexpr,
                 },
                 bad_result: struct {
                     input: *const Sexpr,
@@ -987,16 +1000,20 @@ pub fn main() !u8 {
                 };
                 defer exec.deinit();
 
-                const actual_output = exec.getFinalResult(&player_score) catch |err| switch (err) {
+                const actual_output = exec.getFinalResultBounded(&player_score, 100_000) catch |err| switch (err) {
                     error.FnkNotFound => {
                         result = .{ .fnk_not_found = .{ .input = cur_input } };
                         break;
                     },
                     error.NoMatchingCase => {
-                        result = .{ .ran_out_of_cases = .{ .input = cur_input } };
+                        result = .{ .ran_out_of_cases = .{ .input = cur_input, .expected = expected_output } };
                         break;
                     },
                     error.OutOfMemory => return err,
+                    error.TookTooLong => {
+                        result = .{ .took_too_long = .{ .input = cur_input, .expected = expected_output } };
+                        break;
+                    },
                     // TODO: good error messages for everything
                     else => return err,
                 };
@@ -1008,29 +1025,18 @@ pub fn main() !u8 {
                     result.score.max_stack = @max(result.score.max_stack, exec.score.max_stack);
                 }
             }
-            switch (result) {
-                .target_fnk_not_defined => {
-                    try stdout.print("no fnk named {any} in the solutions file\n", .{fnk_name});
-                },
-                .fnk_not_found => |f| {
-                    try stdout.print("tried to call an invalid fnk when applying fnk {any} to input {any}\n", .{ fnk_name, f.input });
-                },
-                .ran_out_of_cases => |f| {
-                    try stdout.print("ran out of cases when applying fnk {any} to input {any}\n", .{ fnk_name, f.input });
-                },
-                .bad_result => |f| {
-                    try stdout.print("failed fnk {any}:\texpected {any} for input {any}, got {any}\n", .{ fnk_name, f.expected, f.input, f.actual });
-                },
-                .score => |s| {
-                    const fnk_name_str = try std.fmt.allocPrint(allocator, "fnk {any}:", .{fnk_name});
-                    defer allocator.free(fnk_name_str);
-                    const rest = try std.fmt.allocPrint(allocator, "solved! max stack {d}, required time {d}", .{ s.max_stack, s.time });
-                    defer allocator.free(rest);
-                    try stdout.print("{s: <40}{s}\n", .{ fnk_name_str, rest });
-                    // try stdout.print("fnk {s}:\tmax stack {d}, required time {d}\n", .{ fnk_name_str, s.max_stack, s.time });
-                    // n_correct += 1;
-                },
-            }
+            const fnk_name_str = try std.fmt.allocPrint(allocator, "fnk {any}:", .{fnk_name});
+            defer allocator.free(fnk_name_str);
+            const rest = switch (result) {
+                .target_fnk_not_defined => try std.fmt.allocPrint(allocator, "no definition found.", .{}),
+                .fnk_not_found => |f| try std.fmt.allocPrint(allocator, "tried to call an invalid fnk for input '{any}'", .{f.input}),
+                .ran_out_of_cases => |f| try std.fmt.allocPrint(allocator, "failed on input '{any}', expected '{any}'", .{ f.input, f.expected }),
+                .took_too_long => |f| try std.fmt.allocPrint(allocator, "input '{any}' took too long, expected '{any}'", .{ f.input, f.expected }),
+                .bad_result => |f| try std.fmt.allocPrint(allocator, "expected '{any}' for input '{any}', got '{any}'", .{ f.expected, f.input, f.actual }),
+                .score => |s| try std.fmt.allocPrint(allocator, "solved! max stack {d}, required time {d}", .{ s.max_stack, s.time }),
+            };
+            defer allocator.free(rest);
+            try stdout.print("{s: <40}{s}\n", .{ fnk_name_str, rest });
             // n_total += 1;
         }
         try stdout.print("global stats: code size {d}, compile time {d}\n", .{ player_score.score.code_size, player_score.score.compile_time });

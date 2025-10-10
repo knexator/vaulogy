@@ -1,0 +1,94 @@
+uppercase {
+    a -> A;
+    b -> B;
+    c -> C;
+    d -> D;
+    e -> E;
+    f -> F;
+}
+
+lowercase {
+    A -> a;
+    B -> b;
+    C -> c;
+    D -> d;
+    E -> e;
+    F -> f;
+}
+
+isVowel {
+    A -> true;
+    E -> true;
+    a -> true;
+    e -> true;
+    @other -> false;
+}
+
+swap {
+    ( @a . @b ) -> ( @b . @a );
+}
+
+firstAsUppercase {
+    ( @l . @other ) -> uppercase: @l;
+}
+
+uppercaseIfVowel {
+    @letter -> isVowel: @letter {
+        true -> uppercase: @letter;
+        false -> @letter;
+    }
+}
+
+pairToUppercase {
+    (@a . @b) -> uppercase: @a {
+        @A -> uppercase: @b {
+            @B -> (@A . @B);
+        }
+    }
+}
+
+isUppercase {
+    A -> true;
+    B -> true;
+    C -> true;
+    D -> true;
+    E -> true;
+    F -> true;
+    @else -> false;
+}
+
+changeCase {
+    @l -> isUppercase: @l {
+        true -> lowercase: @l;
+        false -> uppercase: @l;
+    }
+}
+
+letterToBothCases {
+    @l -> isUppercase: @l {
+        true -> lowercase: @l {
+            @a -> (@a . @l);
+        }
+        false -> uppercase: @l {
+            @A -> (@l . @A);
+        }
+    }
+}
+
+hasSomeB {
+    A -> false;
+    B -> true;
+    C -> false;
+    D -> false;
+    E -> false;
+    F -> false;
+
+    (@a . @b) -> hasSomeB: @a {
+        true -> true;
+        false -> hasSomeB: @b;
+    }
+}
+
+second {
+    (@a . (@b . @r)) -> @b;
+}

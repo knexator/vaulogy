@@ -27,10 +27,77 @@ isVowel {
     @other -> false;
 }
 
-// Values can also be a pair of two values, to any depth
+// Values can also be a pair of two values, to any depth.
 swap {
-    ( A . B ) => ( B . A );
-    ( A . (C . D) ) => ( (C . D) . A );
-    ( (E . F) . (C . D) ) => ( (C . D) . (E . F) );
-    (((A . a) . (B . b)) . ((C . c) . (D . d))) => (((C . c) . (D . d)) . ((A . a) . (B . b)));
+    ( A . B ) -> ( B . A );
+    ( C . D ) -> ( D . C );
+    ( A . (C . D) ) -> ( (C . D) . A );
+    ( (E . F) . (C . D) ) -> ( (C . D) . (E . F) );
+    (((A . a) . (B . b)) . ((C . c) . (D . d))) -> (((C . c) . (D . d)) . ((A . a) . (B . b)));
+}
+
+// You can call a function on a value before returning it.
+firstAsUppercase {
+    // hardcoded direct result:
+    ( a . @other ) -> A;
+    ( b . @other ) -> B;
+    // calling the 'uppercase' function instead:
+    ( c . @other ) -> uppercase: c;
+    ( d . @other ) -> uppercase: d;
+}
+
+// You can run other match cases on the value.
+// This function is already solved, as an example.
+uppercaseIfVowel {
+    @letter -> isVowel: @letter {
+        true -> uppercase: @letter;
+        false -> @letter;
+    }
+}
+
+// That's all the rules! You now know the whole language.
+// The real game begins now.
+
+pairToUppercase {
+    (a . a) -> (A . A);
+    (a . b) -> (A . B);
+    // you could handcode all 36 cases, for a poor "code size" score.
+}
+
+// By the way, you can define your own helper functions.
+// They only get counted once for the "code size" score,
+// so it's a big win if it's useful for multiple levels.
+
+changeCase {
+    a -> A;
+    A -> a;
+}
+
+letterToBothCases {
+    a -> (a . A);
+    A -> (a . A);
+}
+
+// Hint: functions can call themselves
+
+hasSomeB {
+    A -> false;
+    B -> true;
+    C -> false;
+    D -> false;
+    E -> false;
+    F -> false;
+
+    (A . B) -> true;
+    (C . D) -> false;
+    ((E . F) . (A . ((C . B) . F))) -> true;
+    (((A . C) . (C . A)) . ((C . A) . (A . C))) -> false;
+}
+
+// Lists: TODO explain
+
+second {
+    (a . (b . nil)) -> b;
+    (a . (b . (c . nil))) -> b;
+    (a . (b . (c . (d . nil)))) -> b;
 }
