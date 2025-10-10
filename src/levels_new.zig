@@ -101,8 +101,8 @@ pub const levels: []const Level = &.{
                 if (k < 100) {
                     var random_instance: std.Random.DefaultPrng = .init(@intCast(k));
                     const random = random_instance.random();
-                    const left = try Vals.randomSexpr(pool, &(Vals.lowercase ++ Vals.uppercase), random, 4);
-                    const right = try Vals.randomSexpr(pool, &(Vals.lowercase ++ Vals.uppercase), random, 4);
+                    const left = try randomSexpr(pool, &(Vals.lowercase ++ Vals.uppercase), random, 4);
+                    const right = try randomSexpr(pool, &(Vals.lowercase ++ Vals.uppercase), random, 4);
                     return .{
                         .input = try store(pool, Sexpr.doPair(left, right)),
                         .output = try store(pool, Sexpr.doPair(right, left)),
@@ -202,10 +202,28 @@ pub const levels: []const Level = &.{
                 if (k < 100) {
                     var random_instance: std.Random.DefaultPrng = .init(@intCast(k));
                     const random = random_instance.random();
-                    const input = try Vals.randomSexpr(pool, &Vals.uppercase, random, 5);
+                    const input = try randomSexpr(pool, &Vals.uppercase, random, 5);
                     return .{
                         .input = input,
                         .output = Sexpr.fromBool(Helpers.hasSomeB(input)),
+                    };
+                } else return null;
+            }
+        }.generate_sample,
+    },
+    .{
+        .fnk_name = &Sexpr.doLit("second"),
+        .generate_sample = struct {
+            fn generate_sample(k: usize, pool: *SexprPool, _: std.mem.Allocator) core.OoM!?Sample {
+                if (k < 100) {
+                    var random_instance: std.Random.DefaultPrng = .init(@intCast(k));
+                    const random = random_instance.random();
+                    const first = randomChoice(&Vals.lowercase, random);
+                    const second = randomChoice(&Vals.lowercase, random);
+                    const rest = try randomList(pool, &Vals.lowercase, random, random.intRangeAtMost(usize, 0, 7));
+                    return .{
+                        .input = try toListWithSentinel(pool, &.{ first, second }, rest),
+                        .output = second,
                     };
                 } else return null;
             }
@@ -219,8 +237,42 @@ fn store(pool: *SexprPool, s: Sexpr) !*const Sexpr {
     return res;
 }
 
+fn toListWithSentinel(pool: *SexprPool, items: []const *const Sexpr, sentinel: *const Sexpr) !*const Sexpr {
+    var result = sentinel;
+    for (0..items.len) |k| {
+        result = try store(pool, Sexpr.doPair(items[items.len - 1 - k], result));
+    }
+    return result;
+}
+
+fn randomList(pool: *SexprPool, options: []const *const Sexpr, random: std.Random, len: usize) !*const Sexpr {
+    if (len == 0) {
+        return Sexpr.builtin.nil;
+    } else {
+        const first = randomChoice(options, random);
+        const rest = try randomList(pool, options, random, len - 1);
+        return try store(pool, Sexpr.doPair(first, rest));
+    }
+}
+
+fn randomChoice(options: []const *const Sexpr, random: std.Random) *const Sexpr {
+    assert(options.len > 0);
+    return options[random.uintLessThan(usize, options.len)];
+}
+
+fn randomSexpr(pool: *SexprPool, atoms: []const *const Sexpr, random: std.Random, max_depth: usize) !*const Sexpr {
+    if (max_depth == 0 or random.float(f32) < 0.3) {
+        return randomChoice(atoms, random);
+    } else {
+        return try store(pool, Sexpr.doPair(
+            try randomSexpr(pool, atoms, random, max_depth - 1),
+            try randomSexpr(pool, atoms, random, max_depth - 1),
+        ));
+    }
+}
+
 const Vals = struct {
-    pub const lowercase: [6]*const Sexpr = .{
+    const lowercase: [6]*const Sexpr = .{
         &Sexpr.doLit("a"),
         &Sexpr.doLit("b"),
         &Sexpr.doLit("c"),
@@ -228,7 +280,7 @@ const Vals = struct {
         &Sexpr.doLit("e"),
         &Sexpr.doLit("f"),
     };
-    pub const uppercase: [6]*const Sexpr = .{
+    const uppercase: [6]*const Sexpr = .{
         &Sexpr.doLit("A"),
         &Sexpr.doLit("B"),
         &Sexpr.doLit("C"),
@@ -236,15 +288,4 @@ const Vals = struct {
         &Sexpr.doLit("E"),
         &Sexpr.doLit("F"),
     };
-
-    fn randomSexpr(pool: *SexprPool, atoms: []const *const Sexpr, random: std.Random, max_depth: usize) !*const Sexpr {
-        if (max_depth == 0 or random.float(f32) < 0.3) {
-            return atoms[random.uintLessThan(usize, atoms.len)];
-        } else {
-            return try store(pool, Sexpr.doPair(
-                try randomSexpr(pool, atoms, random, max_depth - 1),
-                try randomSexpr(pool, atoms, random, max_depth - 1),
-            ));
-        }
-    }
 };
