@@ -92,3 +92,18 @@ hasSomeB {
 second {
     (@a . (@b . @r)) -> @b;
 }
+
+listHasSomeB {
+    nil -> false;
+    (b . @rest) -> true;
+    (@other . @rest) -> listHasSomeB: @rest;
+}
+
+uppercaseEachElement {
+    nil -> nil;
+    (@a . @r) -> uppercase: @a {
+        @A -> uppercaseEachElement: @r {
+            @R -> (@A . @R);
+        }
+    }
+}

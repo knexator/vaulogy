@@ -49,7 +49,7 @@ const Helpers = struct {
     }
 
     fn isB(in: *const Sexpr) bool {
-        return in.equals(Vals.uppercase[1]);
+        return in.equals(Vals.uppercase[1]) or in.equals(Vals.lowercase[1]);
     }
 
     fn hasSomeB(in: *const Sexpr) bool {
@@ -202,7 +202,7 @@ pub const levels: []const Level = &.{
                 if (k < 100) {
                     var random_instance: std.Random.DefaultPrng = .init(@intCast(k));
                     const random = random_instance.random();
-                    const input = try randomSexpr(pool, &Vals.uppercase, random, 5);
+                    const input = try randomSexpr(pool, &Vals.lowercase, random, 5);
                     return .{
                         .input = input,
                         .output = Sexpr.fromBool(Helpers.hasSomeB(input)),
@@ -224,6 +224,69 @@ pub const levels: []const Level = &.{
                     return .{
                         .input = try toListWithSentinel(pool, &.{ first, second }, rest),
                         .output = second,
+                    };
+                } else return null;
+            }
+        }.generate_sample,
+    },
+    .{
+        .fnk_name = &Sexpr.doLit("listHasSomeB"),
+        .generate_sample = struct {
+            fn generate_sample(k: usize, pool: *SexprPool, _: std.mem.Allocator) core.OoM!?Sample {
+                if (k == 0) {
+                    return .{
+                        .input = Sexpr.builtin.nil,
+                        .output = Sexpr.builtin.false,
+                    };
+                } else if (k < 100) {
+                    var random_instance: std.Random.DefaultPrng = .init(@intCast(k));
+                    const random = random_instance.random();
+                    var remaining_len = 1 + random.uintLessThan(usize, @min(k, 9));
+                    // long samples
+                    if (k > 90) remaining_len += 50;
+                    var input = Sexpr.builtin.nil;
+                    var has_b = false;
+                    while (remaining_len > 0) : (remaining_len -= 1) {
+                        const v = if (random.float(f32) < 0.2)
+                            Vals.lowercase[1]
+                        else
+                            try randomSexpr(pool, &Vals.lowercase, random, 3);
+                        has_b = has_b or Helpers.isB(v);
+                        input = try store(pool, Sexpr.doPair(v, input));
+                    }
+                    return .{
+                        .input = input,
+                        .output = Sexpr.fromBool(has_b),
+                    };
+                } else return null;
+            }
+        }.generate_sample,
+    },
+    .{
+        .fnk_name = &Sexpr.doLit("uppercaseEachElement"),
+        .generate_sample = struct {
+            fn generate_sample(k: usize, pool: *SexprPool, _: std.mem.Allocator) core.OoM!?Sample {
+                if (k == 0) {
+                    return .{
+                        .input = Sexpr.builtin.nil,
+                        .output = Sexpr.builtin.nil,
+                    };
+                } else if (k < 100) {
+                    var random_instance: std.Random.DefaultPrng = .init(@intCast(k));
+                    const random = random_instance.random();
+                    var remaining_len = 1 + random.uintLessThan(usize, @min(k, 9));
+                    // long samples
+                    if (k > 90) remaining_len += 50;
+                    var input = Sexpr.builtin.nil;
+                    var output = Sexpr.builtin.nil;
+                    while (remaining_len > 0) : (remaining_len -= 1) {
+                        const i = random.uintLessThan(usize, Vals.lowercase.len);
+                        input = try store(pool, Sexpr.doPair(Vals.lowercase[i], input));
+                        output = try store(pool, Sexpr.doPair(Vals.uppercase[i], output));
+                    }
+                    return .{
+                        .input = input,
+                        .output = output,
                     };
                 } else return null;
             }
