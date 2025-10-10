@@ -76,12 +76,12 @@ letterToBothCases {
 }
 
 hasSomeB {
-    A -> false;
-    B -> true;
-    C -> false;
-    D -> false;
-    E -> false;
-    F -> false;
+    a -> false;
+    b -> true;
+    c -> false;
+    d -> false;
+    e -> false;
+    f -> false;
 
     (@a . @b) -> hasSomeB: @a {
         true -> true;
