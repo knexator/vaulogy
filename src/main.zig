@@ -947,99 +947,7 @@ pub fn main() !u8 {
         };
         defer allocator.free(player_fnks_collection_raw);
 
-        var mem = VeryPermamentGameStuff.init(allocator);
-        defer mem.deinit();
-        var player_score = try ScoringRun.init(player_fnks_collection_raw, &mem);
-        defer player_score.deinit(true);
-
-        var per_sample_arena: std.heap.ArenaAllocator = .init(allocator);
-        var per_sample_pool: std.heap.MemoryPool(Sexpr) = .init(allocator);
-
-        defer per_sample_arena.deinit();
-        defer per_sample_pool.deinit();
-
-        // pub fn next(self: *SamplesIterator, pool: *std.heap.MemoryPool(Sexpr), arena: std.mem.Allocator) !?Sample {
-
-        for (@import("levels_new.zig").levels) |level| {
-            const fnk_name = level.fnk_name;
-            var result: union(enum) {
-                target_fnk_not_defined: void,
-                fnk_not_found: struct {
-                    input: *const Sexpr,
-                },
-                ran_out_of_cases: struct {
-                    input: *const Sexpr,
-                    expected: *const Sexpr,
-                },
-                took_too_long: struct {
-                    input: *const Sexpr,
-                    expected: *const Sexpr,
-                },
-                bad_result: struct {
-                    input: *const Sexpr,
-                    expected: *const Sexpr,
-                    actual: *const Sexpr,
-                },
-                score: struct {
-                    time: usize,
-                    max_stack: usize,
-                },
-            } = .{ .score = .{ .time = 0, .max_stack = 0 } };
-            var it = level.samplesIterator();
-            while (try it.next(&per_sample_pool, per_sample_arena.allocator())) |sample| {
-                const cur_input = sample.input;
-                const expected_output = sample.output.?;
-
-                var exec = ExecutionThread.init(cur_input, fnk_name, &player_score) catch |err| switch (err) {
-                    error.FnkNotFound => {
-                        result = .{ .target_fnk_not_defined = {} };
-                        break;
-                    },
-                    // TODO: good error messages for everything
-                    else => return err,
-                };
-                defer exec.deinit();
-
-                const actual_output = exec.getFinalResultBounded(&player_score, 100_000) catch |err| switch (err) {
-                    error.FnkNotFound => {
-                        result = .{ .fnk_not_found = .{ .input = cur_input } };
-                        break;
-                    },
-                    error.NoMatchingCase => {
-                        result = .{ .ran_out_of_cases = .{ .input = cur_input, .expected = expected_output } };
-                        break;
-                    },
-                    error.OutOfMemory => return err,
-                    error.TookTooLong => {
-                        result = .{ .took_too_long = .{ .input = cur_input, .expected = expected_output } };
-                        break;
-                    },
-                    // TODO: good error messages for everything
-                    else => return err,
-                };
-                if (!actual_output.equals(expected_output)) {
-                    result = .{ .bad_result = .{ .input = cur_input, .expected = expected_output, .actual = actual_output } };
-                    break;
-                } else {
-                    result.score.time += exec.score.successful_matches;
-                    result.score.max_stack = @max(result.score.max_stack, exec.score.max_stack);
-                }
-            }
-            const fnk_name_str = try std.fmt.allocPrint(allocator, "fnk {any}:", .{fnk_name});
-            defer allocator.free(fnk_name_str);
-            const rest = switch (result) {
-                .target_fnk_not_defined => try std.fmt.allocPrint(allocator, "no definition found.", .{}),
-                .fnk_not_found => |f| try std.fmt.allocPrint(allocator, "tried to call an invalid fnk for input '{any}'", .{f.input}),
-                .ran_out_of_cases => |f| try std.fmt.allocPrint(allocator, "failed on input '{any}', expected '{any}'", .{ f.input, f.expected }),
-                .took_too_long => |f| try std.fmt.allocPrint(allocator, "input '{any}' took too long, expected '{any}'", .{ f.input, f.expected }),
-                .bad_result => |f| try std.fmt.allocPrint(allocator, "expected '{any}' for input '{any}', got '{any}'", .{ f.expected, f.input, f.actual }),
-                .score => |s| try std.fmt.allocPrint(allocator, "solved! max stack {d}, required time {d}", .{ s.max_stack, s.time }),
-            };
-            defer allocator.free(rest);
-            try stdout.print("{s: <40}{s}\n", .{ fnk_name_str, rest });
-            // n_total += 1;
-        }
-        try stdout.print("global stats: code size {d}, compile time {d}\n", .{ player_score.score.code_size, player_score.score.compile_time });
+        try textgame(allocator, player_fnks_collection_raw, stdout.any());
     } else if (std.mem.eql(u8, verb, "score")) {
         var n_correct: u32 = 0;
         var n_total: u32 = 0;
@@ -1870,4 +1778,104 @@ pub fn fillTemplateV2(template: *const Sexpr, bindings: []const Binding, pool: *
 
 fn eqlStr(a: []const u8, b: []const u8) bool {
     return std.mem.eql(u8, a, b);
+}
+
+pub fn textgame(
+    allocator: std.mem.Allocator,
+    player_fnks_collection_raw: []const u8,
+    stdout: std.io.AnyWriter,
+) !void {
+    var mem = VeryPermamentGameStuff.init(allocator);
+    defer mem.deinit();
+    var player_score = try ScoringRun.init(player_fnks_collection_raw, &mem);
+    defer player_score.deinit(true);
+
+    var per_sample_arena: std.heap.ArenaAllocator = .init(allocator);
+    var per_sample_pool: std.heap.MemoryPool(Sexpr) = .init(allocator);
+
+    defer per_sample_arena.deinit();
+    defer per_sample_pool.deinit();
+
+    // pub fn next(self: *SamplesIterator, pool: *std.heap.MemoryPool(Sexpr), arena: std.mem.Allocator) !?Sample {
+
+    for (@import("levels_new.zig").levels) |level| {
+        const fnk_name = level.fnk_name;
+        var result: union(enum) {
+            target_fnk_not_defined: void,
+            fnk_not_found: struct {
+                input: *const Sexpr,
+            },
+            ran_out_of_cases: struct {
+                input: *const Sexpr,
+                expected: *const Sexpr,
+            },
+            took_too_long: struct {
+                input: *const Sexpr,
+                expected: *const Sexpr,
+            },
+            bad_result: struct {
+                input: *const Sexpr,
+                expected: *const Sexpr,
+                actual: *const Sexpr,
+            },
+            score: struct {
+                time: usize,
+                max_stack: usize,
+            },
+        } = .{ .score = .{ .time = 0, .max_stack = 0 } };
+        var it = level.samplesIterator();
+        while (try it.next(&per_sample_pool, per_sample_arena.allocator())) |sample| {
+            const cur_input = sample.input;
+            const expected_output = sample.output.?;
+
+            var exec = ExecutionThread.init(cur_input, fnk_name, &player_score) catch |err| switch (err) {
+                error.FnkNotFound => {
+                    result = .{ .target_fnk_not_defined = {} };
+                    break;
+                },
+                // TODO: good error messages for everything
+                else => return err,
+            };
+            defer exec.deinit();
+
+            const actual_output = exec.getFinalResultBounded(&player_score, 100_000) catch |err| switch (err) {
+                error.FnkNotFound => {
+                    result = .{ .fnk_not_found = .{ .input = cur_input } };
+                    break;
+                },
+                error.NoMatchingCase => {
+                    result = .{ .ran_out_of_cases = .{ .input = cur_input, .expected = expected_output } };
+                    break;
+                },
+                error.OutOfMemory => return err,
+                error.TookTooLong => {
+                    result = .{ .took_too_long = .{ .input = cur_input, .expected = expected_output } };
+                    break;
+                },
+                // TODO: good error messages for everything
+                else => return err,
+            };
+            if (!actual_output.equals(expected_output)) {
+                result = .{ .bad_result = .{ .input = cur_input, .expected = expected_output, .actual = actual_output } };
+                break;
+            } else {
+                result.score.time += exec.score.successful_matches;
+                result.score.max_stack = @max(result.score.max_stack, exec.score.max_stack);
+            }
+        }
+        const fnk_name_str = try std.fmt.allocPrint(allocator, "fnk {any}:", .{fnk_name});
+        defer allocator.free(fnk_name_str);
+        const rest = switch (result) {
+            .target_fnk_not_defined => try std.fmt.allocPrint(allocator, "no definition found.", .{}),
+            .fnk_not_found => |f| try std.fmt.allocPrint(allocator, "tried to call an invalid fnk for input '{any}'", .{f.input}),
+            .ran_out_of_cases => |f| try std.fmt.allocPrint(allocator, "failed on input '{any}', expected '{any}'", .{ f.input, f.expected }),
+            .took_too_long => |f| try std.fmt.allocPrint(allocator, "input '{any}' took too long, expected '{any}'", .{ f.input, f.expected }),
+            .bad_result => |f| try std.fmt.allocPrint(allocator, "expected '{any}' for input '{any}', got '{any}'", .{ f.expected, f.input, f.actual }),
+            .score => |s| try std.fmt.allocPrint(allocator, "solved! max stack {d}, required time {d}", .{ s.max_stack, s.time }),
+        };
+        defer allocator.free(rest);
+        try stdout.print("{s: <40}{s}\n", .{ fnk_name_str, rest });
+        // n_total += 1;
+    }
+    try stdout.print("global stats: code size {d}, compile time {d}\n", .{ player_score.score.code_size, player_score.score.compile_time });
 }
