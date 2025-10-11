@@ -190,6 +190,39 @@ pub fn build(b: *std.Build) void {
             b.getInstallStep().dependOn(&compile_wasm.step);
         }
 
+        // pure text game
+        if (true) {
+            const webtextgame_wasm = b.addExecutable(
+                .{
+                    .name = "text",
+                    .root_source_file = b.path("src/web_text.zig"),
+                    .target = b.resolveTargetQuery(.{
+                        .cpu_arch = .wasm32,
+                        .os_tag = .freestanding,
+                    }),
+                    .optimize = optimize,
+                    // FUTURE TODO: put these back once https://github.com/ziglang/zig/issues/22617 is fixed
+                    // .use_llvm = optimize != .Debug,
+                    // .use_lld = optimize != .Debug,
+                },
+            );
+            webtextgame_wasm.root_module.addImport("kommon", kommon_module);
+
+            {
+                // taken from https://github.com/daneelsan/minimal-zig-wasm-canvas/blob/master/build.zig
+                webtextgame_wasm.global_base = 6560;
+                webtextgame_wasm.entry = .disabled;
+                webtextgame_wasm.rdynamic = true;
+                webtextgame_wasm.export_memory = true;
+                webtextgame_wasm.stack_size = std.wasm.page_size;
+            }
+
+            const compile_wasm = b.addInstallArtifact(webtextgame_wasm, .{
+                .dest_dir = .{ .override = webgame_install_dir },
+            });
+            b.getInstallStep().dependOn(&compile_wasm.step);
+        }
+
         const copy_static_files = b.addInstallDirectory(.{
             .install_dir = webgame_install_dir,
             .install_subdir = "",
@@ -205,6 +238,14 @@ pub fn build(b: *std.Build) void {
         const generate_keycodes_step = b.addRunArtifact(generate_keycodes);
         const output = generate_keycodes_step.addOutputFileArg("keycodes.js");
         b.getInstallStep().dependOn(&b.addInstallFileWithDir(output, webgame_install_dir, "keycodes.js").step);
+
+        b.getInstallStep().dependOn(
+            &b.addInstallFileWithDir(
+                b.path("src/default_game.txt"),
+                webgame_install_dir,
+                "default_game.txt",
+            ).step,
+        );
 
         const webgame_wasm_check = b.addExecutable(
             .{

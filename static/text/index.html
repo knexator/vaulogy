@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- FIXME: add an icon to the game -->
+    <link rel="icon" href="data:,">
+    <title>Vaulogy (text version)</title>
+    <script defer type="module" src="main.js"></script>
+    <style>
+        body {
+            font-family: monospace;
+            margin: 0;
+            padding: 10px;
+            background: #f0f0f0;
+            transition: background 0.3s, color 0.3s;
+
+        }
+
+        body.dark {
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border: 1px solid #ccc;
+            padding: 10px;
+            transition: background 0.3s, border-color 0.3s;
+        }
+
+        body.dark .container {
+            background: #2a2a2a;
+            border-color: #444;
+        }
+
+
+        .toolbar {
+            margin-bottom: 10px;
+            padding: 5px;
+            border-bottom: 1px solid #ccc;
+            transition: border-color 0.3s;
+        }
+
+        body.dark .toolbar {
+            border-bottom-color: #444;
+        }
+
+
+        button {
+            padding: 5px 15px;
+            margin-right: 5px;
+            font-family: monospace;
+            cursor: pointer;
+            transition: background 0.3s, color 0.3s, border-color 0.3s;
+
+        }
+
+        body.dark button {
+            background: #3a3a3a;
+            color: #e0e0e0;
+            border-color: #555;
+        }
+
+        #editor {
+            width: 100%;
+            height: 400px;
+            font-family: monospace;
+            font-size: 14px;
+            padding: 10px;
+            border: 1px solid #999;
+            box-sizing: border-box;
+            resize: vertical;
+            resize: vertical;
+            transition: background 0.3s, color 0.3s, border-color 0.3s;
+        }
+
+        body.dark #editor {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border-color: #555;
+        }
+
+        .output-section {
+            margin-top: 20px;
+        }
+
+        .output-label {
+            font-weight: bold;
+            margin-bottom: 5px;
+            padding: 5px;
+            background: #e0e0e0;
+            border: 1px solid #ccc;
+            transition: background 0.3s, border-color 0.3s;
+        }
+
+        body.dark .output-label {
+            background: #3a3a3a;
+            border-color: #444;
+        }
+
+        #output {
+            width: 100%;
+            height: 200px;
+            font-family: monospace;
+            font-size: 14px;
+            padding: 10px;
+            border: 1px solid #999;
+            box-sizing: border-box;
+            background: #fafafa;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            transition: background 0.3s, color 0.3s, border-color 0.3s;
+        }
+
+        body.dark #output {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border-color: #555;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="toolbar">
+            <button onclick="runCode()">Run</button>
+            <button onclick="toggleDarkMode()">Dark/Light</button>
+            <button onclick="loadFile()">Load</button>
+            <button onclick="saveFile()">Save</button>
+            <input type="file" id="fileInput" accept=".txt,*" onchange="handleFileLoad(event)">
+        </div>
+
+        <textarea id="editor" placeholder="Enter your code here..." spellcheck="false" autocapitalize="off"></textarea>
+
+        <div class="output-section">
+            <div class="output-label">Output:</div>
+            <div id="output"></div>
+        </div>
+    </div>
+
+    <script>
+        const editor = document.getElementById('editor');
+        const output = document.getElementById('output');
+        const fileInput = document.getElementById('fileInput');
+
+        const save_key = "text_save_v1";
+        const saved = localStorage.getItem(save_key);
+        if (saved == null) {
+            editor.value = "Loading...";
+            fetch('../default_game.txt')
+                .then(response => response.text())
+                .then(data => {
+                    localStorage.setItem(save_key, data);
+                    editor.value = data;
+                });
+        } else {
+            editor.value = saved;
+        }
+
+        function loadFile() {
+            fileInput.click();
+        }
+
+        function handleFileLoad(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                editor.value = e.target.result;
+            };
+            reader.readAsText(file);
+        }
+
+        function saveFile() {
+            const text = editor.value;
+            const blob = new Blob([text], { type: 'text/plain' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'code.txt';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        }
+
+        function toggleDarkMode() {
+            document.body.classList.toggle('dark');
+        }
+
+        function computeOutput(input) {
+            return "WASM is still loading";
+        }
+
+        function runCode() {
+            const code = editor.value;
+            output.textContent = 'Processing...\n\n';
+            localStorage.setItem(save_key, code);
+            computeOutput(code);
+        }
+    </script>
+</body>
+
+</html>
