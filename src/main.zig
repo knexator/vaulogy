@@ -1866,7 +1866,7 @@ pub fn textgame(
                 result.score.max_stack = @max(result.score.max_stack, exec.score.max_stack);
             }
         }
-        const fnk_name_str = try std.fmt.allocPrint(allocator, "fnk {any}:", .{fnk_name});
+        const fnk_name_str = try std.fmt.allocPrint(allocator, "level {any}:", .{fnk_name});
         defer allocator.free(fnk_name_str);
         const rest = switch (result) {
             .target_fnk_not_defined => try std.fmt.allocPrint(allocator, "no definition found.", .{}),

@@ -92,20 +92,26 @@ hasSomeB {
     (c . d) -> false;
     ((e . f) . (a . ((c . b) . f))) -> true;
     (((a . c) . (c . a)) . ((c . a) . (a . c))) -> false;
+
+    (@any . b) -> true;
+    (b . @any) -> true;
 }
 
 
 // All functions take and return a single value.
 // What if we need a list of values instead?
 // Here's the convention we will use:
-// - 'nil' is an empty list.
-// - (@first . @rest) is the list '@rest' plus the element '@first' in front.
+// - We represent empty lists with 'nil'
+// - Otherwise, we make a pair where the left half is the first element of the list,
+//   and the second half is the rest of the list: (@first . @rest).
 // Some examples:
 // - '(a . nil)' is a list with one element, 'a' (since the 'rest' is just the empty list)
-// - '(b . (a . nil))' is 'b' followed by that list; in other words, a list of 2 elements, 'b' and then 'a'.
+// - '(b . (a . nil))' is 'b' followed by the previous example; in other words, a list of 2 elements, 'b' and then 'a'.
 // - '((a . b) . (c . nil))' is a list of two elements: the first one is '(a . b)', the second one is 'c'.
 // This is important! Many of the functions from now on will take or return lists.
 
+// return the second element of a list
+// you can assume the input is a list with at least two elements.
 second {
     (a . (b . nil)) -> b;
     (a . (b . (c . nil))) -> b;
