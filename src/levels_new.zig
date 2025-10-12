@@ -160,6 +160,21 @@ pub const levels: []const Level = &.{
         }.generate_sample,
     },
     .{
+        .fnk_name = &Sexpr.doLit("firstToUppercase"),
+        .generate_sample = struct {
+            fn generate_sample(k: usize, pool: *SexprPool, _: std.mem.Allocator) core.OoM!?Sample {
+                const k1 = @mod(k, Vals.lowercase.len);
+                const k2 = @divFloor(k, Vals.lowercase.len);
+                if (k2 < Vals.lowercase.len) {
+                    return .{
+                        .input = try store(pool, Sexpr.doPair(Vals.lowercase[k1], Vals.lowercase[k2])),
+                        .output = try store(pool, Sexpr.doPair(Vals.uppercase[k1], Vals.lowercase[k2])),
+                    };
+                } else return null;
+            }
+        }.generate_sample,
+    },
+    .{
         .fnk_name = &Sexpr.doLit("pairToUppercase"),
         .generate_sample = struct {
             fn generate_sample(k: usize, pool: *SexprPool, _: std.mem.Allocator) core.OoM!?Sample {

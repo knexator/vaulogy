@@ -28,12 +28,15 @@ isVowel {
 }
 
 // Values can also be a pair of two values, to any depth.
+// There are too many cases to hardcode; use wildcards.
 swap {
     ( A . B ) -> ( B . A );
     ( C . D ) -> ( D . C );
     ( A . (C . D) ) -> ( (C . D) . A );
     ( (E . F) . (C . D) ) -> ( (C . D) . (E . F) );
     (((A . a) . (B . b)) . ((C . c) . (D . d))) -> (((C . c) . (D . d)) . ((A . a) . (B . b)));
+    ( A . @right ) -> ( @right . A );
+    ( @left . A ) -> ( A . @left );
 }
 
 // You can call a function on a value before returning it.
@@ -66,6 +69,16 @@ uppercaseIfVowel {
 
 // That's all the rules! You now know the whole language.
 // The real game begins now.
+
+firstToUppercase {
+    (a . a) -> (A . a);
+    (a . b) -> uppercase: a {
+        A -> (A . b);
+    }
+    (@first . c) -> uppercase: @first {
+        @FIRST -> (@FIRST . c);
+    }
+}
 
 pairToUppercase {
     (a . a) -> (A . A);
