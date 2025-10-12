@@ -8,6 +8,7 @@ const Fnk = @import("main.zig").Fnk;
 const FnkCollection = @import("main.zig").FnkCollection;
 const MatchCases = @import("main.zig").MatchCases;
 const MatchCaseDefinition = @import("main.zig").MatchCaseDefinition;
+const TEXT_LISTS = @import("main.zig").TEXT_LISTS;
 
 fn parseSexpr(input: *[]const u8, pool: *MemoryPool(Sexpr)) !*const Sexpr {
     const result = try parseSexprTrue(input.*, pool);
@@ -26,8 +27,35 @@ fn parseSexprTrue(input: []const u8, pool: *MemoryPool(Sexpr)) error{ OutOfMemor
     var rest = input;
     skipWhitespace(&rest);
     if (rest[0] == '(') {
-        const asdf = try parseSexprInsideParens(rest[1..], pool);
-        return .{ .sexpr = asdf.sexpr, .rest = asdf.rest };
+        if (TEXT_LISTS) {
+            const asdf = try parseSexprInsideParens(rest[1..], pool);
+            return .{ .sexpr = asdf.sexpr, .rest = asdf.rest };
+        } else {
+            const first = try parseSexprTrue(rest[1..], pool);
+            rest = first.rest;
+            skipWhitespace(&rest);
+            if (rest[0] != '.') {
+                std.log.err("expected a '.' after {any}", .{first.sexpr});
+                return error.BAD_INPUT;
+            }
+            rest = rest[1..];
+            skipWhitespace(&rest);
+            const second = try parseSexprTrue(rest, pool);
+            rest = second.rest;
+            skipWhitespace(&rest);
+            if (rest[0] != ')') {
+                std.log.err("expected a closing ')' after {any}", .{second.sexpr});
+                return error.BAD_INPUT;
+            }
+            rest = rest[1..];
+            skipWhitespace(&rest);
+            const res = try pool.create();
+            res.* = Sexpr.doPair(first.sexpr, second.sexpr);
+            return .{
+                .sexpr = res,
+                .rest = rest,
+            };
+        }
     }
     const asdf = try parseAtom(rest);
     const res = try pool.create();
@@ -39,7 +67,18 @@ fn parseSexprTrue(input: []const u8, pool: *MemoryPool(Sexpr)) error{ OutOfMemor
     return .{ .sexpr = res, .rest = asdf.rest };
 }
 
+test "bad parse" {
+    const fnkdef =
+        \\swap {
+        \\   (D . (c  
+        \\}
+    ;
+    _ = fnkdef;
+    // TODO
+}
+
 fn parseSexprInsideParens(input: []const u8, pool: *MemoryPool(Sexpr)) !struct { sexpr: *const Sexpr, rest: []const u8 } {
+    std.debug.assert(TEXT_LISTS);
     var rest = input;
     skipWhitespace(&rest);
     if (rest.len == 0) return error.BAD_INPUT;
@@ -62,7 +101,7 @@ fn parseSexprInsideParens(input: []const u8, pool: *MemoryPool(Sexpr)) !struct {
 }
 
 fn parseAtom(input: []const u8) !struct { atom: Atom, is_var: bool, rest: []const u8 } {
-    const word_breaks = .{ '(', ')', ':', '.', ';' } ++ std.ascii.whitespace;
+    const word_breaks = .{ '(', ')', ':', '.', ';', '{', '}' } ++ std.ascii.whitespace;
     const rest = std.mem.trimLeft(u8, input, &std.ascii.whitespace);
     const word_end = std.mem.indexOfAnyPos(u8, rest, 0, &word_breaks) orelse rest.len;
     const is_variable = rest[0] == '@';
@@ -185,12 +224,12 @@ pub const Parser = struct {
         const name = try parseSexpr(&this.remaining_text, pool);
         this.skipWhitespaceNew();
         if (!consumeChar(this, '{')) {
-            std.log.err("ERROR: No body found for fnk with name {any}\n", .{name});
+            std.log.err("No body found for fnk with name {any}\n", .{name});
             return error.BAD_INPUT;
         }
         const cases = parseMatchCases(&this.remaining_text, pool, allocator_for_cases) catch |err| switch (err) {
             error.BAD_INPUT => {
-                std.log.err("ERROR: Bad input on fnk with name {any}\n", .{name});
+                std.log.err("Syntax error in fnk with name {any}\n", .{name});
                 return err;
             },
             else => return err,

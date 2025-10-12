@@ -11,6 +11,8 @@ const indexOfString = @import("kommon").funktional.indexOfString;
 const DEBUG = false;
 pub const OoM = error{ OutOfMemory, BAD_INPUT };
 
+pub const TEXT_LISTS = false;
+
 pub const Atom = struct {
     value: []const u8,
 
@@ -237,7 +239,7 @@ pub const Sexpr = union(enum) {
             .pair => |p| {
                 try writer.writeAll("(");
                 try p.left.format("", options, writer);
-                if (false) {
+                if (TEXT_LISTS) {
                     var rest = p.right;
                     while (rest.isPair()) {
                         try writer.writeAll(" ");
@@ -1798,7 +1800,8 @@ pub fn textgame(
 
     // pub fn next(self: *SamplesIterator, pool: *std.heap.MemoryPool(Sexpr), arena: std.mem.Allocator) !?Sample {
 
-    for (@import("levels_new.zig").levels) |level| {
+    const levels = @import("levels_new.zig").levels;
+    for (levels, 0..) |level, level_index| {
         const fnk_name = level.fnk_name;
         var result: union(enum) {
             target_fnk_not_defined: void,
@@ -1876,6 +1879,17 @@ pub fn textgame(
         defer allocator.free(rest);
         try stdout.print("{s: <40}{s}\n", .{ fnk_name_str, rest });
         // n_total += 1;
+        if (std.meta.activeTag(result) != .score) {
+            try stdout.print("solved {d}/{d} levels\n", .{ level_index, levels.len });
+            break;
+        }
+    } else {
+        try stdout.print("solved {d}/{d} levels\n", .{ levels.len, levels.len });
     }
-    try stdout.print("global stats: code size {d}, compile time {d}\n", .{ player_score.score.code_size, player_score.score.compile_time });
+
+    if (player_score.score.compile_time > 0) {
+        try stdout.print("global stats: code size {d}, compile time {d}\n", .{ player_score.score.code_size, player_score.score.compile_time });
+    } else {
+        try stdout.print("global stats: code size {d}\n", .{player_score.score.code_size});
+    }
 }

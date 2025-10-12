@@ -131,8 +131,9 @@
 <body>
     <div class="container">
         <div class="toolbar">
-            <button onclick="runCode()">Run</button>
+            <!-- <button onclick="runCode()">Run</button> -->
             <button onclick="toggleDarkMode()">Dark/Light</button>
+            <button onclick="reset()">Reset</button>
             <button onclick="loadFile()">Load</button>
             <button onclick="saveFile()">Save</button>
             <input type="file" id="fileInput" accept=".txt,*" onchange="handleFileLoad(event)">
@@ -154,15 +155,30 @@
         const save_key = "text_save_v1";
         const saved = localStorage.getItem(save_key);
         if (saved == null) {
+            reset();
+        } else {
+            editor.value = saved;
+        }
+
+        function debounce(fn, delay) {
+            let timer;
+            return function (...args) {
+                clearTimeout(timer);
+                timer = setTimeout(() => fn.apply(this, args), delay);
+            };
+        }
+
+        editor.addEventListener("input", debounce(runCode, 300))
+
+        function reset() {
             editor.value = "Loading...";
             fetch('../default_game.txt')
                 .then(response => response.text())
                 .then(data => {
                     localStorage.setItem(save_key, data);
                     editor.value = data;
+                    runCode();
                 });
-        } else {
-            editor.value = saved;
         }
 
         function loadFile() {
@@ -176,6 +192,7 @@
             const reader = new FileReader();
             reader.onload = function (e) {
                 editor.value = e.target.result;
+                runCode();
             };
             reader.readAsText(file);
         }

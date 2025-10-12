@@ -3,11 +3,12 @@ const text_encoder = new TextEncoder();
 
 const wasm_exports = (await WebAssembly.instantiateStreaming(fetch("../text.wasm"), {
   env: {
-    setOutput: (ptr, len) => {
+    clearOutput: () => {
+      output.textContent = "";
+    },
+    addOutput: (ptr, len) => {
       const asdf = getString(ptr, len);
-      console.log(asdf);
-      console.log(output);
-      output.textContent = asdf;
+      output.textContent += asdf;
     },
   },
 })).instance.exports;
@@ -36,3 +37,4 @@ function computeOutput(input) {
 }
 
 window.computeOutput = computeOutput;
+runCode();

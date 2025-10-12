@@ -1,12 +1,14 @@
-extern fn setOutput(output_ptr: [*]const u8, output_len: usize) void;
+extern fn clearOutput() void;
+extern fn addOutput(output_ptr: [*]const u8, output_len: usize) void;
 
-fn setOutput2(output: []const u8) void {
-    setOutput(output.ptr, output.len);
+fn addOutput2(output: []const u8) void {
+    addOutput(output.ptr, output.len);
 }
 
 const gpa = std.heap.wasm_allocator;
 
 var input_buffer: []u8 = &.{};
+var output_buffer: []u8 = &.{};
 
 export fn allocInput(input_len: usize) [*]const u8 {
     if (input_len > input_buffer.len) {
@@ -17,21 +19,18 @@ export fn allocInput(input_len: usize) [*]const u8 {
 
 export fn setInput(input_ptr: [*]const u8, input_len: usize) void {
     const input: []const u8 = @ptrCast(input_ptr[0..input_len]);
-    setOutput(input.ptr, input.len);
 
-    var output_buffer: std.ArrayList(u8) = .init(gpa);
-    defer output_buffer.deinit();
+    var output: std.ArrayListUnmanaged(u8) = .initBuffer(output_buffer);
+
+    clearOutput();
 
     @import("main.zig").textgame(
         gpa,
         input,
-        output_buffer.writer().any(),
-    ) catch {
-        setOutput2("Unhandled error!");
-        return;
-    };
+        output.writer(gpa).any(),
+    ) catch return;
 
-    setOutput2(output_buffer.items);
+    addOutput2(output.items);
 }
 
 fn OoM() noreturn {
@@ -51,13 +50,11 @@ fn myLogFn(
     const level_txt = comptime message_level.asText();
     const prefix2 = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
 
-    var buf: [1000]u8 = undefined;
-    const res = std.fmt.bufPrint(&buf, level_txt ++ prefix2 ++ format ++ "\n", args) catch {
-        setOutput2("RAN OUT OF LOG BUFFER! the log started with:\n");
-        setOutput2(&buf);
-        return;
+    const output = std.fmt.allocPrint(gpa, level_txt ++ prefix2 ++ format ++ "\n", args) catch |err| switch (err) {
+        error.OutOfMemory => "Ran out of memory while printing output. Should never happen...",
     };
-    setOutput2(res);
+    defer gpa.free(output);
+    addOutput2(output);
 }
 
 const std = @import("std");
