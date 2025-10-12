@@ -127,6 +127,22 @@ pub const levels: []const Level = &.{
         }.generate_sample,
     },
     .{
+        .fnk_name = &Sexpr.doLit("startWithB"),
+        .generate_sample = struct {
+            fn generate_sample(k: usize, pool: *SexprPool, _: std.mem.Allocator) core.OoM!?Sample {
+                const both = Vals.lowercase ++ Vals.uppercase;
+                const k1 = @mod(k, both.len);
+                const k2 = @divFloor(k, both.len);
+                if (k2 < both.len) {
+                    return .{
+                        .input = try store(pool, Sexpr.doPair(both[k1], both[k2])),
+                        .output = Sexpr.fromBool(Helpers.isB(both[k1])),
+                    };
+                } else return null;
+            }
+        }.generate_sample,
+    },
+    .{
         .fnk_name = &Sexpr.doLit("uppercaseIfVowel"),
         .generate_sample = struct {
             fn generate_sample(k: usize, _: *SexprPool, _: std.mem.Allocator) core.OoM!?Sample {

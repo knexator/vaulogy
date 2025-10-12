@@ -46,7 +46,16 @@ firstAsUppercase {
     ( d . @other ) -> uppercase: d;
 }
 
-// You can run other match cases on the value.
+// You can run other match cases on a value before returning it.
+startWithB {
+    (@left . @right) -> @left {
+        b -> true;
+        @else -> false;
+    }
+}
+
+// Finally, you can combine both: calling a function on a value,
+// and then running a match case on the result.
 // This function is already solved, as an example.
 uppercaseIfVowel {
     @letter -> isVowel: @letter {

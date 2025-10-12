@@ -32,6 +32,14 @@ firstAsUppercase {
     ( @l . @other ) -> uppercase: @l;
 }
 
+startWithB {
+    (@left . @right) -> @left {
+        b -> true;
+        B -> true;
+        @else -> false;
+    }
+}
+
 uppercaseIfVowel {
     @letter -> isVowel: @letter {
         true -> uppercase: @letter;
