@@ -383,6 +383,67 @@ pub const levels: []const Level = &.{
             }
         }.generate_sample,
     },
+    .{
+        .fnk_name = &Sexpr.doLit("mostCommonBoolean"),
+        .generate_sample = struct {
+            fn generate_sample(k: usize, pool: *SexprPool, arena: std.mem.Allocator) core.OoM!?Sample {
+                const t = Sexpr.builtin.true;
+                const f = Sexpr.builtin.false;
+                const premade_samples: []const struct { input: []const *const Sexpr, output: *const Sexpr } = &.{
+                    .{
+                        .input = &.{ t, f, t },
+                        .output = t,
+                    },
+                    .{
+                        .input = &.{ t, f, f, t, f },
+                        .output = f,
+                    },
+                    .{
+                        .input = &.{ t, t, t, f, f, f, f },
+                        .output = f,
+                    },
+                    .{
+                        .input = &.{ t, f, t, f, t, f, t },
+                        .output = t,
+                    },
+                };
+                if (k < premade_samples.len) {
+                    return .{
+                        .input = try toList(pool, premade_samples[k].input),
+                        .output = premade_samples[k].output,
+                    };
+                } else if (k < 100) {
+                    var random_instance: std.Random.DefaultPrng = .init(@intCast(k));
+                    const random = random_instance.random();
+                    var num_true = 1 + random.uintLessThan(usize, 10);
+                    var num_false = 1 + random.uintLessThan(usize, 10);
+                    // long samples
+                    if (k > 90) num_false += 50;
+                    if (k > 90) num_true += 50;
+                    if (num_true == num_false) {
+                        if (random.boolean()) {
+                            num_true += 1;
+                        } else {
+                            num_false += 1;
+                        }
+                    }
+                    const all_elements = try arena.alloc(*const Sexpr, num_true + num_false);
+                    @memset(all_elements, f);
+                    for (0..num_true) |_| {
+                        var index = random.uintLessThan(usize, all_elements.len);
+                        while (all_elements[index] == t) {
+                            index = random.uintLessThan(usize, all_elements.len);
+                        }
+                        all_elements[index] = t;
+                    }
+                    return .{
+                        .input = try toList(pool, all_elements),
+                        .output = Sexpr.fromBool(num_true > num_false),
+                    };
+                } else return null;
+            }
+        }.generate_sample,
+    },
 };
 
 fn store(pool: *SexprPool, s: Sexpr) !*const Sexpr {

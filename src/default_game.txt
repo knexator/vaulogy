@@ -173,3 +173,12 @@ reverse {
     (b . (c . nil)) -> (c . (b . nil));
     (c . (d . (e . nil))) -> (e . (d . (c . nil)));
 }
+
+// Given a list of 'true's and 'false's, return the most common.
+// Guaranteed to not be a tie.
+mostCommonBoolean {
+    (true . (false . (true . nil))) -> true;
+    (true . (false . (false . (true . (false . nil))))) -> false;
+    (true . (true . (true . (false . (false . (false . (false . nil))))))) -> false;
+    (true . (false . (true . (false . (true . (false . (true . nil))))))) -> true;
+}

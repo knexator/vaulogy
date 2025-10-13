@@ -143,3 +143,19 @@ append {
         @t2 -> (@h . @t2);
     }
 }
+
+mostCommonBoolean {
+    (true . nil) -> true;
+    (false . nil) -> false;
+    (true . (false . @rest)) -> mostCommonBoolean: @rest;
+    (false . (true . @rest)) -> mostCommonBoolean: @rest;
+    @other -> ( mostCommonBoolean . helper ): (@other . (nil . nil));
+}
+
+( mostCommonBoolean . helper ) {
+    (nil . ( (true . @r) . nil)) -> true;
+    (nil . ( nil . (false . @r))) -> false;
+    (nil . ( (true . @r1) . (false . @r2))) -> ( mostCommonBoolean . helper ): (nil . (@r1 . @r2));
+    ((true . @r) . (@r1 . @r2)) -> ( mostCommonBoolean . helper ): (@r . ((true . @r1) . @r2));
+    ((false . @r) . (@r1 . @r2)) -> ( mostCommonBoolean . helper ): (@r . (@r1 . (false . @r2)));
+}
