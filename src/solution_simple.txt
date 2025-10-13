@@ -122,10 +122,24 @@ uppercaseEachElement {
     }
 }
 
-hasAnyVowel{
+hasAnyVowel {
     nil -> false;
     (@first . @rest) -> isVowel: @first {
         true -> true;
         false -> hasAnyVowel: @rest;
+    }
+}
+
+reverse {
+    nil -> nil;
+    (@h . @t) -> reverse: @t {
+        @t2 -> append: (@h . @t2);
+    }
+}
+
+append {
+    (@x . nil) -> (@x . nil);
+    (@x . (@h . @t)) -> append: (@x . @t) {
+        @t2 -> (@h . @t2);
     }
 }

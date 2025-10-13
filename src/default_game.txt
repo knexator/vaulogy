@@ -165,3 +165,11 @@ hasAnyVowel{
     (b . (c . nil)) -> false;
     (c . (d . (e . nil))) -> false;
 }
+
+// reverses a list
+reverse {
+    nil -> nil;
+    (a . nil) -> (a . nil);
+    (b . (c . nil)) -> (c . (b . nil));
+    (c . (d . (e . nil))) -> (e . (d . (c . nil)));
+}
