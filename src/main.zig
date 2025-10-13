@@ -913,6 +913,14 @@ pub fn main() !u8 {
                 try stdout.print("Step {d}:\n", .{step});
                 for (exec.stack.items, 0..) |stack, k| {
                     try stdout.print("{d}: {any}\n", .{ k, stack.cur_fnk_name });
+                    if (false) {
+                        try stdout.print("\twith bindings: {{", .{});
+                        for (stack.cur_bindings.items) |b| {
+                            // try stdout.print("{s}: {any},", .{ b.name, b.value });
+                            try stdout.print("{s}: ..., ", .{b.name});
+                        }
+                        try stdout.print("}}\n", .{});
+                    }
                 }
                 const last_thing = exec.stack.getLast();
                 try stdout.print("matching {any} with\n", .{exec.active_value});
@@ -1490,7 +1498,7 @@ fn internalFromExternal(s: *const Sexpr, pool: *MemoryPool(Sexpr)) !*const Sexpr
 }
 
 // (aaa . @bbb) => ((atom . aaa) . (var . bbb))
-fn externalFromInternal(s: *const Sexpr, pool: *MemoryPool(Sexpr)) !*const Sexpr {
+pub fn externalFromInternal(s: *const Sexpr, pool: *MemoryPool(Sexpr)) !*const Sexpr {
     return switch (s.*) {
         .atom_var => |v| storeSexprInPool(pool, Sexpr.doPair(Sexpr.builtin.meta.@"var", try storeSexprInPool(pool, Sexpr.doLit(v.value)))),
         .atom_lit => storeSexprInPool(pool, Sexpr.doPair(Sexpr.builtin.meta.atom, s)),

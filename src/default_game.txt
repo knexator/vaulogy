@@ -231,3 +231,9 @@ brainfuck {
         ( next . (out . nil))))))))))))
     . nil) -> ((N . (N . (N . (N . (N . (N . nil)))))) . nil);
 }
+
+// The crown jewel of the game - make an interpreter for the language.
+// TODO: explain
+interpreter {
+    // (@input . (@fnk_name . @all_fnks)) -> @output;
+}

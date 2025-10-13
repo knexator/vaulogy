@@ -501,6 +501,44 @@ pub const levels: []const Level = &.{
             }
         }.generate_sample,
     },
+    .{
+        // TODO
+        .fnk_name = &Sexpr.doLit("interpreter"),
+        .generate_sample = struct {
+            fn generate_sample(k: usize, pool: *SexprPool, arena: std.mem.Allocator) core.OoM!?Sample {
+                if (k != 0) return null;
+                var mem = core.VeryPermamentGameStuff.init(arena);
+                defer mem.deinit();
+                var scoring = try core.ScoringRun.init(
+                    \\ bubbleUp {
+                    \\      (A . @rest) -> (A . @rest);
+                    \\      (@a . @b) -> bubbleUp: @b {
+                    \\          (A . @rest) -> (A . (@a . @rest));
+                    \\      }
+                    \\ }
+                , &mem);
+                defer scoring.deinit(true);
+                const input = try toList(pool, &.{ Vals.uppercase[1], Vals.uppercase[2], Vals.uppercase[0], Vals.uppercase[3] });
+                const output = try toList(pool, &.{ Vals.uppercase[0], Vals.uppercase[1], Vals.uppercase[2], Vals.uppercase[3] });
+                const fnk_name = try store(pool, Sexpr.doLit("bubbleUp"));
+                const fnk_def = scoring.all_fnks.get(fnk_name).?;
+                const fnk_def_sexpr = try store(pool, Sexpr.doPair(
+                    fnk_name,
+                    try core.sexprFromCases(fnk_def.cases.items, pool),
+                ));
+                return .{
+                    .input = try store(pool, Sexpr.doPair(
+                        input,
+                        try store(pool, Sexpr.doPair(
+                            fnk_name,
+                            try toList(pool, &.{fnk_def_sexpr}),
+                        )),
+                    )),
+                    .output = output,
+                };
+            }
+        }.generate_sample,
+    },
 };
 
 fn store(pool: *SexprPool, s: Sexpr) !*const Sexpr {

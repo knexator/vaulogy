@@ -205,7 +205,7 @@ append {
     ((@pattern_left . @pattern_right) . (@input_left . @input_right)) -> 
             (bindings . get): (@pattern_left . @input_left) {
         false -> false;
-        @bindings_left -> (bindings . get): (@pattern_right . @pattern_right) {
+        @bindings_left -> (bindings . get): (@pattern_right . @input_right) {
             false -> false;
             @bindings_right -> (bindings . combine): (@bindings_left . @bindings_right);
         }
@@ -214,7 +214,7 @@ append {
 
 (bindings . apply) {
     ( (atom . @value) . @bindings) -> @value;
-    ( (var . @name) . @bindings) -> (dict . lookup): (@bindings . @name);
+    ( (var . @name) . @bindings) -> (dict . lookup): (@name . @bindings);
     ( (@left . @right) . @bindings) -> (bindings . apply): (@left . @bindings) {
         @new_left -> (bindings . apply): (@right . @bindings) {
             @new_right -> (@new_left . @new_right);
@@ -876,7 +876,7 @@ interpreter {
             @local_bindings -> (bindings . combine): (@local_bindings . @parent_bindings) {
                 @bindings -> (bindings . apply): (@template . @bindings) {
                     @new_input -> interpreter: ( @fnk_name @new_input . @all_fnks ) {
-                        @result -> @rest_cases {
+                        @result -> @next {
                             return -> @result;
                             @more_cases -> (interpreter . applyCases): ( @more_cases @result @all_fnks @bindings );
                         }

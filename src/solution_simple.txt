@@ -194,3 +194,78 @@ brainfuck {
         ( next . (out . nil))))))))))))
     . nil) -> ((N . (N . (N . (N . (N . (N . nil)))))) . nil);
 }
+
+interpreter {
+    (@input . (identity  . @all_fnks)) -> @input;
+    (@input . (eqAtoms? . @all_fnks)) -> eqAtoms?: input;
+    (@input . (@fnk_name . @all_fnks)) -> (dict . lookup): (@fnk_name . @all_fnks) {
+        @fnk_def -> (interpreter . applyCases): (@fnk_def . (@input . (@all_fnks . nil)));
+    }
+}
+
+(interpreter . applyCases) {
+    ((@first_case . @rest_cases) . (@input . (@all_fnks . @parent_bindings ))) -> @first_case {
+        (@pattern . (@fnk_name . (@template . @next))) -> (bindings . get): (@pattern . @input) {
+            false -> (interpreter . applyCases): ( @rest_cases . ( @input . ( @all_fnks . @parent_bindings )));
+            @local_bindings -> (bindings . combine): (@local_bindings . @parent_bindings) {
+                @bindings -> (bindings . apply): (@template . @bindings) {
+                    @new_input -> interpreter: ( @new_input . ( @fnk_name . @all_fnks ) ) {
+                        @result -> @next {
+                            return -> @result;
+                            @more_cases -> (interpreter . applyCases): ( @more_cases . (@result . (@all_fnks . @bindings)));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// like concat, but does not fully respect the order
+(bindings . combine) {
+    (@a . nil) -> @a;
+    (nil . @b) -> @b;
+    ((@a1 . @a2) . @b) -> (bindings . combine): (@a2 . (@a1 . @b));
+}
+
+(bindings . get) {
+    ( (atom . @value) . @input) -> eqAtoms?: (@value . @input) {
+        false -> false;
+        true -> nil;
+    }
+    ( (var . @value) . @input) -> ((@value . @input) . nil);
+
+    ((@pattern_left . @pattern_right) . (@input_left . @input_right)) -> 
+            (bindings . get): (@pattern_left . @input_left) {
+        false -> false;
+        @bindings_left -> (bindings . get): (@pattern_right . @input_right) {
+            false -> false;
+            @bindings_right -> (bindings . combine): (@bindings_left . @bindings_right);
+        }
+    }
+}
+
+(bindings . apply) {
+    ( (atom . @value) . @bindings) -> @value;
+    ( (var . @name) . @bindings) -> (dict . lookup): (@name . @bindings);
+    ( (@left . @right) . @bindings) -> (bindings . apply): (@left . @bindings) {
+        @new_left -> (bindings . apply): (@right . @bindings) {
+            @new_right -> (@new_left . @new_right);
+        }
+    }
+}
+
+(dict . lookup) {
+	(@key . ((@maybe_key . @maybe_value) . @rest)) -> equal?: (@key . @maybe_key) {
+		true -> @maybe_value;
+		false -> (dict . lookup): (@key . @rest);
+	}
+}
+
+equal? {
+	((@leftleft . @leftright) . (@rightleft . @rightright)) -> equal?: (@leftleft . @rightleft) {
+		false -> false;
+		true -> equal?: (@leftright . @rightright);
+	}
+	(@left . @right) -> eqAtoms?: (@left . @right);
+}
