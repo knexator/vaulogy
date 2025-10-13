@@ -158,3 +158,10 @@ uppercaseEachElement {
     (a . (b . nil)) -> (A . (B . nil));
     (c . (d . (e . nil))) -> (C . (D . (E . nil)));
 }
+
+hasAnyVowel{
+    nil -> false;
+    (a . nil) -> true;
+    (b . (c . nil)) -> false;
+    (c . (d . (e . nil))) -> false;
+}

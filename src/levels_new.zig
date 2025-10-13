@@ -323,6 +323,36 @@ pub const levels: []const Level = &.{
             }
         }.generate_sample,
     },
+    .{
+        .fnk_name = &Sexpr.doLit("hasAnyVowel"),
+        .generate_sample = struct {
+            fn generate_sample(k: usize, pool: *SexprPool, _: std.mem.Allocator) core.OoM!?Sample {
+                if (k == 0) {
+                    return .{
+                        .input = Sexpr.builtin.nil,
+                        .output = Sexpr.builtin.false,
+                    };
+                } else if (k < 100) {
+                    var random_instance: std.Random.DefaultPrng = .init(@intCast(k));
+                    const random = random_instance.random();
+                    var remaining_len = 1 + random.uintLessThan(usize, @min(k, 9));
+                    // long samples
+                    if (k > 90) remaining_len += 50;
+                    var input = Sexpr.builtin.nil;
+                    var output = false;
+                    while (remaining_len > 0) : (remaining_len -= 1) {
+                        const i = random.uintLessThan(usize, Vals.lowercase.len);
+                        input = try store(pool, Sexpr.doPair(Vals.lowercase[i], input));
+                        output = output or Helpers.isVowel(Vals.lowercase[i]);
+                    }
+                    return .{
+                        .input = input,
+                        .output = Sexpr.fromBool(output),
+                    };
+                } else return null;
+            }
+        }.generate_sample,
+    },
 };
 
 fn store(pool: *SexprPool, s: Sexpr) !*const Sexpr {

@@ -121,3 +121,11 @@ uppercaseEachElement {
         }
     }
 }
+
+hasAnyVowel{
+    nil -> false;
+    (@first . @rest) -> isVowel: @first {
+        true -> true;
+        false -> hasAnyVowel: @rest;
+    }
+}
