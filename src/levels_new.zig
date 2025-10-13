@@ -444,6 +444,63 @@ pub const levels: []const Level = &.{
             }
         }.generate_sample,
     },
+    .{
+        .fnk_name = &Sexpr.doLit("brainfuck"),
+        .generate_sample = struct {
+            fn generate_sample(k: usize, pool: *SexprPool, _: std.mem.Allocator) core.OoM!?Sample {
+                // TODO: infinite samples
+                const prev = Vals.BF.prev;
+                const next = Vals.BF.next;
+                const inc = Vals.BF.inc;
+                const dec = Vals.BF.dec;
+                const in = Vals.BF.in;
+                const out = Vals.BF.out;
+                const loop = Vals.BF.loop;
+                const end = Vals.BF.end;
+                const premade_samples: []const struct {
+                    code: []const *const Sexpr,
+                    stdin: []const usize,
+                    output: []const usize,
+                } = &.{ .{
+                    .code = &.{ in, in, out, in, out },
+                    .stdin = &.{ 1, 2, 3, 4 },
+                    .output = &.{ 2, 3 },
+                }, .{
+                    .code = &.{
+                        inc, inc, out,
+                        inc, inc, inc,
+                        out, dec, dec,
+                        dec, dec, out,
+                    },
+                    .stdin = &.{},
+                    .output = &.{ 2, 5, 1 },
+                }, .{
+                    .code = &.{ inc, next, next, prev, prev, out },
+                    .stdin = &.{},
+                    .output = &.{1},
+                }, .{
+                    .code = &.{
+                        inc,  inc,  inc,
+                        loop, dec,  next,
+                        inc,  inc,  prev,
+                        end,  next, out,
+                    },
+                    .stdin = &.{},
+                    .output = &.{6},
+                } };
+                if (k < premade_samples.len) {
+                    const sample = premade_samples[k];
+                    return .{
+                        .input = try store(pool, Sexpr.doPair(
+                            try toList(pool, sample.code),
+                            try toListOfPeano(pool, sample.stdin),
+                        )),
+                        .output = try toListOfPeano(pool, sample.output),
+                    };
+                } else return null;
+            }
+        }.generate_sample,
+    },
 };
 
 fn store(pool: *SexprPool, s: Sexpr) !*const Sexpr {
@@ -460,6 +517,23 @@ fn toListWithSentinel(pool: *SexprPool, items: []const *const Sexpr, sentinel: *
     var result = sentinel;
     for (0..items.len) |k| {
         result = try store(pool, Sexpr.doPair(items[items.len - 1 - k], result));
+    }
+    return result;
+}
+
+fn toPeano(pool: *SexprPool, n: usize) !*const Sexpr {
+    var result = Sexpr.builtin.nil;
+    for (0..n) |_| {
+        result = try store(pool, Sexpr.doPair(Vals.peano_succ, result));
+    }
+    return result;
+}
+
+fn toListOfPeano(pool: *SexprPool, ns: []const usize) !*const Sexpr {
+    var result = Sexpr.builtin.nil;
+    for (0..ns.len) |k| {
+        const n = ns[ns.len - k - 1];
+        result = try store(pool, Sexpr.doPair(try toPeano(pool, n), result));
     }
     return result;
 }
@@ -491,6 +565,8 @@ fn randomSexpr(pool: *SexprPool, atoms: []const *const Sexpr, random: std.Random
 }
 
 const Vals = struct {
+    const peano_succ: *const Sexpr = &Sexpr.doLit("N");
+
     const lowercase: [6]*const Sexpr = .{
         &Sexpr.doLit("a"),
         &Sexpr.doLit("b"),
@@ -507,4 +583,15 @@ const Vals = struct {
         &Sexpr.doLit("E"),
         &Sexpr.doLit("F"),
     };
+
+    const BF: struct {
+        prev: *const Sexpr = &Sexpr.doLit("prev"),
+        next: *const Sexpr = &Sexpr.doLit("next"),
+        inc: *const Sexpr = &Sexpr.doLit("inc"),
+        dec: *const Sexpr = &Sexpr.doLit("dec"),
+        in: *const Sexpr = &Sexpr.doLit("in"),
+        out: *const Sexpr = &Sexpr.doLit("out"),
+        loop: *const Sexpr = &Sexpr.doLit("loop"),
+        end: *const Sexpr = &Sexpr.doLit("end"),
+    } = .{};
 };

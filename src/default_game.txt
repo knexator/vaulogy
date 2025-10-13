@@ -182,3 +182,52 @@ mostCommonBoolean {
     (true . (true . (true . (false . (false . (false . (false . nil))))))) -> false;
     (true . (false . (true . (false . (true . (false . (true . nil))))))) -> true;
 }
+
+
+// Bonus level: Brainf*ck
+// Implement the brainfuck programming language.
+// Input is a pair (source_code . stdin), where stdin is a lsit of numbers
+// and source_code is a list of symbols:
+//  'next': increment the pointer
+//  'prev': decrement the pointer
+//  'inc': increment the pointed number
+//  'dec': decrement the pointed number
+//  'in': take a number from stdin and store it at the pointed position
+//  'out': store the pointed number in stdout
+//  'loop': if the pointed number is zero, skip all code up to the matching 'end'
+//  'end': if the pointed number is not zero, go back in code to the matching 'loop'
+// You must return the resulting stdout
+// Assume the memory tape has no ends, and each cell can get arbitrarily big.
+brainfuck {
+    // ",,!,!", "1 2 3 4" -> "2 3"
+    (
+        ( in . ( in . ( out . ( in . ( out . nil))))) . 
+        (
+            (N . nil) . (
+            (N . (N . nil)) . (
+            (N . (N . (N . nil))) . (
+            (N . (N . (N . (N . nil)))) . 
+        nil))))
+    ) -> ((N . (N . nil)) . ((N . (N . (N . nil))) . nil));
+
+    // "++!+++!----!" -> "2 5 1"
+    (
+        ( inc . ( inc . ( out . 
+        ( inc . ( inc . (inc . (out . 
+        (dec . (dec . (dec . (dec . (out . nil))))))))))))
+    . nil) -> ((N . (N . nil)) . ((N . (N . (N . (N . (N . nil))))) . ((N . nil) . nil)));
+
+    // "+>><<!" -> "1"
+    (
+        ( inc . ( next . ( next . ( prev . ( prev . (out . nil))))))
+    . nil) -> ((N . nil) . nil);
+
+    // "+++[->++<]>!" -> "6"
+    (
+        ( inc . ( inc . ( inc . 
+        ( loop . 
+        ( dec . (next . (inc . (inc . (prev . 
+        ( end . 
+        ( next . (out . nil))))))))))))
+    . nil) -> ((N . (N . (N . (N . (N . (N . nil)))))) . nil);
+}

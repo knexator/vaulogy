@@ -159,3 +159,38 @@ mostCommonBoolean {
     ((true . @r) . (@r1 . @r2)) -> ( mostCommonBoolean . helper ): (@r . ((true . @r1) . @r2));
     ((false . @r) . (@r1 . @r2)) -> ( mostCommonBoolean . helper ): (@r . (@r1 . (false . @r2)));
 }
+
+// TODO: proper solution
+brainfuck {
+    // ",,!,!", "1 2 3 4" -> "2 3"
+    (
+        ( in . ( in . ( out . ( in . ( out . nil))))) . 
+        (
+            (N . nil) . (
+            (N . (N . nil)) . (
+            (N . (N . (N . nil))) . (
+            (N . (N . (N . (N . nil)))) . 
+        nil))))
+    ) -> ((N . (N . nil)) . ((N . (N . (N . nil))) . nil));
+
+    // "++!+++!----!" -> "2 5 1"
+    (
+        ( inc . ( inc . ( out . 
+        ( inc . ( inc . (inc . (out . 
+        (dec . (dec . (dec . (dec . (out . nil))))))))))))
+    . nil) -> ((N . (N . nil)) . ((N . (N . (N . (N . (N . nil))))) . ((N . nil) . nil)));
+
+    // "+>><<!" -> "1"
+    (
+        ( inc . ( next . ( next . ( prev . ( prev . (out . nil))))))
+    . nil) -> ((N . nil) . nil);
+
+    // "+++[->++<]>!" -> "6"
+    (
+        ( inc . ( inc . ( inc . 
+        ( loop . 
+        ( dec . (next . (inc . (inc . (prev . 
+        ( end . 
+        ( next . (out . nil))))))))))))
+    . nil) -> ((N . (N . (N . (N . (N . (N . nil)))))) . nil);
+}
