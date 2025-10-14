@@ -11,7 +11,7 @@ const indexOfString = @import("kommon").funktional.indexOfString;
 const DEBUG = false;
 pub const OoM = error{ OutOfMemory, BAD_INPUT };
 
-pub const TEXT_LISTS = false;
+pub const TEXT_LISTS = true;
 
 pub const Atom = struct {
     value: []const u8,

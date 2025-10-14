@@ -2888,7 +2888,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             pub fn draw(self: CaseParticleState, camera: Camera) !void {
                 drawer.setTransparency(@min(1, self.remaining_lifetime));
                 try artist.drawPatternSexpr(camera, self.main.pattern_point_relative_to_parent, self.main.pattern);
-                try drawCaseExtra(camera, self.main.pattern_point_relative_to_parent, self.main, null);
+                _ = try drawCaseTemplate(camera, self.main.pattern_point_relative_to_parent, self.main, null);
                 drawer.setTransparency(1);
             }
 
@@ -4933,7 +4933,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                                         pattern_point,
                                         grabbing.case.pattern,
                                     );
-                                    try drawCaseExtra(camera, pattern_point, grabbing.case, null);
+                                    const template_point = try drawCaseTemplate(camera, pattern_point, grabbing.case, null);
+                                    try drawCaseExtra(camera, pattern_point, template_point, grabbing.case, null);
                                     drawer.drawCaseHolderFromPatternPoint(camera, pattern_point);
                                     const pos = pattern_point.applyToLocalPosition(.new(0, 1));
                                     const esquina = pos.sub(.new(if (address.ghost.address.len == 1) 5 else 3, 0));
@@ -4951,7 +4952,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                             pattern_point,
                             grabbing.case.pattern,
                         );
-                        try drawCaseExtra(camera, pattern_point, grabbing.case, null);
+                        const template_point = try drawCaseTemplate(camera, pattern_point, grabbing.case, null);
+                        try drawCaseExtra(camera, pattern_point, template_point, grabbing.case, null);
                     },
                 },
             }
@@ -5033,9 +5035,10 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                     1,
                     0,
                 );
+                const template_point = try drawCaseTemplate(camera, pattern_point, case, held_wildcard_names);
 
                 if (case.pattern_point_relative_to_parent.scale >= 0.9) {
-                    try drawCaseExtra(camera, pattern_point, case, held_wildcard_names);
+                    try drawCaseExtra(camera, pattern_point, template_point, case, held_wildcard_names);
                 }
             }
 
@@ -5057,7 +5060,8 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             }
         }
 
-        fn drawCaseExtra(camera: Camera, pattern_point: Point, case: CaseState, held_wildcard_names: ?[]const []const u8) !void {
+        // returns the template point
+        fn drawCaseTemplate(camera: Camera, pattern_point: Point, case: CaseState, held_wildcard_names: ?[]const []const u8) !Point {
             const template_point = if (DESIGN.horizontal_depth) blk: {
                 var template_point = pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) });
                 template_point.pos.y = 0;
@@ -5091,6 +5095,11 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             try artist.drawTemplateWildcardLines(camera, case.template, template_point);
             try artist.drawPatternWildcardLines(camera, case.pattern, pattern_point);
+
+            return template_point;
+        }
+
+        fn drawCaseExtra(camera: Camera, pattern_point: Point, template_point: Point, case: CaseState, held_wildcard_names: ?[]const []const u8) !void {
             if (case.next) |next| {
                 try drawCases(
                     camera,
@@ -6774,6 +6783,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 pattern_point.scale,
                 0,
             );
+            try drawCaseTemplate(camera, pattern_point, case, bindings, matices.hiding_children);
 
             if (matices.with_extra and (DESIGN.stack_right or (matices.is_gen0 > 0.5))) {
                 try drawCaseExtra(camera, pattern_point, case, bindings, matices.hiding_children);
@@ -6781,7 +6791,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
         }
 
         // TODO: remove duplication with EditingCase
-        fn drawCaseExtra(
+        fn drawCaseTemplate(
             camera: Camera,
             pattern_point_raw: Point,
             case: core.MatchCaseDefinition,
@@ -6818,6 +6828,17 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 bindings,
                 hiding_children,
             );
+        }
+
+        // TODO: remove duplication with EditingCase
+        fn drawCaseExtra(
+            camera: Camera,
+            pattern_point_raw: Point,
+            case: core.MatchCaseDefinition,
+            bindings: BindingsState,
+            hiding_children: f32,
+        ) !void {
+            const pattern_point = pattern_point_raw.applyToLocalPoint(.{ .scale = 1 - hiding_children });
             if (case.next) |next| {
                 try drawCases(camera, 0, pattern_point, next.items, .{ .unfolding = 1 }, 0, bindings);
                 // , if (hiding_children == 0) .normal else .floating

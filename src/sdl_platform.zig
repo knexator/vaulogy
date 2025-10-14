@@ -884,6 +884,9 @@ pub fn main() !void {
             .useInstancedRenderable = useInstancedRenderable,
             .loadTextureDataFromBase64 = undefined,
             .loadTextureDataFromFilename = undefined,
+            .startStencil = undefined,
+            .stopStencil = undefined,
+            .doneStencil = undefined,
         };
 
         pub fn clear(color: FColor) void {
