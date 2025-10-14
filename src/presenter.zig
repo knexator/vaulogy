@@ -1329,37 +1329,58 @@ fn Artist(platform: Platform, drawer: Drawer) type {
             var names: std.ArrayList([]const u8) = .init(platform.gpa);
             defer names.deinit();
 
+            if (true) {
+                try pattern_value.getAllVarNames(&names);
+                try removeBoundNamesV3(&names, bindings);
+                if (hiding_children < 1) try drawWildcardsCable(camera, &.{
+                    pattern_point.applyToLocalPosition(.new(0.5, 0)),
+                    pattern_point.applyToLocalPosition(.new(1, 0)),
+                }, names.items);
+            }
+
             try template_value.getAllVarNames(&names);
+            try appendUniqueNames(&names, outbound_wildcard_names);
             try removeBoundNamesV3(&names, bindings);
             if (hiding_children < 1) try drawWildcardsCable(camera, &.{
                 pattern_point.applyToLocalPosition(.new(1, 0)),
                 template_point.applyToLocalPosition(.new(-0.5, 0)),
             }, names.items);
 
-            try appendUniqueNames(&names, outbound_wildcard_names);
-            try removeBoundNamesV3(&names, bindings);
-            if (hiding_children < 1) try drawWildcardsCable(camera, &.{
-                pattern_point.applyToLocalPosition(.new(0.5, 0)),
-                pattern_point.applyToLocalPosition(.new(1, 0)),
-            }, names.items);
+            if (false) {
+                try removeBoundNamesV3(&names, bindings);
+                if (hiding_children < 1) try drawWildcardsCable(camera, &.{
+                    pattern_point.applyToLocalPosition(.new(0.5, 0)),
+                    pattern_point.applyToLocalPosition(.new(1, 0)),
+                }, names.items);
+            }
 
             // TODO: draws duplicated wildcard names!
-            if (DESIGN.round_data) {
-                try drawWildcardsCable(camera, &([1]Vec2{
-                    // this -3 assumes not gen0
-                    pattern_point.applyToLocalPosition(.new(-3 + hiding_children, 1)),
-                } ++ funk.fromCountAndCtx(32, struct {
-                    pub fn anon(k: usize, p: Point) Vec2 {
-                        return p.applyToLocalPosition(Vec2.fromTurns(math.lerp(0.25, 0, math.tof32(k) / 32)).add(.new(-0.5, 0)));
-                    }
-                }.anon, pattern_point)), try removeBoundNamesV2(platform.gpa, inbound_wildcard_names, bindings));
+            if (false) {
+                if (DESIGN.round_data) {
+                    try drawWildcardsCable(camera, &([1]Vec2{
+                        // this -3 assumes not gen0
+                        pattern_point.applyToLocalPosition(.new(-3 + hiding_children, 1)),
+                    } ++ funk.fromCountAndCtx(32, struct {
+                        pub fn anon(k: usize, p: Point) Vec2 {
+                            return p.applyToLocalPosition(Vec2.fromTurns(math.lerp(0.25, 0, math.tof32(k) / 32)).add(.new(-0.5, 0)));
+                        }
+                    }.anon, pattern_point)), try removeBoundNamesV2(platform.gpa, inbound_wildcard_names, bindings));
+                } else {
+                    try drawWildcardsCable(camera, &.{
+                        // this -3 assumes not gen0
+                        pattern_point.applyToLocalPosition(.new(-3 + hiding_children, 1)),
+                        pattern_point.applyToLocalPosition(.new(0, 1)),
+                        pattern_point.applyToLocalPosition(.new(0.5, 0)),
+                    }, try removeBoundNamesV2(platform.gpa, inbound_wildcard_names, bindings));
+                }
             } else {
-                try drawWildcardsCable(camera, &.{
-                    // this -3 assumes not gen0
-                    pattern_point.applyToLocalPosition(.new(-3 + hiding_children, 1)),
-                    pattern_point.applyToLocalPosition(.new(0, 1)),
-                    pattern_point.applyToLocalPosition(.new(0.5, 0)),
-                }, try removeBoundNamesV2(platform.gpa, inbound_wildcard_names, bindings));
+                if (false) {
+                    try drawWildcardsCable(camera, &([2]Vec2{
+                        // this -6 assumes not gen0
+                        pattern_point.applyToLocalPosition(.new(-1 + hiding_children, -1)),
+                        pattern_point.applyToLocalPosition(.new(1 + hiding_children, -1)),
+                    }), try removeBoundNamesV2(platform.gpa, inbound_wildcard_names, bindings));
+                }
             }
 
             const lost_wildcards = try visualsForUnusedWildcards(pattern_value, template_value, outbound_wildcard_names, held_wildcard_names);
@@ -1930,7 +1951,7 @@ const FNK_NAME_OFFSET_FROM_TEMPLATE = Point{
     .scale = 0.5,
 };
 const MAIN_INPUT_POS = Point{ .pos = .new(1, 0) };
-const MAIN_FNK_POS: Point = if (DESIGN.stack_right) .{ .pos = .new(4, -2.25), .turns = -0.25 } else .{ .pos = .new(0, -1.25), .turns = -0.25 };
+const MAIN_FNK_POS: Point = if (DESIGN.stack_right) .{ .pos = .new(6, -2.25), .turns = -0.25 } else .{ .pos = .new(0, -1.25), .turns = -0.25 };
 const DIST_BETWEEN_QUEUED_FNKS = 3.5;
 const CABLE_OFFSCREEN_DIST = 15;
 
@@ -2267,12 +2288,13 @@ fn TestingFnk(platform: Platform, drawer: Drawer) type {
             switch (self.state) {
                 .starting => |starting| {
                     self.ui_state.draw(drawer);
-                    try artist.drawSexpr(self.camera, .lerp(
+                    const input_pos: Point = .lerp(
                         self.tests_reel.getWorldPoint(self.camera, self.cur_sample_index, .input),
                         MAIN_INPUT_POS,
                         math.smoothstep(starting.t, 0.15, 1),
-                    ), self.samples[self.cur_sample_index].input);
-                    artist.drawOffscreenCableTo(self.camera, MAIN_INPUT_POS);
+                    );
+                    try artist.drawSexpr(self.camera, input_pos, self.samples[self.cur_sample_index].input);
+                    artist.drawOffscreenCableTo(self.camera, input_pos);
                     try artist.drawHoldedFnk(self.camera, MAIN_FNK_POS, 1, self.fnk_name);
                     try Editing.drawCases(self.camera, true, .{}, self.fnk_cases, null);
                     drawer.drawRect(UI.cam, if (self.cur_sample_index > 0) .lerp(
@@ -2986,7 +3008,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
             };
 
             const special_var_point = (if (things.len == 0) Camera.remap(DEFAULT_CAM, .{
-                .pos = if (DESIGN.stack_right) .new(8, -2.5) else .new(3.5, -2.5),
+                .pos = if (DESIGN.stack_right) .new(0.5, -2.5) else .new(3.5, -2.5),
                 .scale = 0.5,
             }, UI.cam) else things[0].point).applyToLocalPoint(.{ .pos = .new(-2, 0) });
             var special_var_state: struct {
@@ -4785,7 +4807,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
 
             const camera = self.camera;
             {
-                artist.drawOffscreenCableTo(camera, MAIN_INPUT_POS);
+                if (false) artist.drawOffscreenCableTo(camera, MAIN_INPUT_POS);
                 if (!DESIGN.no_current_data) try artist.drawSexpr(
                     camera,
                     MAIN_INPUT_POS,
@@ -4966,7 +4988,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .first_level => {
                     // drawer.drawDebugText(camera, .{ .pos = .new(-3.55, -2), .scale = 0.75 }, "That's the name of →\nthe Vau you're editing.", .black);
                     drawer.drawDebugText(camera, .{ .pos = if (DESIGN.stack_right)
-                        .new(8.0, -3)
+                        .new(10.0, -3)
                     else
                         .new(4.5, -2), .scale = 0.75 }, "← That's the name of\nthe Vau you're editing.", .black);
                     if (DESIGN.no_current_data) {
@@ -5028,7 +5050,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 );
 
                 const pos = pattern_point.applyToLocalPosition(.new(0, 1));
-                drawer.drawCable(
+                if (false) drawer.drawCable(
                     camera,
                     pos.sub(.new(parent_point.scale * if (is_first) tof32(5.0) else tof32(3.0), 0)),
                     pos,
@@ -5042,12 +5064,14 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 }
             }
 
-            var prev_point = parent_point.applyToLocalPosition(if (is_first) .zero else .new(1, 0));
+            var prev_point = parent_point
+                .applyToLocalPosition(.new(if (is_first) 6 else 9, -1));
+            // .applyToLocalPosition(if (is_first) .zero else .new(1, 0));
             for (group.cases.items, 0..) |case, k| {
                 const cur_point = parent_point
                     .applyToLocalPoint(case.pattern_point_relative_to_parent)
-                    .applyToLocalPosition(.new(0, 1))
-                    .sub(.new(parent_point.scale * if (is_first) tof32(5.0) else tof32(3.0), 0));
+                    .applyToLocalPosition(.new(1, 0));
+                // .sub(.new(parent_point.scale * if (is_first) tof32(5.0) else tof32(3.0), 0));
                 defer prev_point = cur_point;
                 drawer.drawLine(camera, &.{ prev_point, cur_point }, .black);
 
@@ -5067,12 +5091,6 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 template_point.pos.y = 0;
                 break :blk template_point;
             } else pattern_point.applyToLocalPoint(.{ .pos = .new(DIST_TO_TEMPLATE, 0) });
-            try artist.drawSexpr(
-                camera,
-                template_point,
-                case.template,
-            );
-            try artist.drawHoldedFnk(camera, template_point.applyToLocalPoint(FNK_NAME_OFFSET_FROM_TEMPLATE), 0, case.fnk_name);
             drawer.drawCable(
                 camera,
                 pattern_point.applyToLocalPosition(.new(0.5, 0)),
@@ -5080,7 +5098,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 pattern_point.scale,
                 0,
             );
-            try artist.drawPlacedWildcardsCable(
+            if (true) try artist.drawPlacedWildcardsCable(
                 camera,
                 pattern_point,
                 template_point,
@@ -5092,6 +5110,12 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 .none,
                 0,
             );
+            try artist.drawSexpr(
+                camera,
+                template_point,
+                case.template,
+            );
+            try artist.drawHoldedFnk(camera, template_point.applyToLocalPoint(FNK_NAME_OFFSET_FROM_TEMPLATE), 0, case.fnk_name);
 
             try artist.drawTemplateWildcardLines(camera, case.template, template_point);
             try artist.drawPatternWildcardLines(camera, case.pattern, pattern_point);
@@ -5165,7 +5189,7 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
         fn relativePatternPoint(is_gen0: bool, is_folded: bool, cur_top_line: f32) Point {
             if (DESIGN.stack_right) {
                 return .{
-                    .pos = .new(if (is_gen0) 5 else 8, cur_top_line + if (is_folded) tof32(0.5) else 1.0),
+                    .pos = .new(@as(f32, if (is_gen0) 5 else 8) + @as(f32, if (is_folded) 0.5 else 0), cur_top_line + if (is_folded) tof32(0.5) else 1.0),
                     .scale = if (is_folded) 0.5 else 1,
                 };
             } else return .{
@@ -5768,6 +5792,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 .pos = input_point,
                 .value = active.input,
             } });
+            try shapes.append(.{ .fnk_name = .{
+                .point = MAIN_FNK_POS,
+                .value = active.current_fn_name,
+            } });
 
             const any_left: bool = if (active.hadError()) true else blk: while (@floor(remaining_t) > tof32(active.step.matched.index)) {
                 const pattern_point = input_point.applyToLocalPoint(.{ .pos = .new(3, 0) });
@@ -5809,7 +5837,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                             .pos = .new(3, 0),
                             .turns = -0.25,
                             .scale = 0.5,
-                        }).applyToLocalPoint(.{ .pos = .new(4, 0) }),
+                        }).applyToLocalPoint(.{ .pos = .new(4, 4) }),
                     } });
                     active = funk_tangent.tree.*;
                 } else if (active.step.matched.next) |next| {
@@ -5922,7 +5950,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                                     .pos = .new(3, 0),
                                     .turns = -0.25,
                                     .scale = 0.5,
-                                }).applyToLocalPoint(.{ .pos = .new(4 * invoking_t, 0) });
+                                }).applyToLocalPoint(.{ .pos = .new(4 * invoking_t, 4 * invoking_t) });
 
                                 try shapes.append(.{ .fnk_name = .{
                                     .point = function_point,
@@ -6659,6 +6687,13 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     .offset => |v| v,
                 };
             }
+            pub fn offsetPure(self: @This()) f32 {
+                return switch (self) {
+                    .unfolding => |v| v,
+                    .inert => 0,
+                    .offset => |v| v,
+                };
+            }
         } else union(enum) {
             unfolding: f32,
             offset: f32,
@@ -6694,7 +6729,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                     case,
                     parent_point
                         .applyToLocalPoint(.{ .pos = .new(
-                        1 - is_gen0,
+                        1.5 - is_gen0 - @as(f32, if (k == 0) 0.5 * first_state.offsetPure() else 0),
                         first_state.offseting() + tof32(k) * 1.5,
                     ) }),
                     bindings,
@@ -6708,10 +6743,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 );
             }
 
-            var prev_point = parent_point.applyToLocalPosition(.new(1 - is_gen0, 0));
+            var prev_point = parent_point.applyToLocalPosition(.new(lerp(9, 6, is_gen0), -1));
             for (0..cases.len) |k| {
                 const cur_point = parent_point
-                    .applyToLocalPosition(.new(1 - is_gen0, first_state.offseting() + tof32(k) * 1.5));
+                    .applyToLocalPosition(.new(lerp(9, 6, is_gen0), first_state.offseting() + tof32(k) * 1.5));
                 // .applyToLocalPoint(getRelativePatternPointAsdf(is_gen0, first_state, hiding_children, k))
                 // .applyToLocalPosition(.new(0, 1))
                 // .sub(.new(parent_point.scale * lerp(3, 5, is_gen0) - hiding_children, 0));
@@ -6776,7 +6811,7 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
 
             const cable_from = attachment_point.pos;
             const cable_to = pattern_point.applyToLocalPosition(.new(0, 1));
-            drawer.drawCable(
+            if (false) drawer.drawCable(
                 camera,
                 cable_from,
                 cable_to,
