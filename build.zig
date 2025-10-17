@@ -10,6 +10,7 @@ const DESIGN = struct {
     horizontal_depth: bool = false,
     stack_right: bool = true,
     use_tree: bool = true,
+    follow_active: bool = false,
 
     pub const default: @This() = .{};
     pub const variants: []const struct {

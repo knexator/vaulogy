@@ -6064,7 +6064,10 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
             }
 
             for (shapes.items) |s| {
-                try s.draw(self.camera.move(.new(5 * displacement, 0)));
+                try s.draw(if (DESIGN.follow_active)
+                    self.camera.move(.new(5 * displacement, 0))
+                else
+                    self.camera);
             }
 
             self.ui_state.draw(drawer);
