@@ -6024,12 +6024,12 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 }
             } else if (!active.hadError()) {
                 if (self.result_ui_point_for_test) |ui_point_for_test| {
-                    const cam = Camera.lerp(self.camera, UI.cam, self.anim_t);
+                    const cam = Camera.lerp(self.camera.move(.new(if (!DESIGN.follow_active) displacement * -5 else 0, 0)), UI.cam, self.anim_t);
                     const p = Point.lerp(MAIN_INPUT_POS, ui_point_for_test, self.anim_t);
                     artist.drawOffscreenCableTo(cam, p);
                     try artist.drawSexpr(cam, p, active.step.matched.filled_template);
                 } else {
-                    const cam = Camera.lerp(self.camera, DEFAULT_CAM, self.anim_t);
+                    const cam = Camera.lerp(self.camera.move(.new(if (!DESIGN.follow_active) displacement * -5 else 0, 0)), DEFAULT_CAM, self.anim_t);
                     const p = Point.lerp(MAIN_INPUT_POS, self.result_ui_point_for_test orelse result_pos, self.anim_t);
                     artist.drawOffscreenCableTo(cam, p);
                     try artist.drawSexpr(cam, p, active.step.matched.filled_template);
