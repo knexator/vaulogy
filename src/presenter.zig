@@ -5098,6 +5098,16 @@ pub fn EditingFnk(platform: Platform, drawer: Drawer) type {
                 pattern_point.scale,
                 0,
             );
+            const arrow: []const Vec2 = &.{
+                .new(-0.4, 0.25),
+                .new(0, 0),
+                .new(-0.4, -0.25),
+            };
+            for ([_]f32{ 0.75, 1.25 }) |t| {
+                drawer.drawLineV2(camera, pattern_point
+                    .applyToLocalPoint(.{ .pos = .new(t + 0.1, 0) })
+                    .applyToLocalPoint(.{ .scale = 0.6 }), arrow, .black);
+            }
             if (true) try artist.drawPlacedWildcardsCable(
                 camera,
                 pattern_point,
@@ -6851,6 +6861,16 @@ pub fn ExecutingFnk(platform: Platform, drawer: Drawer) type {
                 pattern_point.scale,
                 0,
             );
+            const arrow: []const Vec2 = &.{
+                .new(-0.4, 0.25),
+                .new(0, 0),
+                .new(-0.4, -0.25),
+            };
+            for ([_]f32{ 0.75, 1.25 }) |t| {
+                drawer.drawLineV2(camera, pattern_point
+                    .applyToLocalPoint(.{ .pos = .new(t + 0.1, 0) })
+                    .applyToLocalPoint(.{ .scale = 0.6 }), arrow, .black);
+            }
             // TODO: draw the bound values travelling on the wire
             // TODO NOW: don't draw the cables for already bound wildcards
             const asdf = try getWildcards(case, bindings);
